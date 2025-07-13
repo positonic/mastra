@@ -1,6 +1,6 @@
 import { openai } from '@ai-sdk/openai';
 import { Agent } from '@mastra/core/agent';
-import { Step, Workflow } from '@mastra/core/workflows';
+import { Workflow } from '@mastra/core/workflows';
 import { z } from 'zod';
 
 const llm = openai('gpt-4o');
@@ -64,14 +64,14 @@ const forecastSchema = z.array(
   }),
 );
 
-const fetchWeather = new Step({
+const fetchWeather = {
   id: 'fetch-weather',
   description: 'Fetches weather forecast for a given city',
   inputSchema: z.object({
     city: z.string().describe('The city to get the weather for'),
   }),
   outputSchema: forecastSchema,
-  execute: async ({ context }) => {
+  execute: async ({ context }: any) => {
     const triggerData = context?.getStepResult<{ city: string }>('trigger');
 
     if (!triggerData) {
@@ -113,12 +113,12 @@ const fetchWeather = new Step({
 
     return forecast;
   },
-});
+};
 
-const planActivities = new Step({
+const planActivities = {
   id: 'plan-activities',
   description: 'Suggests activities based on weather conditions',
-  execute: async ({ context, mastra }) => {
+  execute: async ({ context, mastra }: any) => {
     const forecast = context?.getStepResult(fetchWeather);
 
     if (!forecast || forecast.length === 0) {
@@ -147,7 +147,7 @@ const planActivities = new Step({
       activities: activitiesText,
     };
   },
-});
+};
 
 function getWeatherCondition(code: number): string {
   const conditions: Record<number, string> = {
