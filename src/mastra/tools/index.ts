@@ -387,3 +387,277 @@ function getWeatherCondition(code: number): string {
   };
   return conditions[code] || 'Unknown';
 }
+
+// In your Mastra agent repo
+import { Tool } from '@mastra/core/tools';
+
+// Priority values constant for project management
+export const PRIORITY_VALUES = ['Quick', 'Short', 'Long', 'Research'];
+
+const TODO_APP_BASE_URL = process.env.TODO_APP_BASE_URL ||
+ 'http://localhost:3000';
+const TODO_APP_API_KEY = process.env.TODO_APP_API_KEY; // For authentication
+
+export const getProjectContextTool = new Tool({
+  id: 'get-project-context',
+  description: 'Get comprehensive project context including actions, goals, outcomes, and team members',
+  inputSchema: z.object({
+    projectId: z.string().describe('The project ID to get context for'),
+  }),
+  outputSchema: z.object({
+    project: z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string().optional(),
+      status: z.string(),
+      priority: z.string(),
+      progress: z.number(),
+      createdAt: z.string(),
+      reviewDate: z.string().optional(),
+      nextActionDate: z.string().optional(),
+    }),
+    actions: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string().optional(),
+      status: z.string(),
+      priority: z.string(),
+      dueDate: z.string().optional(),
+    })),
+    goals: z.array(z.object({
+      id: z.number(),
+      title: z.string(),
+      description: z.string().optional(),
+      dueDate: z.string().optional(),
+      lifeDomain: z.object({
+        title: z.string(),
+        description: z.string().optional(),
+      }),
+    })),
+    outcomes: z.array(z.object({
+      id: z.string(),
+      description: z.string(),
+      type: z.string(),
+      dueDate: z.string().optional(),
+    })),
+    teamMembers: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      role: z.string(),
+      responsibilities: z.array(z.string()),
+    })),
+  }),
+  async execute({ context }) {
+    const { projectId } = context;
+    const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.projectContext`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+      },
+      body: JSON.stringify({ 
+        json: { projectId },
+        meta: {}
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get project context: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.result?.data || data;
+  },
+});
+
+export const getProjectActionsTool = new Tool({
+  id: 'get-project-actions',
+  description: 'Get all actions for a specific project with detailed status and priority information',
+  inputSchema: z.object({
+    projectId: z.string().describe('The project ID to get actions for'),
+    status: z.enum(['ACTIVE', 'COMPLETED','CANCELLED']).optional().describe('Filter by action status'),
+  }),
+  outputSchema: z.object({
+    actions: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string().optional(),
+      status: z.string(),
+      priority: z.string(),
+      dueDate: z.string().optional(),
+      project: z.object({
+        id: z.string(),
+        name: z.string(),
+        priority: z.string(),
+      }),
+    })),
+  }),
+  async execute({ context }) {
+    const { projectId, status } = context;
+    const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.projectActions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+      },
+      body: JSON.stringify({ 
+        json: { projectId, status },
+        meta: {}
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get project actions: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.result?.data || data;
+  },
+});
+
+export const createProjectActionTool = new Tool({
+  id: 'create-project-action',
+  description: 'Create a new action for a project with specified priority and due date',
+  inputSchema: z.object({
+    projectId: z.string().describe('The project ID to create action for'),
+    name: z.string().describe('The action name/title'),
+    description: z.string().optional().describe('Detailed description of the action'),
+    priority: z.enum(['Quick', 'Short', 'Long','Research']).describe('Action priority level'),
+    dueDate: z.string().optional().describe('Due date in ISO format'),
+  }),
+  outputSchema: z.object({
+    action: z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string().optional(),
+      status: z.string(),
+      priority: z.string(),
+      dueDate: z.string().optional(),
+      projectId: z.string(),
+    }),
+  }),
+  async execute({ context }) {
+    const { projectId, name, description, priority, dueDate } = context;
+    const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.createAction`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+      },
+      body: JSON.stringify({
+        json: {
+          projectId,
+          name,
+          description,
+          priority,
+          dueDate
+        },
+        meta: {}
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to create action: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.result?.data || data;
+  },
+});
+
+export const updateProjectStatusTool = new Tool({
+  id: 'update-project-status',
+  description: 'Update project status and progress information',
+  inputSchema: z.object({
+    projectId: z.string().describe('The project ID to update'),
+    status: z.enum(['ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED']).optional().describe('New project status'),
+    priority: z.enum(['HIGH', 'MEDIUM', 'LOW', 'NONE']).optional().describe('Project priority'),
+    progress: z.number().min(0).max(100).optional().describe('Progress percentage (0-100)'),
+    reviewDate: z.string().optional().describe('Next review date in ISO format'),
+    nextActionDate: z.string().optional().describe('Next action date in ISO format'),
+  }),
+  outputSchema: z.object({
+    project: z.object({
+      id: z.string(),
+      name: z.string(),
+      status: z.string(),
+      priority: z.string(),
+      progress: z.number(),
+      reviewDate: z.string().optional(),
+      nextActionDate: z.string().optional(),
+    }),
+  }),
+  async execute({ context }) {
+    const { projectId, status, priority, progress, reviewDate, nextActionDate } = context;
+    const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.updateProjectStatus`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+      },
+      body: JSON.stringify({
+        json: {
+          projectId,
+          status,
+          priority,
+          progress,
+          reviewDate,
+          nextActionDate
+        },
+        meta: {}
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update project: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.result?.data || data;
+  },
+});
+
+export const getProjectGoalsTool = new Tool({
+  id: 'get-project-goals',
+  description: 'Get all goals associated with a project and their alignment with life domains',
+  inputSchema: z.object({
+    projectId: z.string().describe('The project ID to get goals for'),
+  }),
+  outputSchema: z.object({
+    goals: z.array(z.object({
+      id: z.number(),
+      title: z.string(),
+      description: z.string().optional(),
+      dueDate: z.string().optional(),
+      lifeDomain: z.object({
+        title: z.string(),
+        description: z.string().optional(),
+      }),
+    })),
+  }),
+  async execute({ context }) {
+    const { projectId } = context;
+    // Get project context which includes goals
+    const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.projectContext`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+      },
+      body: JSON.stringify({ 
+        json: { projectId },
+        meta: {}
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get project goals: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    // Extract just the goals from the project context response
+    const contextData = data.result?.data || data;
+    return { goals: contextData.goals || [] };
+  },
+});
+

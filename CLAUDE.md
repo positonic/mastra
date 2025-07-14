@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run build` - Build the project using Mastra CLI
 - `npm start` - Start the built application from `.mastra/output/index.mjs`
 - `npm test` - No tests currently configured
+- `bun install` - Use Bun as package manager for faster installations
 
 ## Architecture Overview
 
