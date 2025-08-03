@@ -5,6 +5,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "mastra dev",
+    "dev:log": "mastra dev 2>&1 | tee mastra.log",
+    "logs": "tail -f mastra.log",
     "build": "mastra build",
     "start": "node .mastra/output/index.mjs"
   },

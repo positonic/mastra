@@ -5,10 +5,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Development Commands
 
 - `npm run dev` - Start development server using Mastra CLI
+- `npm run dev:log` - Start development server with logging to mastra.log (recommended for Claude Code assistance)
+- `npm run logs` - View real-time logs from mastra.log
 - `npm run build` - Build the project using Mastra CLI
 - `npm start` - Start the built application from `.mastra/output/index.mjs`
 - `npm test` - No tests currently configured
 - `bun install` - Use Bun as package manager for faster installations
+
+## Claude Code Development Setup
+
+When working with Claude Code for debugging and assistance:
+
+**Recommended Development Command:**
+```bash
+bun run dev:log
+# or manually:
+bun run dev 2>&1 | tee mastra.log
+```
+
+This setup:
+- Shows logs in your terminal in real-time
+- Saves logs to `mastra.log` for Claude to read and help debug
+- Captures both stdout and stderr for complete error visibility
+- Allows collaborative troubleshooting with Claude Code
 
 ## Architecture Overview
 

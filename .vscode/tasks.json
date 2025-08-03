@@ -1,0 +1,50 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Mastra with Logs",
+      "type": "shell",
+      "command": "bun run dev:log",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "new"
+      },
+      "problemMatcher": [],
+      "detail": "Start Mastra development server with logging for Claude Code assistance"
+    },
+    {
+      "label": "View Mastra Logs",
+      "type": "shell", 
+      "command": "tail -f mastra.log",
+      "group": "build",
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "focus": false,
+        "panel": "new"
+      },
+      "problemMatcher": [],
+      "detail": "View real-time Mastra logs"
+    },
+    {
+      "label": "Start Mastra (Standard)",
+      "type": "shell",
+      "command": "bun run dev",
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "new"
+      },
+      "problemMatcher": [],
+      "detail": "Start Mastra development server (standard mode)"
+    }
+  ]
+}
