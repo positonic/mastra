@@ -671,7 +671,15 @@ export const sendSlackMessageTool = createTool({
   inputSchema: z.object({
     channel: z.string().describe('The channel ID or user ID to send the message to (e.g., C1234567890 or U1234567890)'),
     text: z.string().describe('The text content of the message'),
-    blocks: z.array(z.record(z.any())).optional().describe('Optional Block Kit blocks for rich formatting'),
+    blocks: z.array(z.object({
+      type: z.string(),
+      text: z.object({
+        type: z.string(),
+        text: z.string(),
+      }).optional(),
+      elements: z.array(z.any()).optional(),
+      accessory: z.any().optional(),
+    })).optional().describe('Optional Block Kit blocks for rich formatting'),
   }),
   outputSchema: z.object({
     ok: z.boolean(),
@@ -717,7 +725,15 @@ export const updateSlackMessageTool = createTool({
     channel: z.string().describe('The channel ID where the message was posted'),
     ts: z.string().describe('The timestamp of the message to update'),
     text: z.string().describe('The new text content of the message'),
-    blocks: z.array(z.record(z.any())).optional().describe('Optional Block Kit blocks for rich formatting'),
+    blocks: z.array(z.object({
+      type: z.string(),
+      text: z.object({
+        type: z.string(),
+        text: z.string(),
+      }).optional(),
+      elements: z.array(z.any()).optional(),
+      accessory: z.any().optional(),
+    })).optional().describe('Optional Block Kit blocks for rich formatting'),
   }),
   outputSchema: z.object({
     ok: z.boolean(),

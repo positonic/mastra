@@ -344,10 +344,9 @@ export const projectManagerAgent = new Agent({
     getMeetingTranscriptionsTool,
     queryMeetingContextTool,
     getMeetingInsightsTool,
-    // Temporarily disabled Slack tools due to schema validation issues
-    // sendSlackMessageTool,
-    // updateSlackMessageTool,
-    // getSlackUserInfoTool
+    sendSlackMessageTool,
+    updateSlackMessageTool,
+    getSlackUserInfoTool
   },
 });
 
