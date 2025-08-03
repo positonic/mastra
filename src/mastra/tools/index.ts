@@ -3,6 +3,7 @@ import { PgVector } from '@mastra/pg';
 import { openai } from '@ai-sdk/openai';
 import { embed } from 'ai';
 import { z } from 'zod';
+import { WebClient } from '@slack/web-api';
 
 interface GeocodingResponse {
   results: {
@@ -658,6 +659,322 @@ export const getProjectGoalsTool = new Tool({
     // Extract just the goals from the project context response
     const contextData = data.result?.data || data;
     return { goals: contextData.goals || [] };
+  },
+});
+
+// Initialize Slack Web Client
+const slackClient = new WebClient(process.env.SLACK_BOT_TOKEN);
+
+export const sendSlackMessageTool = createTool({
+  id: 'send-slack-message',
+  description: 'Send a message to a Slack channel or user',
+  inputSchema: z.object({
+    channel: z.string().describe('The channel ID or user ID to send the message to (e.g., C1234567890 or U1234567890)'),
+    text: z.string().describe('The text content of the message'),
+    blocks: z.array(z.record(z.any())).optional().describe('Optional Block Kit blocks for rich formatting'),
+  }),
+  outputSchema: z.object({
+    ok: z.boolean(),
+    channel: z.string(),
+    ts: z.string().describe('Timestamp of the message'),
+    message: z.object({
+      text: z.string(),
+      type: z.string(),
+      user: z.string(),
+      ts: z.string(),
+    }).optional(),
+  }),
+  execute: async ({ context }) => {
+    const { channel, text, blocks } = context;
+    try {
+      const result = await slackClient.chat.postMessage({
+        channel,
+        text,
+        blocks,
+      });
+      
+      return {
+        ok: result.ok || false,
+        channel: result.channel || '',
+        ts: result.ts || '',
+        message: result.message ? {
+          text: result.message.text || '',
+          type: result.message.type || '',
+          user: result.message.user || '',
+          ts: result.message.ts || '',
+        } : undefined,
+      };
+    } catch (error) {
+      throw new Error(`Failed to send Slack message: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  },
+});
+
+export const updateSlackMessageTool = createTool({
+  id: 'update-slack-message',
+  description: 'Update an existing Slack message',
+  inputSchema: z.object({
+    channel: z.string().describe('The channel ID where the message was posted'),
+    ts: z.string().describe('The timestamp of the message to update'),
+    text: z.string().describe('The new text content of the message'),
+    blocks: z.array(z.record(z.any())).optional().describe('Optional Block Kit blocks for rich formatting'),
+  }),
+  outputSchema: z.object({
+    ok: z.boolean(),
+    channel: z.string(),
+    ts: z.string(),
+    text: z.string(),
+  }),
+  execute: async ({ context }) => {
+    const { channel, ts, text, blocks } = context;
+    try {
+      const result = await slackClient.chat.update({
+        channel,
+        ts,
+        text,
+        blocks,
+      });
+      
+      return {
+        ok: result.ok || false,
+        channel: result.channel || '',
+        ts: result.ts || '',
+        text: result.text || '',
+      };
+    } catch (error) {
+      throw new Error(`Failed to update Slack message: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  },
+});
+
+export const getSlackUserInfoTool = createTool({
+  id: 'get-slack-user-info',
+  description: 'Get information about a Slack user',
+  inputSchema: z.object({
+    user: z.string().describe('The user ID to get information for (e.g., U1234567890)'),
+  }),
+  outputSchema: z.object({
+    ok: z.boolean(),
+    user: z.object({
+      id: z.string(),
+      name: z.string(),
+      real_name: z.string().optional(),
+      tz: z.string().optional(),
+      tz_label: z.string().optional(),
+      is_bot: z.boolean(),
+      is_admin: z.boolean().optional(),
+      is_owner: z.boolean().optional(),
+    }).optional(),
+  }),
+  execute: async ({ context }) => {
+    const { user } = context;
+    try {
+      const result = await slackClient.users.info({ user });
+      
+      if (!result.ok || !result.user) {
+        return { ok: false };
+      }
+      
+      return {
+        ok: true,
+        user: {
+          id: result.user.id || '',
+          name: result.user.name || '',
+          real_name: result.user.real_name,
+          tz: result.user.tz,
+          tz_label: result.user.tz_label,
+          is_bot: result.user.is_bot || false,
+          is_admin: result.user.is_admin,
+          is_owner: result.user.is_owner,
+        },
+      };
+    } catch (error) {
+      throw new Error(`Failed to get Slack user info: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  },
+});
+
+export const getMeetingTranscriptionsTool = createTool({
+  id: 'get-meeting-transcriptions',
+  description: 'Get meeting transcriptions with filtering by project, date range, participants, or meeting type',
+  inputSchema: z.object({
+    projectId: z.string().optional().describe('Filter by specific project ID'),
+    startDate: z.string().optional().describe('Start date filter in ISO format'),
+    endDate: z.string().optional().describe('End date filter in ISO format'),
+    participants: z.array(z.string()).optional().describe('Filter by participant names/IDs'),
+    meetingType: z.string().optional().describe('Filter by meeting type (standup, planning, review, etc.)'),
+    limit: z.number().optional().default(10).describe('Maximum number of transcriptions to return'),
+  }),
+  outputSchema: z.object({
+    transcriptions: z.array(z.object({
+      id: z.string(),
+      title: z.string(),
+      transcript: z.string(),
+      participants: z.array(z.string()),
+      meetingDate: z.string(),
+      meetingType: z.string().optional(),
+      projectId: z.string().optional(),
+      duration: z.number().optional(),
+      summary: z.string().optional(),
+    })),
+    total: z.number(),
+  }),
+  execute: async ({ context }) => {
+    const { projectId, startDate, endDate, participants, meetingType, limit } = context;
+    const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.getMeetingTranscriptions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+      },
+      body: JSON.stringify({ 
+        json: { projectId, startDate, endDate, participants, meetingType, limit },
+        meta: {}
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get meeting transcriptions: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.result?.data || data;
+  },
+});
+
+export const queryMeetingContextTool = createTool({
+  id: 'query-meeting-context',
+  description: 'Semantic search across meeting transcriptions to find decisions, action items, deadlines, and project discussions',
+  inputSchema: z.object({
+    query: z.string().describe('Search query for finding relevant meeting content'),
+    projectId: z.string().optional().describe('Limit search to specific project'),
+    dateRange: z.object({
+      start: z.string(),
+      end: z.string(),
+    }).optional().describe('Date range to search within'),
+    topK: z.number().optional().default(5).describe('Number of most relevant results to return'),
+  }),
+  outputSchema: z.object({
+    results: z.array(z.object({
+      content: z.string(),
+      meetingTitle: z.string(),
+      meetingDate: z.string(),
+      participants: z.array(z.string()),
+      meetingType: z.string().optional(),
+      projectId: z.string().optional(),
+      relevanceScore: z.number(),
+      contextType: z.enum(['decision', 'action_item', 'deadline', 'blocker', 'discussion', 'update']).optional(),
+    })),
+  }),
+  execute: async ({ context }) => {
+    const { query, projectId, dateRange, topK } = context;
+    const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.queryMeetingContext`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+      },
+      body: JSON.stringify({ 
+        json: { query, projectId, dateRange, topK },
+        meta: {}
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to query meeting context: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.result?.data || data;
+  },
+});
+
+export const getMeetingInsightsTool = createTool({
+  id: 'get-meeting-insights',
+  description: 'Extract key insights from recent meetings including decisions, action items, deadlines, and project evolution',
+  inputSchema: z.object({
+    projectId: z.string().optional().describe('Focus on specific project'),
+    timeframe: z.enum(['last_week', 'last_month', 'last_quarter', 'custom']).default('last_week').describe('Time period for insights'),
+    startDate: z.string().optional().describe('Custom start date if timeframe is custom'),
+    endDate: z.string().optional().describe('Custom end date if timeframe is custom'),
+    insightTypes: z.array(z.enum(['decisions', 'action_items', 'deadlines', 'blockers', 'milestones', 'team_updates'])).optional().describe('Types of insights to extract'),
+  }),
+  outputSchema: z.object({
+    insights: z.object({
+      decisions: z.array(z.object({
+        decision: z.string(),
+        context: z.string(),
+        meetingDate: z.string(),
+        participants: z.array(z.string()),
+        impact: z.enum(['high', 'medium', 'low']).optional(),
+      })),
+      actionItems: z.array(z.object({
+        action: z.string(),
+        assignee: z.string().optional(),
+        dueDate: z.string().optional(),
+        status: z.enum(['pending', 'in_progress', 'completed']).optional(),
+        meetingDate: z.string(),
+        priority: z.enum(['high', 'medium', 'low']).optional(),
+      })),
+      deadlines: z.array(z.object({
+        deadline: z.string(),
+        description: z.string(),
+        dueDate: z.string(),
+        owner: z.string().optional(),
+        status: z.enum(['upcoming', 'overdue', 'completed']).optional(),
+        meetingDate: z.string(),
+      })),
+      blockers: z.array(z.object({
+        blocker: z.string(),
+        impact: z.string(),
+        owner: z.string().optional(),
+        resolution: z.string().optional(),
+        meetingDate: z.string(),
+        severity: z.enum(['critical', 'high', 'medium', 'low']).optional(),
+      })),
+      milestones: z.array(z.object({
+        milestone: z.string(),
+        targetDate: z.string().optional(),
+        progress: z.string().optional(),
+        meetingDate: z.string(),
+        status: z.enum(['planned', 'in_progress', 'achieved']).optional(),
+      })),
+      teamUpdates: z.array(z.object({
+        member: z.string(),
+        update: z.string(),
+        category: z.enum(['progress', 'blocker', 'achievement', 'challenge']).optional(),
+        meetingDate: z.string(),
+      })),
+    }),
+    summary: z.object({
+      totalMeetings: z.number(),
+      timeframe: z.string(),
+      keyThemes: z.array(z.string()),
+      projectProgress: z.string().optional(),
+      upcomingDeadlines: z.number(),
+      activeBlockers: z.number(),
+    }),
+  }),
+  execute: async ({ context }) => {
+    const { projectId, timeframe, startDate, endDate, insightTypes } = context;
+    const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.getMeetingInsights`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+      },
+      body: JSON.stringify({ 
+        json: { projectId, timeframe, startDate, endDate, insightTypes },
+        meta: {}
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get meeting insights: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.result?.data || data;
   },
 });
 

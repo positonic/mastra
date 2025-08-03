@@ -1,0 +1,9 @@
+$ mastra dev
+[32mINFO[39m [2025-08-03 18:23:49.131 +0200] (Mastra CLI): [36mStarting watcher...[39m
+[32mINFO[39m [2025-08-03 18:23:49.587 +0200] (Mastra CLI): [36mBundling finished, starting server...[39m
+[32mINFO[39m [2025-08-03 18:23:49.610 +0200] (Mastra CLI): [36m[Mastra Dev] - Starting server...[39m
+(node:4005) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+createLogger is deprecated. Please use "new ConsoleLogger()" from "@mastra/core/logger" instead.
+ Mastra API running on port http://localhost:4111/api
+👨‍💻 Playground available at http://localhost:4111
