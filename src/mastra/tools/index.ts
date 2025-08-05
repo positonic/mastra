@@ -448,13 +448,15 @@ export const getProjectContextTool = new Tool({
       responsibilities: z.array(z.string()),
     })),
   }),
-  async execute({ context }) {
+  async execute({ context, runtimeContext }) {
     const { projectId } = context;
+    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.projectContext`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+        'Authorization': `Bearer ${authToken}`,
       },
       body: JSON.stringify({ 
         json: { projectId },
@@ -493,13 +495,15 @@ export const getProjectActionsTool = new Tool({
       }),
     })),
   }),
-  async execute({ context }) {
+  async execute({ context, runtimeContext }) {
     const { projectId, status } = context;
+    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.projectActions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+        'Authorization': `Bearer ${authToken}`,
       },
       body: JSON.stringify({ 
         json: { projectId, status },
@@ -537,13 +541,15 @@ export const createProjectActionTool = new Tool({
       projectId: z.string(),
     }),
   }),
-  async execute({ context }) {
+  async execute({ context, runtimeContext }) {
     const { projectId, name, description, priority, dueDate } = context;
+    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.createAction`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+        'Authorization': `Bearer ${authToken}`,
       },
       body: JSON.stringify({
         json: {
@@ -588,13 +594,15 @@ export const updateProjectStatusTool = new Tool({
       nextActionDate: z.string().optional(),
     }),
   }),
-  async execute({ context }) {
+  async execute({ context, runtimeContext }) {
     const { projectId, status, priority, progress, reviewDate, nextActionDate } = context;
+    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.updateProjectStatus`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+        'Authorization': `Bearer ${authToken}`,
       },
       body: JSON.stringify({
         json: {
@@ -636,14 +644,16 @@ export const getProjectGoalsTool = new Tool({
       }),
     })),
   }),
-  async execute({ context }) {
+  async execute({ context, runtimeContext }) {
     const { projectId } = context;
+    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    
     // Get project context which includes goals
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.projectContext`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+        'Authorization': `Bearer ${authToken}`,
       },
       body: JSON.stringify({ 
         json: { projectId },
@@ -665,21 +675,70 @@ export const getProjectGoalsTool = new Tool({
 // Initialize Slack Web Client
 const slackClient = new WebClient(process.env.SLACK_BOT_TOKEN);
 
+// Define Block Kit element schema
+const slackBlockElementSchema = z.object({
+  type: z.string(),
+  text: z.object({
+    type: z.string(),
+    text: z.string(),
+    emoji: z.boolean().optional(),
+    verbatim: z.boolean().optional(),
+  }).optional(),
+  value: z.string().optional(),
+  url: z.string().optional(),
+  action_id: z.string().optional(),
+  style: z.string().optional(),
+  confirm: z.any().optional(),
+  placeholder: z.object({
+    type: z.string(),
+    text: z.string(),
+    emoji: z.boolean().optional(),
+  }).optional(),
+  initial_value: z.string().optional(),
+  options: z.array(z.object({
+    text: z.object({
+      type: z.string(),
+      text: z.string(),
+      emoji: z.boolean().optional(),
+    }),
+    value: z.string(),
+  })).optional(),
+});
+
+// Define Block Kit block schema
+const slackBlockSchema = z.object({
+  type: z.string(),
+  text: z.object({
+    type: z.string(),
+    text: z.string(),
+    emoji: z.boolean().optional(),
+    verbatim: z.boolean().optional(),
+  }).optional(),
+  elements: z.array(slackBlockElementSchema).optional(),
+  accessory: slackBlockElementSchema.optional(),
+  block_id: z.string().optional(),
+  fields: z.array(z.object({
+    type: z.string(),
+    text: z.string(),
+    emoji: z.boolean().optional(),
+    verbatim: z.boolean().optional(),
+  })).optional(),
+  image_url: z.string().optional(),
+  alt_text: z.string().optional(),
+  title: z.object({
+    type: z.string(),
+    text: z.string(),
+    emoji: z.boolean().optional(),
+  }).optional(),
+});
+
 export const sendSlackMessageTool = createTool({
   id: 'send-slack-message',
   description: 'Send a message to a Slack channel or user',
   inputSchema: z.object({
     channel: z.string().describe('The channel ID or user ID to send the message to (e.g., C1234567890 or U1234567890)'),
     text: z.string().describe('The text content of the message'),
-    blocks: z.array(z.object({
-      type: z.string(),
-      text: z.object({
-        type: z.string(),
-        text: z.string(),
-      }).optional(),
-      elements: z.array(z.any()).optional(),
-      accessory: z.any().optional(),
-    })).optional().describe('Optional Block Kit blocks for rich formatting'),
+    blocks: z.array(slackBlockSchema).optional().describe('Optional Block Kit blocks for rich formatting'),
   }),
   outputSchema: z.object({
     ok: z.boolean(),
@@ -725,15 +784,7 @@ export const updateSlackMessageTool = createTool({
     channel: z.string().describe('The channel ID where the message was posted'),
     ts: z.string().describe('The timestamp of the message to update'),
     text: z.string().describe('The new text content of the message'),
-    blocks: z.array(z.object({
-      type: z.string(),
-      text: z.object({
-        type: z.string(),
-        text: z.string(),
-      }).optional(),
-      elements: z.array(z.any()).optional(),
-      accessory: z.any().optional(),
-    })).optional().describe('Optional Block Kit blocks for rich formatting'),
+    blocks: z.array(slackBlockSchema).optional().describe('Optional Block Kit blocks for rich formatting'),
   }),
   outputSchema: z.object({
     ok: z.boolean(),
@@ -835,13 +886,28 @@ export const getMeetingTranscriptionsTool = createTool({
     })),
     total: z.number(),
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, runtimeContext }) => {
     const { projectId, startDate, endDate, participants, meetingType, limit } = context;
+    
+    // COMPREHENSIVE DEBUG LOGGING
+    console.log("=== MEETING TRANSCRIPTIONS TOOL DEBUG ===");
+    console.log("Tool called at:", new Date().toISOString());
+    console.log("Context received:", JSON.stringify(context, null, 2));
+    console.log("RuntimeContext exists:", !!runtimeContext);
+    console.log("RuntimeContext keys:", runtimeContext ? Array.from(runtimeContext.keys()) : 'none');
+    console.log("RuntimeContext values:", runtimeContext ? Object.fromEntries(runtimeContext) : 'none');
+    
+    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    console.log("Auth token source:", runtimeContext?.get('authToken') ? 'runtimeContext' : 'env fallback');
+    console.log("Auth token (first 50 chars):", authToken ? authToken.substring(0, 50) + '...' : 'NONE');
+    console.log("API URL:", `${TODO_APP_BASE_URL}/api/trpc/mastra.getMeetingTranscriptions`);
+    console.log("Request payload:", JSON.stringify({ projectId, startDate, endDate, participants, meetingType, limit }, null, 2));
+    
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.getMeetingTranscriptions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+        'Authorization': `Bearer ${authToken}`,
       },
       body: JSON.stringify({ 
         json: { projectId, startDate, endDate, participants, meetingType, limit },
@@ -849,11 +915,19 @@ export const getMeetingTranscriptionsTool = createTool({
       }),
     });
 
+    console.log("Response status:", response.status);
+    console.log("Response headers:", Object.fromEntries(response.headers));
+    
     if (!response.ok) {
+      const errorText = await response.text();
+      console.log("Error response body:", errorText);
       throw new Error(`Failed to get meeting transcriptions: ${response.statusText}`);
     }
 
     const data = await response.json();
+    console.log("Response data keys:", Object.keys(data));
+    console.log("Response success:", !!data);
+    console.log("=== END MEETING TRANSCRIPTIONS DEBUG ===");
     return data.result?.data || data;
   },
 });
@@ -882,13 +956,15 @@ export const queryMeetingContextTool = createTool({
       contextType: z.enum(['decision', 'action_item', 'deadline', 'blocker', 'discussion', 'update']).optional(),
     })),
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, runtimeContext }) => {
     const { query, projectId, dateRange, topK } = context;
+    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.queryMeetingContext`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+        'Authorization': `Bearer ${authToken}`,
       },
       body: JSON.stringify({ 
         json: { query, projectId, dateRange, topK },
@@ -971,13 +1047,15 @@ export const getMeetingInsightsTool = createTool({
       activeBlockers: z.number(),
     }),
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, runtimeContext }) => {
     const { projectId, timeframe, startDate, endDate, insightTypes } = context;
+    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.getMeetingInsights`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${TODO_APP_API_KEY}`,
+        'Authorization': `Bearer ${authToken}`,
       },
       body: JSON.stringify({ 
         json: { projectId, timeframe, startDate, endDate, insightTypes },

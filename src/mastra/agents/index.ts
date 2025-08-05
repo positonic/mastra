@@ -224,10 +224,14 @@ export const projectManagerAgent = new Agent({
     ### Meeting-Related Queries:
     For questions about meeting content or project history:
     - "What happened in the last meeting?" → Use 'get-meeting-transcriptions' + 'get-meeting-insights'
+    - "What was the meeting [meeting name] about?" → Use 'get-meeting-transcriptions' or 'query-meeting-context' to search for specific meetings
+    - "Tell me about the meeting with [participants]?" → Use 'get-meeting-transcriptions' with participants filter
     - "What are upcoming deadlines mentioned in meetings?" → Use 'query-meeting-context' for deadline searches
     - "What decisions were made about project X?" → Use 'query-meeting-context' with decision filtering
     - "What blockers were discussed recently?" → Use 'get-meeting-insights' focusing on blockers
     - "Show me project evolution over time" → Use 'get-meeting-transcriptions' with date filtering
+    
+    **IMPORTANT**: For ANY question about specific meetings, meeting content, or meeting participants, ALWAYS use the meeting transcription tools first before responding.
     
     ### Project Status Questions:
     For current project state queries:
@@ -335,6 +339,16 @@ export const projectManagerAgent = new Agent({
     Always provide actionable insights with specific next steps, deadlines, and clear ownership, enriched with meeting context and team intelligence.
 `,
   model: openai('gpt-4o-mini'),
+  
+  // Add debug logging for incoming requests
+  beforeGenerate: async (messages, options) => {
+    console.log("=== PADDY AGENT DEBUG ===");
+    console.log("Agent called at:", new Date().toISOString());
+    console.log("Messages received:", JSON.stringify(messages, null, 2));
+    console.log("Options runtime context:", options?.runtimeContext ? Object.fromEntries(options.runtimeContext) : 'none');
+    console.log("Auth token in runtime context:", options?.runtimeContext?.get('authToken') ? 'PRESENT' : 'NOT_FOUND');
+    console.log("=== END PADDY AGENT DEBUG ===");
+  },
   tools: {
     getProjectContextTool,
     getProjectActionsTool,
