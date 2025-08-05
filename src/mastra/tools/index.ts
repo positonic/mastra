@@ -903,12 +903,26 @@ export const getMeetingTranscriptionsTool = createTool({
   execute: async ({ context, runtimeContext }) => {
     const { projectId, startDate, endDate, participants, meetingType, limit } = context;
     
+    console.log('🔍 [MEETING TRANSCRIPTIONS DEBUG]', {
+      timestamp: new Date().toISOString(),
+      TODO_APP_BASE_URL,
+      context: { projectId, participants, limit },
+      runtimeContextKeys: runtimeContext ? Array.from(runtimeContext.keys()) : 'none'
+    });
+    
     const authToken = runtimeContext?.get('authToken');
     if (!authToken) {
+      console.error('❌ [AUTH ERROR] No authentication token available');
       throw new Error('No authentication token available');
     }
     
-    const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.getMeetingTranscriptions`, {
+    console.log('🔑 [AUTH] Token available, length:', authToken.length);
+    
+    const url = `${TODO_APP_BASE_URL}/api/trpc/mastra.getMeetingTranscriptions`;
+    console.log('🌐 [FETCH] Attempting to call:', url);
+    
+    try {
+      const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -920,13 +934,35 @@ export const getMeetingTranscriptionsTool = createTool({
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to get meeting transcriptions: ${response.statusText}`);
-    }
+      console.log('✅ [FETCH SUCCESS] Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries())
+      });
 
-    const data = await response.json();
-    return data.result?.data || data;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [HTTP ERROR]', {
+          status: response.status,
+          statusText: response.statusText,
+          errorText
+        });
+        throw new Error(`Failed to get meeting transcriptions: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('📊 [DATA SUCCESS] Response data keys:', Object.keys(data));
+      return data.result?.data || data;
+      
+    } catch (error) {
+      console.error('💥 [FETCH ERROR] Network/Connection error:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack?.split('\n').slice(0, 3),
+        url
+      });
+      throw error;
+    }
   },
 });
 
