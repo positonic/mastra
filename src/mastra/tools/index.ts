@@ -889,19 +889,7 @@ export const getMeetingTranscriptionsTool = createTool({
   execute: async ({ context, runtimeContext }) => {
     const { projectId, startDate, endDate, participants, meetingType, limit } = context;
     
-    // COMPREHENSIVE DEBUG LOGGING
-    console.log("=== MEETING TRANSCRIPTIONS TOOL DEBUG ===");
-    console.log("Tool called at:", new Date().toISOString());
-    console.log("Context received:", JSON.stringify(context, null, 2));
-    console.log("RuntimeContext exists:", !!runtimeContext);
-    console.log("RuntimeContext keys:", runtimeContext ? Array.from(runtimeContext.keys()) : 'none');
-    console.log("RuntimeContext values:", runtimeContext ? Object.fromEntries(runtimeContext) : 'none');
-    
     const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
-    console.log("Auth token source:", runtimeContext?.get('authToken') ? 'runtimeContext' : 'env fallback');
-    console.log("Auth token (first 50 chars):", authToken ? authToken.substring(0, 50) + '...' : 'NONE');
-    console.log("API URL:", `${TODO_APP_BASE_URL}/api/trpc/mastra.getMeetingTranscriptions`);
-    console.log("Request payload:", JSON.stringify({ projectId, startDate, endDate, participants, meetingType, limit }, null, 2));
     
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.getMeetingTranscriptions`, {
       method: 'POST',
@@ -915,19 +903,12 @@ export const getMeetingTranscriptionsTool = createTool({
       }),
     });
 
-    console.log("Response status:", response.status);
-    console.log("Response headers:", Object.fromEntries(response.headers));
-    
     if (!response.ok) {
       const errorText = await response.text();
-      console.log("Error response body:", errorText);
       throw new Error(`Failed to get meeting transcriptions: ${response.statusText}`);
     }
 
     const data = await response.json();
-    console.log("Response data keys:", Object.keys(data));
-    console.log("Response success:", !!data);
-    console.log("=== END MEETING TRANSCRIPTIONS DEBUG ===");
     return data.result?.data || data;
   },
 });
