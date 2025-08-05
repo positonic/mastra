@@ -397,7 +397,6 @@ export const PRIORITY_VALUES = ['Quick', 'Short', 'Long', 'Research'];
 
 const TODO_APP_BASE_URL = process.env.TODO_APP_BASE_URL ||
  'http://localhost:3000';
-const TODO_APP_API_KEY = process.env.TODO_APP_API_KEY; // For authentication
 
 export const getProjectContextTool = new Tool({
   id: 'get-project-context',
@@ -450,7 +449,10 @@ export const getProjectContextTool = new Tool({
   }),
   async execute({ context, runtimeContext }) {
     const { projectId } = context;
-    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    const authToken = runtimeContext?.get('authToken');
+    if (!authToken) {
+      throw new Error('No authentication token available');
+    }
     
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.projectContext`, {
       method: 'POST',
@@ -497,7 +499,10 @@ export const getProjectActionsTool = new Tool({
   }),
   async execute({ context, runtimeContext }) {
     const { projectId, status } = context;
-    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    const authToken = runtimeContext?.get('authToken');
+    if (!authToken) {
+      throw new Error('No authentication token available');
+    }
     
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.projectActions`, {
       method: 'POST',
@@ -543,7 +548,10 @@ export const createProjectActionTool = new Tool({
   }),
   async execute({ context, runtimeContext }) {
     const { projectId, name, description, priority, dueDate } = context;
-    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    const authToken = runtimeContext?.get('authToken');
+    if (!authToken) {
+      throw new Error('No authentication token available');
+    }
     
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.createAction`, {
       method: 'POST',
@@ -596,7 +604,10 @@ export const updateProjectStatusTool = new Tool({
   }),
   async execute({ context, runtimeContext }) {
     const { projectId, status, priority, progress, reviewDate, nextActionDate } = context;
-    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    const authToken = runtimeContext?.get('authToken');
+    if (!authToken) {
+      throw new Error('No authentication token available');
+    }
     
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.updateProjectStatus`, {
       method: 'POST',
@@ -646,7 +657,10 @@ export const getProjectGoalsTool = new Tool({
   }),
   async execute({ context, runtimeContext }) {
     const { projectId } = context;
-    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    const authToken = runtimeContext?.get('authToken');
+    if (!authToken) {
+      throw new Error('No authentication token available');
+    }
     
     // Get project context which includes goals
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.projectContext`, {
@@ -889,7 +903,10 @@ export const getMeetingTranscriptionsTool = createTool({
   execute: async ({ context, runtimeContext }) => {
     const { projectId, startDate, endDate, participants, meetingType, limit } = context;
     
-    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    const authToken = runtimeContext?.get('authToken');
+    if (!authToken) {
+      throw new Error('No authentication token available');
+    }
     
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.getMeetingTranscriptions`, {
       method: 'POST',
@@ -939,7 +956,10 @@ export const queryMeetingContextTool = createTool({
   }),
   execute: async ({ context, runtimeContext }) => {
     const { query, projectId, dateRange, topK } = context;
-    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    const authToken = runtimeContext?.get('authToken');
+    if (!authToken) {
+      throw new Error('No authentication token available');
+    }
     
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.queryMeetingContext`, {
       method: 'POST',
@@ -1030,7 +1050,10 @@ export const getMeetingInsightsTool = createTool({
   }),
   execute: async ({ context, runtimeContext }) => {
     const { projectId, timeframe, startDate, endDate, insightTypes } = context;
-    const authToken = runtimeContext?.get('authToken') || TODO_APP_API_KEY;
+    const authToken = runtimeContext?.get('authToken');
+    if (!authToken) {
+      throw new Error('No authentication token available');
+    }
     
     const response = await fetch(`${TODO_APP_BASE_URL}/api/trpc/mastra.getMeetingInsights`, {
       method: 'POST',
