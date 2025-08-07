@@ -715,13 +715,18 @@ export const getAllGoalsTool = new Tool({
     })),
     total: z.number(),
   }),
-  execute: async ({}) => {
+  execute: async ({}, { runtimeContext }) => {
+    const authToken = runtimeContext?.get('authToken');
+    if (!authToken) {
+      throw new Error('No auth token available');
+    }
+
     const apiUrl = process.env.MASTRA_API_URL || 'http://localhost:3000';
     const response = await fetch(`${apiUrl}/api/trpc/mastra.getAllGoals`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.MASTRA_API_TOKEN}`,
+        'Authorization': `Bearer ${authToken}`,
       },
     });
 
