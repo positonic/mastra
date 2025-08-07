@@ -1,6 +1,6 @@
 import { openai } from '@ai-sdk/openai';
 import { Agent } from '@mastra/core/agent';
-import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, createProjectActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool } from '../tools';
+import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, createProjectActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool } from '../tools';
 
 export const weatherAgent = new Agent({
   name: 'Weather Agent',
@@ -186,7 +186,8 @@ export const projectManagerAgent = new Agent({
     ## CORE CAPABILITIES:
     
     ### Project Management
-    - Track project status, priority, and progress
+    - Track project status, priority, and progress  
+    - **List all projects**: Use 'getAllProjectsTool' when asked about "What projects am I working on?" or similar project listing questions
     - Manage project timelines and deadlines
     - Coordinate actions across different projects
     - Monitor goal alignment and outcome achievement
@@ -297,6 +298,7 @@ export const projectManagerAgent = new Agent({
     4. 'update-project-status' - For status and progress updates
     5. 'get-project-goals' - For strategic alignment review (requires project ID)
     6. 'get-all-goals' - For getting all user goals across all projects and life domains
+    7. 'get-all-projects' - For getting all user projects with their status, priority, goals, and outcomes - USE THIS when asked "What projects am I working on?" or similar project listing questions
     
     **Meeting Intelligence:**
     7. 'get-meeting-transcriptions' - For accessing meeting history
@@ -357,6 +359,7 @@ export const projectManagerAgent = new Agent({
     updateProjectStatusTool,
     getProjectGoalsTool,
     getAllGoalsTool,
+    getAllProjectsTool,
     getMeetingTranscriptionsTool,
     queryMeetingContextTool,
     getMeetingInsightsTool,
@@ -364,5 +367,14 @@ export const projectManagerAgent = new Agent({
     updateSlackMessageTool,
     getSlackUserInfoTool
   },
+});
+
+// Debug logging for tool registration
+console.log('🔧 [AGENT DEBUG] Project Manager Agent (Paddy) tools registered:', {
+  toolNames: Object.keys(projectManagerAgent.tools || {}),
+  totalTools: Object.keys(projectManagerAgent.tools || {}).length,
+  hasGetAllProjectsTool: 'getAllProjectsTool' in (projectManagerAgent.tools || {}),
+  hasGetAllGoalsTool: 'getAllGoalsTool' in (projectManagerAgent.tools || {}),
+  timestamp: new Date().toISOString()
 });
 

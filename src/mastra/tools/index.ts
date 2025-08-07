@@ -447,8 +447,8 @@ export const getProjectContextTool = new Tool({
       responsibilities: z.array(z.string()),
     })),
   }),
-  async execute({ context, runtimeContext }) {
-    const { projectId } = context;
+  async execute({ input, runtimeContext }) {
+    const { projectId } = input;
     const authToken = runtimeContext?.get('authToken');
     if (!authToken) {
       throw new Error('No authentication token available');
@@ -497,8 +497,8 @@ export const getProjectActionsTool = new Tool({
       }),
     })),
   }),
-  async execute({ context, runtimeContext }) {
-    const { projectId, status } = context;
+  async execute({ input, runtimeContext }) {
+    const { projectId, status } = input;
     const authToken = runtimeContext?.get('authToken');
     if (!authToken) {
       throw new Error('No authentication token available');
@@ -546,8 +546,8 @@ export const createProjectActionTool = new Tool({
       projectId: z.string(),
     }),
   }),
-  async execute({ context, runtimeContext }) {
-    const { projectId, name, description, priority, dueDate } = context;
+  async execute({ input, runtimeContext }) {
+    const { projectId, name, description, priority, dueDate } = input;
     const authToken = runtimeContext?.get('authToken');
     if (!authToken) {
       throw new Error('No authentication token available');
@@ -602,8 +602,8 @@ export const updateProjectStatusTool = new Tool({
       nextActionDate: z.string().optional(),
     }),
   }),
-  async execute({ context, runtimeContext }) {
-    const { projectId, status, priority, progress, reviewDate, nextActionDate } = context;
+  async execute({ input, runtimeContext }) {
+    const { projectId, status, priority, progress, reviewDate, nextActionDate } = input;
     const authToken = runtimeContext?.get('authToken');
     if (!authToken) {
       throw new Error('No authentication token available');
@@ -655,8 +655,8 @@ export const getProjectGoalsTool = new Tool({
       }),
     })),
   }),
-  async execute({ context, runtimeContext }) {
-    const { projectId } = context;
+  async execute({ input, runtimeContext }) {
+    const { projectId } = input;
     const authToken = runtimeContext?.get('authToken');
     if (!authToken) {
       throw new Error('No authentication token available');
@@ -715,28 +715,218 @@ export const getAllGoalsTool = new Tool({
     })),
     total: z.number(),
   }),
-  execute: async ({}, { runtimeContext }) => {
+  execute: async ({ context, runtimeContext }) => {
+    console.log('🔍 [DEBUG] getAllGoalsTool execution started', {
+      timestamp: new Date().toISOString(),
+      runtimeContextExists: !!runtimeContext,
+      runtimeContextKeys: runtimeContext ? Array.from(runtimeContext.keys()) : 'none',
+      TODO_APP_BASE_URL
+    });
+    
     const authToken = runtimeContext?.get('authToken');
+    console.log('🔑 [DEBUG] Auth token extraction', {
+      tokenExists: !!authToken,
+      tokenLength: authToken ? authToken.length : 0,
+      tokenPreview: authToken ? authToken.substring(0, 20) + '...' : 'none'
+    });
+    
     if (!authToken) {
+      console.error('❌ [ERROR] No auth token available', {
+        runtimeContext: !!runtimeContext,
+        keys: runtimeContext ? Array.from(runtimeContext.keys()) : []
+      });
       throw new Error('No auth token available');
     }
 
-    const apiUrl = process.env.MASTRA_API_URL || 'http://localhost:3000';
+    const apiUrl = TODO_APP_BASE_URL;
+    console.log('🌐 [DEBUG] Making API call', {
+      url: `${apiUrl}/api/trpc/mastra.getAllGoals`,
+      hasToken: !!authToken
+    });
+    
     const response = await fetch(`${apiUrl}/api/trpc/mastra.getAllGoals`, {
-      method: 'POST',
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': `Bearer ${authToken}`,
       },
-      body: JSON.stringify({}), // Empty body for query without parameters
+    });
+
+    console.log('📡 [DEBUG] API Response', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      headers: Object.fromEntries(response.headers.entries())
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ [ERROR] API call failed', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText
+      });
       throw new Error(`Failed to get all goals: ${response.statusText}`);
     }
 
     const data = await response.json();
+    console.log('✅ [SUCCESS] Goals retrieved', {
+      dataKeys: Object.keys(data),
+      hasResult: !!data.result,
+      goalsCount: data.result?.data?.goals?.length || data.goals?.length || 0
+    });
     return data.result?.data || data;
+  },
+});
+
+export const getAllProjectsTool = new Tool({
+  id: 'get-all-projects',
+  description: 'Get all user projects with their status, priority, goals, and outcomes',
+  inputSchema: z.object({}), // No input parameters needed - gets all projects for the authenticated user
+  outputSchema: z.object({
+    projects: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string().nullable(),
+      status: z.string(),
+      priority: z.string(),
+      progress: z.number(),
+      createdAt: z.string(),
+      reviewDate: z.string().nullable(),
+      nextActionDate: z.string().nullable(),
+      goals: z.array(z.object({
+        id: z.number(),
+        title: z.string(),
+        description: z.string().nullable(),
+        dueDate: z.string().nullable(),
+        lifeDomainId: z.number(),
+      })),
+      outcomes: z.array(z.object({
+        id: z.string(),
+        description: z.string(),
+        type: z.string().nullable(),
+        dueDate: z.string().nullable(),
+      })),
+    })),
+    total: z.number(),
+  }),
+  async execute({ context, runtimeContext }) {
+    // CRITICAL: Add basic console log to verify if this even runs
+    console.log('🚨 CRITICAL: getAllProjectsTool EXECUTE METHOD CALLED!');
+    console.log('🚀 [TOOL START] getAllProjectsTool execution started', {
+      timestamp: new Date().toISOString(),
+      runtimeContextExists: !!runtimeContext,
+      runtimeContextKeys: runtimeContext ? Array.from(runtimeContext.keys()) : 'none',
+      TODO_APP_BASE_URL,
+      contextKeys: context ? Object.keys(context) : 'no context'
+    });
+    
+    try {
+    
+    const authToken = runtimeContext?.get('authToken');
+    console.log('🔑 [DEBUG] Auth token extraction', {
+      tokenExists: !!authToken,
+      tokenLength: authToken ? authToken.length : 0,
+      tokenPreview: authToken ? authToken.substring(0, 20) + '...' : 'none'
+    });
+    
+    if (!authToken) {
+      console.error('❌ [ERROR] No auth token available', {
+        runtimeContext: !!runtimeContext,
+        keys: runtimeContext ? Array.from(runtimeContext.keys()) : []
+      });
+      throw new Error('No auth token available');
+    }
+
+    const apiUrl = TODO_APP_BASE_URL;
+    console.log('🌐 [DEBUG] Making API call', {
+      url: `${apiUrl}/api/trpc/project.getAll`,
+      hasToken: !!authToken
+    });
+
+    const response = await fetch(`${apiUrl}/api/trpc/project.getAll`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ [ERROR] API call failed', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText
+      });
+      throw new Error(`Failed to get all projects: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ [SUCCESS] Projects retrieved', {
+      dataKeys: Object.keys(data),
+      hasResult: !!data.result,
+      projectsCount: data.result?.data?.json?.length || data.result?.data?.length || data.length || 0,
+      fullDataStructure: JSON.stringify(data, null, 2).substring(0, 500) + '...'
+    });
+    
+    // The API returns projects nested in result.data.json
+    const projects = Array.isArray(data) ? data : (data.result?.data?.json || data.result?.data || data.result || data || []);
+    
+    // Ensure projects is always an array
+    const projectsArray = Array.isArray(projects) ? projects : [];
+    
+    console.log('📊 [DEBUG] Projects data structure:', {
+      projectsIsArray: Array.isArray(projects),
+      projectsLength: Array.isArray(projects) ? projects.length : 'not array',
+      projectsType: typeof projects,
+      sampleProject: projectsArray[0] ? Object.keys(projectsArray[0]) : 'no projects'
+    });
+    
+    const result = {
+      projects: projectsArray.map((project: any) => ({
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        status: project.status,
+        priority: project.priority,
+        progress: project.progress ?? 0,
+        createdAt: project.createdAt,
+        reviewDate: project.reviewDate,
+        nextActionDate: project.nextActionDate,
+        goals: project.goals?.map((goal: any) => ({
+          id: goal.id,
+          title: goal.title,
+          description: goal.description,
+          dueDate: goal.dueDate,
+          lifeDomainId: goal.lifeDomainId,
+        })) || [],
+        outcomes: project.outcomes?.map((outcome: any) => ({
+          id: outcome.id,
+          description: outcome.description,
+          type: outcome.type,
+          dueDate: outcome.dueDate,
+        })) || [],
+      })),
+      total: projectsArray.length,
+    };
+    
+    console.log('🎉 [TOOL SUCCESS] getAllProjectsTool completed successfully', {
+      projectCount: result.total,
+      firstProjectName: result.projects[0]?.name || 'No projects',
+      timestamp: new Date().toISOString()
+    });
+    
+    return result;
+    
+    } catch (error) {
+      console.error('💥 [TOOL ERROR] getAllProjectsTool failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+        timestamp: new Date().toISOString(),
+        TODO_APP_BASE_URL
+      });
+      throw error;
+    }
   },
 });
 
