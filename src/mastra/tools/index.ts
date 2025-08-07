@@ -723,11 +723,12 @@ export const getAllGoalsTool = new Tool({
 
     const apiUrl = process.env.MASTRA_API_URL || 'http://localhost:3000';
     const response = await fetch(`${apiUrl}/api/trpc/mastra.getAllGoals`, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${authToken}`,
       },
+      body: JSON.stringify({}), // Empty body for query without parameters
     });
 
     if (!response.ok) {
