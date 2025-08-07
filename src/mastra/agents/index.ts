@@ -1,6 +1,6 @@
 import { openai } from '@ai-sdk/openai';
 import { Agent } from '@mastra/core/agent';
-import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, createProjectActionTool, updateProjectStatusTool, getProjectGoalsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool } from '../tools';
+import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, createProjectActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool } from '../tools';
 
 export const weatherAgent = new Agent({
   name: 'Weather Agent',
@@ -295,17 +295,18 @@ export const projectManagerAgent = new Agent({
     2. 'get-project-actions' - For action item management
     3. 'create-project-action' - For generating new tasks
     4. 'update-project-status' - For status and progress updates
-    5. 'get-project-goals' - For strategic alignment review
+    5. 'get-project-goals' - For strategic alignment review (requires project ID)
+    6. 'get-all-goals' - For getting all user goals across all projects and life domains
     
     **Meeting Intelligence:**
-    6. 'get-meeting-transcriptions' - For accessing meeting history
-    7. 'query-meeting-context' - For semantic search of meeting content
-    8. 'get-meeting-insights' - For extracted decisions, actions, and deadlines
+    7. 'get-meeting-transcriptions' - For accessing meeting history
+    8. 'query-meeting-context' - For semantic search of meeting content
+    9. 'get-meeting-insights' - For extracted decisions, actions, and deadlines
     
     **Communication:**
-    9. 'send-slack-message' - For sending updates to Slack
-    10. 'update-slack-message' - For updating existing messages
-    11. 'get-slack-user-info' - For retrieving user information
+    10. 'send-slack-message' - For sending updates to Slack
+    11. 'update-slack-message' - For updating existing messages
+    12. 'get-slack-user-info' - For retrieving user information
     
     ## KEY RESPONSIBILITIES:
     - Monitor project health across all data sources
@@ -355,6 +356,7 @@ export const projectManagerAgent = new Agent({
     createProjectActionTool,
     updateProjectStatusTool,
     getProjectGoalsTool,
+    getAllGoalsTool,
     getMeetingTranscriptionsTool,
     queryMeetingContextTool,
     getMeetingInsightsTool,

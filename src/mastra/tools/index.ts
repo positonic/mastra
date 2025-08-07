@@ -686,6 +686,54 @@ export const getProjectGoalsTool = new Tool({
   },
 });
 
+export const getAllGoalsTool = new Tool({
+  id: 'get-all-goals',
+  description: 'Get all user goals across all projects and life domains',
+  inputSchema: z.object({}), // No input parameters needed - gets all goals for the authenticated user
+  outputSchema: z.object({
+    goals: z.array(z.object({
+      id: z.number(),
+      title: z.string(),
+      description: z.string().nullable(),
+      dueDate: z.string().nullable(),
+      lifeDomain: z.object({
+        id: z.number(),
+        title: z.string(),
+        description: z.string().nullable(),
+      }),
+      projects: z.array(z.object({
+        id: z.string(),
+        name: z.string(),
+        status: z.string(),
+      })),
+      outcomes: z.array(z.object({
+        id: z.string(),
+        description: z.string(),
+        type: z.string(),
+        dueDate: z.string().nullable(),
+      })),
+    })),
+    total: z.number(),
+  }),
+  execute: async ({}) => {
+    const apiUrl = process.env.MASTRA_API_URL || 'http://localhost:3000';
+    const response = await fetch(`${apiUrl}/api/trpc/mastra.getAllGoals`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.MASTRA_API_TOKEN}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get all goals: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.result?.data || data;
+  },
+});
+
 // Initialize Slack Web Client
 const slackClient = new WebClient(process.env.SLACK_BOT_TOKEN);
 
