@@ -76,7 +76,7 @@ export const curationAgent = new Agent({
     Remember: All tools except test_connection require a valid eventId in UUID format.
     Always provide context and interpretation, not just raw data.
 `,
-  model: openai('claude-3-5-sonnet-20241022'),
+  model: openai('gpt-4o'),
   mcpServers: [{
     name: 'curation-platform',
     url: 'https://ftc-platform-mcp-production.up.railway.app/mcp',
