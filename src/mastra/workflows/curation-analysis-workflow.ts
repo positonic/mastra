@@ -1,6 +1,6 @@
 import { Workflow, Step } from '@mastra/core';
 import { z } from 'zod';
-import { curationAgent } from '../agents/curation-agent';
+import { curationAgent } from '../agents/ostrom-agent';
 
 export const analyzeApplicationsWorkflow = new Workflow({
   name: 'Analyze Curation Applications',
