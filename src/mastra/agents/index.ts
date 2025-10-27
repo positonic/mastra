@@ -1,7 +1,7 @@
 import { openai } from '@ai-sdk/openai';
 import { Agent } from '@mastra/core/agent';
 import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, createProjectActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool } from '../tools';
-import { curationAgent } from './ostrom-agent';
+// import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
 export const weatherAgent = new Agent({
   name: 'Weather Agent',
@@ -379,6 +379,6 @@ console.log('🔧 [AGENT DEBUG] Project Manager Agent (Paddy) tools registered:'
   timestamp: new Date().toISOString()
 });
 
-// Export Curation agent
-export { curationAgent };
+// Export Curation agent - temporarily disabled due to MCP server down
+// export { curationAgent };
 

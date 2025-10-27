@@ -1,7 +1,7 @@
 
 import { Mastra } from '@mastra/core/mastra';
 import { createLogger } from '@mastra/core/logger';
-import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent, curationAgent } from './agents';
+import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent } from './agents';
 import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js';
 
 const logger = createLogger({
@@ -10,7 +10,7 @@ const logger = createLogger({
 });
 
 export const mastra = new Mastra({
-  agents: { weatherAgent, ashAgent, pierreAgent, projectManagerAgent, curationAgent },
+  agents: { weatherAgent, ashAgent, pierreAgent, projectManagerAgent },
   logger,
 });
 
