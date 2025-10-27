@@ -12,6 +12,10 @@ const logger = createLogger({
 export const mastra = new Mastra({
   agents: { weatherAgent, ashAgent, pierreAgent, projectManagerAgent },
   logger,
+  server: {
+    port: parseInt(process.env.PORT || '4111', 10),
+    host: '0.0.0.0', // Required for Railway deployment
+  },
 });
 
 // Initialize Telegram bot
