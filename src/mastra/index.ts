@@ -3,6 +3,7 @@ import { Mastra } from '@mastra/core/mastra';
 import { createLogger } from '@mastra/core/logger';
 import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent } from './agents';
 import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js';
+import { createWhatsAppGateway, cleanupWhatsAppGateway } from './bots/whatsapp-gateway.js';
 
 const logger = createLogger({
   name: 'Mastra',
@@ -21,14 +22,18 @@ export const mastra = new Mastra({
 // Initialize Telegram bot
 export const telegramBot = createTelegramBot();
 
+// Initialize WhatsApp gateway
+export const whatsAppGateway = createWhatsAppGateway();
+
 // Add graceful shutdown handling
 const shutdown = async (signal: string) => {
   logger.info(`🛑 [MAIN] Received ${signal}, starting graceful shutdown...`);
   
   try {
-    // Cleanup Telegram bot first
+    // Cleanup bots and gateways
     await cleanupTelegramBot();
-    
+    await cleanupWhatsAppGateway();
+
     logger.info(`✅ [MAIN] Graceful shutdown completed`);
     process.exit(0);
   } catch (error) {

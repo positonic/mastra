@@ -26,8 +26,10 @@
     "@slack/bolt": "^4.4.0",
     "@slack/web-api": "^7.9.3",
     "@types/node-telegram-bot-api": "^0.64.11",
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "mastra": "^0.10.10",
     "node-telegram-bot-api": "^0.66.0",
+    "qrcode": "^1.5.4",
     "zod": "^3.24.3"
   },
   "devDependencies": {
