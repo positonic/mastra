@@ -4,88 +4,116 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Commands
 
-- `npm run dev` - Start development server using Mastra CLI
-- `npm run dev:log` - Start development server with logging to mastra.log (recommended for Claude Code assistance)
-- `npm run logs` - View real-time logs from mastra.log
-- `npm run build` - Build the project using Mastra CLI
-- `npm start` - Start the built application from `.mastra/output/index.mjs`
-- `npm test` - No tests currently configured
-- `bun install` - Use Bun as package manager for faster installations
+- `bun run dev` - Start development server using Mastra CLI (port 4111)
+- `bun run dev:log` - Start with logging to mastra.log (recommended for debugging)
+- `bun run logs` - View real-time logs from mastra.log
+- `bun run build` - Build the project using Mastra CLI
+- `bun start` - Start the built application from `.mastra/output/index.mjs`
+- `bun install` - Use Bun as package manager
 
-## Claude Code Development Setup
+### Debugging with Claude Code
 
-When working with Claude Code for debugging and assistance:
-
-**Recommended Development Command:**
-```bash
-bun run dev:log
-# or manually:
-bun run dev 2>&1 | tee mastra.log
-```
-
-This setup:
-- Shows logs in your terminal in real-time
-- Saves logs to `mastra.log` for Claude to read and help debug
-- Captures both stdout and stderr for complete error visibility
-- Allows collaborative troubleshooting with Claude Code
+Run `bun run dev:log` to capture logs to `mastra.log` for troubleshooting. The log file captures both stdout and stderr.
 
 ## Architecture Overview
 
-This is a Mastra-based application using TypeScript and ES modules. The core architecture follows Mastra's patterns:
+This is a Mastra-based multi-agent application with external integrations (WhatsApp, Telegram, Slack, Binance, external APIs).
 
-### Core Structure
-- `/src/mastra/` - Main application directory
-  - `index.ts` - Central Mastra instance configuration
-  - `agents/` - AI agents with specific capabilities
-  - `tools/` - Reusable tools for agents and workflows
-  - `workflows/` - Multi-step workflow definitions
+### Entry Point and Initialization
 
-### Key Components
+[src/mastra/index.ts](src/mastra/index.ts) - Creates the Mastra instance, registers agents, initializes the Telegram bot and WhatsApp gateway, and sets up graceful shutdown handlers (SIGINT, SIGTERM, uncaughtException, unhandledRejection).
 
-**Mastra Instance** (`src/mastra/index.ts:7`):
-- Central configuration registering all agents and workflows
-- Uses `@mastra/core/logger` for structured logging
+### Agents
 
-**Agents** (`src/mastra/agents/index.ts`):
-- `weatherAgent` - Weather information with location recommendations (GPT-4o)
-- `ashAgent` - Business modeling assistant based on Ash Maurya's Lean Startup methodologies (GPT-4o)
-- `pierreAgent` - Crypto trend-following trading mentor with 15+ years experience (GPT-4o-mini)
-  - Specializes in technical analysis with EMA13/25/32, MA100/300, EMA200 across D1/H4/H1 timeframes
-  - Uses RAG-powered trading knowledge base from 2,090-line Pierre trading system document
+All agents are defined in [src/mastra/agents/index.ts](src/mastra/agents/index.ts):
 
-**Tools** (`src/mastra/tools/index.ts`):
-- `weatherTool` - Fetches weather data from Open-Meteo API with geocoding
-- `binancePriceTool` - Real-time cryptocurrency prices from Binance API
-- `binanceCandlestickTool` - Multi-timeframe candlestick data (1d/4h/1h) with calculated moving averages
-- `pierreTradingQueryTool` - RAG-powered queries against Pierre's trading knowledge base
-- All tools use Zod schemas for input/output validation
+| Agent | Name | Model | Purpose |
+|-------|------|-------|---------|
+| `weatherAgent` | Weather Agent | GPT-4o | Weather information with location recommendations |
+| `ashAgent` | Ash Maurya Agent | GPT-4o | Lean Startup business modeling advisor |
+| `pierreAgent` | Pierre | GPT-4o-mini | Crypto trend-following trading mentor with RAG |
+| `projectManagerAgent` | Paddy | GPT-4o-mini | Project/task management with Slack and meeting integrations |
 
-**Workflows** (`src/mastra/workflows/index.ts`):
-- `weatherWorkflow` - Multi-step workflow that fetches weather and suggests activities
-- Two-step process: `fetchWeather` → `planActivities`
-- Streams responses for real-time interaction
+The `curationAgent` (Lin) is defined separately in [src/mastra/agents/ostrom-agent.ts](src/mastra/agents/ostrom-agent.ts) for Curation Platform analysis via MCP server (currently disabled).
 
-### Dependencies
-- `@mastra/core` v0.10.10 - Core Mastra framework
-- `@mastra/pg` v0.12.1 - PostgreSQL integration with vector storage
-- `@ai-sdk/openai` v1.3.16 - OpenAI integration (GPT-4o, GPT-4o-mini, text-embedding-3-small)
-- `zod` v3.24.3 - Schema validation
-- TypeScript with ES2022 target and bundler module resolution
-- ES modules (`"type": "module"`) with strict mode enabled
+### Tools
 
-### RAG System (`src/mastra/rag/setup.ts`)
-- PostgreSQL with pgvector extension for vector storage
-- OpenAI text-embedding-3-small for embeddings (1536 dimensions)
-- 2,090-line Pierre trading system document as knowledge base
-- 400-word chunks with 50-word overlap for context preservation
-- Cosine similarity search in `pierre_docs` table
+Defined in [src/mastra/tools/index.ts](src/mastra/tools/index.ts). All tools use Zod schemas for validation.
 
-### API Integrations
-- Open-Meteo API for weather data (geocoding + forecast)
-- Binance API for cryptocurrency market data (prices + candlesticks)
-- OpenAI API for multiple models and embeddings
+**Market Data Tools:**
+- `binancePriceTool` - Real-time crypto prices
+- `binanceCandlestickTool` - Multi-timeframe candlesticks (1d/4h/1h) with calculated MAs (EMA13/25/32, MA100/300, EMA200)
 
-### Build System
-- Mastra CLI handles building and development
-- Output generated in `.mastra/output/` directory
-- TypeScript compilation with strict mode enabled
+**RAG Tools:**
+- `pierreTradingQueryTool` - Vector search against Pierre's trading knowledge base (PostgreSQL + pgvector)
+
+**Project Management Tools** (require `authToken` in runtimeContext):
+- `getProjectContextTool`, `getProjectActionsTool`, `createProjectActionTool`, `updateProjectStatusTool`
+- `getProjectGoalsTool`, `getAllGoalsTool`, `getAllProjectsTool`
+- `getMeetingTranscriptionsTool`, `queryMeetingContextTool`, `getMeetingInsightsTool`
+
+**Slack Tools:**
+- `sendSlackMessageTool`, `updateSlackMessageTool`, `getSlackUserInfoTool`
+
+**Weather:**
+- `weatherTool` - Open-Meteo API for weather data
+
+### Telegram Bot
+
+[src/mastra/bots/ostrom-telegram.ts](src/mastra/bots/ostrom-telegram.ts) - Polls Telegram for messages and routes them to `curationAgent`. Features retry logic with exponential backoff for 409 conflicts, message chunking for long responses (4096 char limit), and graceful shutdown.
+
+### WhatsApp Gateway (Multi-Tenant)
+
+[src/mastra/bots/whatsapp-gateway.ts](src/mastra/bots/whatsapp-gateway.ts) - Multi-tenant WhatsApp gateway using Baileys. Each authenticated user can connect their own WhatsApp via QR code. Messages route to `projectManagerAgent` (Paddy).
+
+**API Endpoints (port 4112):**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/login` | Start login, returns `{ sessionId }` |
+| `GET` | `/login/{id}/qr` | Returns QR code as PNG image |
+| `GET` | `/login/{id}/status` | Returns `{ connected, phoneNumber, qrAvailable }` |
+| `GET` | `/sessions` | List user's sessions |
+| `DELETE` | `/sessions/{id}` | Disconnect session |
+
+All endpoints require `Authorization: Bearer {authToken}` header (same as project management tools).
+
+**Session Storage:** `~/.mastra/whatsapp-sessions/` contains per-session Baileys credentials and `sessions.json` metadata.
+
+**User Flow:**
+1. Client calls `POST /login` with authToken → gets sessionId
+2. Client displays QR from `GET /login/{sessionId}/qr`
+3. User scans QR with WhatsApp (Linked Devices)
+4. Client polls `GET /login/{sessionId}/status` until connected
+5. Messages from user's WhatsApp → routed to Paddy with their authToken
+
+### RAG System
+
+[src/mastra/rag/setup.ts](src/mastra/rag/setup.ts) - PostgreSQL with pgvector, OpenAI text-embedding-3-small (1536 dimensions). Knowledge base stored in `pierre_docs` table with cosine similarity search.
+
+### Workflows
+
+[src/mastra/workflows/index.ts](src/mastra/workflows/index.ts) - `weatherWorkflow` demonstrates multi-step workflows with streaming responses.
+
+### Environment Variables
+
+Key variables (see documentation in `/docs` for setup details):
+- `OPENAI_API_KEY` - OpenAI API access
+- `DATABASE_URL` - PostgreSQL with pgvector
+- `TODO_APP_BASE_URL` - Project management API endpoint
+- `SLACK_BOT_TOKEN` - Slack integration
+- `CURATION_TELEGRAM_BOT_TOKEN` - Telegram bot token
+- `CURATION_CLIENT_TOKEN` - Curation Platform MCP auth
+- `WHATSAPP_GATEWAY_PORT` - WhatsApp gateway port (default: 4112)
+- `WHATSAPP_MAX_SESSIONS` - Max concurrent WhatsApp sessions (default: 10)
+
+### Server Configuration
+
+Mastra runs on port 4111 by default (or `PORT` env var), bound to `0.0.0.0` for Railway deployment. API endpoints follow pattern: `/api/agents/{agentName}/text`. WhatsApp gateway runs on port 4112.
+
+### Key Patterns
+
+**Tool Authentication:** Project management tools extract `authToken` from `runtimeContext` for API calls to the TODO app.
+
+**Agent Instructions:** Agents use detailed system prompts with structured response formats (e.g., Pierre's mandatory market analysis format).
+
+**Debug Logging:** Tools include extensive console logging prefixed with emojis for easy filtering.
