@@ -74,7 +74,7 @@ function verifyAndExtractUserId(token: string): string {
 
   try {
     const payload = jwt.verify(token, secret, {
-      audience: 'whatsapp-gateway',
+      audience: 'mastra-agents',
       issuer: 'todo-app',
     }) as JWTPayload;
 
@@ -462,24 +462,18 @@ export class WhatsAppGateway {
         // Skip group messages for now
         if (remoteJid.endsWith('@g.us')) continue;
 
-        // Skip messages from self
-        if (msg.key.fromMe) continue;
+        // We want to process messages FROM the session owner (fromMe = true)
+        // This allows the user to send commands to Paddy from any chat
+        if (!msg.key.fromMe) continue;
 
         // Extract text
         const text = extractText(msg.message);
         if (!text) continue;
 
-        // Get sender
-        const senderE164 = jidToE164(remoteJid);
-        if (!senderE164) continue;
+        // Get the chat we're sending to (for logging)
+        const chatE164 = jidToE164(remoteJid);
 
-        // Only process messages from session owner
-        if (senderE164 !== session.phoneNumber) {
-          logger.info(`📨 [${INSTANCE_ID}] Ignoring message from ${senderE164} (not session owner ${session.phoneNumber})`);
-          continue;
-        }
-
-        logger.info(`📨 [${INSTANCE_ID}] Received message from ${senderE164} in session ${session.id}: ${text.substring(0, 50)}...`);
+        logger.info(`📨 [${INSTANCE_ID}] User sent message in session ${session.id} to ${chatE164 || remoteJid}: ${text.substring(0, 50)}...`);
 
         // Mark as read
         await session.sock?.readMessages([{ remoteJid, id: msg.key.id!, participant: undefined, fromMe: false }]);

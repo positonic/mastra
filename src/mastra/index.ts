@@ -19,8 +19,12 @@ export const mastra = new Mastra({
   },
 });
 
-// Initialize Telegram bot
-export const telegramBot = createTelegramBot();
+// Initialize Telegram bot (disabled by default locally to avoid conflicts with production)
+const enableTelegram = process.env.ENABLE_TELEGRAM_BOT === 'true';
+export const telegramBot = enableTelegram ? createTelegramBot() : null;
+if (!enableTelegram) {
+  logger.info('📵 [MAIN] Telegram bot disabled (set ENABLE_TELEGRAM_BOT=true to enable)');
+}
 
 // Initialize WhatsApp gateway
 export const whatsAppGateway = createWhatsAppGateway();
@@ -31,7 +35,9 @@ const shutdown = async (signal: string) => {
   
   try {
     // Cleanup bots and gateways
-    await cleanupTelegramBot();
+    if (enableTelegram) {
+      await cleanupTelegramBot();
+    }
     await cleanupWhatsAppGateway();
 
     logger.info(`✅ [MAIN] Graceful shutdown completed`);
