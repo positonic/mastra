@@ -46,11 +46,30 @@ interface JWTPayload {
   iss: string;
 }
 
+// Error codes for stable error identification
+type GatewayErrorCode =
+  | 'AUTH_SECRET_NOT_CONFIGURED'
+  | 'TOKEN_EXPIRED'
+  | 'TOKEN_INVALID'
+  | 'TOKEN_MISSING_USERID'
+  | 'MAX_SESSIONS_REACHED';
+
+// Custom error class with stable code property
+class GatewayError extends Error {
+  code: GatewayErrorCode;
+
+  constructor(code: GatewayErrorCode, message: string) {
+    super(message);
+    this.code = code;
+    this.name = 'GatewayError';
+  }
+}
+
 // JWT Verification
 function verifyAndExtractUserId(token: string): string {
   const secret = process.env.AUTH_SECRET;
   if (!secret) {
-    throw new Error('AUTH_SECRET not configured');
+    throw new GatewayError('AUTH_SECRET_NOT_CONFIGURED', 'AUTH_SECRET not configured');
   }
 
   try {
@@ -61,14 +80,17 @@ function verifyAndExtractUserId(token: string): string {
 
     const userId = payload.userId || payload.sub;
     if (!userId) {
-      throw new Error('Token missing userId');
+      throw new GatewayError('TOKEN_MISSING_USERID', 'Token missing userId');
     }
     return userId;
   } catch (error: any) {
+    if (error instanceof GatewayError) {
+      throw error;
+    }
     if (error.name === 'TokenExpiredError') {
-      throw new Error('Token expired');
+      throw new GatewayError('TOKEN_EXPIRED', 'Token expired');
     } else if (error.name === 'JsonWebTokenError') {
-      throw new Error('Invalid token');
+      throw new GatewayError('TOKEN_INVALID', 'Invalid token');
     }
     throw error;
   }
@@ -217,7 +239,7 @@ export class WhatsAppGateway {
     const userId = verifyAndExtractUserId(authToken);
 
     if (this.sessions.size >= MAX_SESSIONS) {
-      throw new Error(`Maximum sessions (${MAX_SESSIONS}) reached`);
+      throw new GatewayError('MAX_SESSIONS_REACHED', `Maximum sessions (${MAX_SESSIONS}) reached`);
     }
 
     // Check if user already has a session
@@ -476,9 +498,17 @@ export class WhatsAppGateway {
       // Send typing indicator
       await session.sock?.sendPresenceUpdate('composing', jid);
 
-      // Use the stored auth token for agent calls
-      // This is the most recent valid JWT from this user's session
-      const authToken = session.lastAuthToken || '';
+      // Check if we have a valid auth token
+      // After server restart, lastAuthToken will be undefined since it's not persisted
+      if (!session.lastAuthToken) {
+        logger.warn(`⚠️ [${INSTANCE_ID}] Session ${session.id} has no auth token (likely server restart)`);
+        await session.sock?.sendMessage(jid, {
+          text: "Your session needs to be refreshed. Please open the app and reconnect your WhatsApp to continue using the assistant."
+        });
+        return;
+      }
+
+      const authToken = session.lastAuthToken;
 
       // Route to projectManagerAgent with session context
       const response = await projectManagerAgent.generate(
@@ -639,17 +669,24 @@ export class WhatsAppGateway {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ sessionId }));
     } catch (error: any) {
-      // JWT errors should return 401
-      if (error.message === 'Token expired' || error.message === 'Invalid token' || error.message === 'AUTH_SECRET not configured') {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: error.message }));
-        return;
-      }
-      // Max sessions reached should return 409
-      if (error.message?.includes('Maximum sessions')) {
-        res.writeHead(409, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: error.message }));
-        return;
+      if (error instanceof GatewayError) {
+        // JWT/auth errors should return 401
+        if (
+          error.code === 'TOKEN_EXPIRED' ||
+          error.code === 'TOKEN_INVALID' ||
+          error.code === 'TOKEN_MISSING_USERID' ||
+          error.code === 'AUTH_SECRET_NOT_CONFIGURED'
+        ) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: error.message }));
+          return;
+        }
+        // Max sessions reached should return 409
+        if (error.code === 'MAX_SESSIONS_REACHED') {
+          res.writeHead(409, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: error.message }));
+          return;
+        }
       }
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: error.message }));
