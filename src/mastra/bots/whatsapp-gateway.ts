@@ -1,9 +1,10 @@
 import { createServer, IncomingMessage, ServerResponse, Server } from 'http';
-import { createHash, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
 
+import jwt from 'jsonwebtoken';
 import makeWASocket, {
   useMultiFileAuthState,
   makeCacheableSignalKeyStore,
@@ -34,9 +35,48 @@ const SESSIONS_FILE = path.join(SESSIONS_DIR, 'sessions.json');
 const MAX_SESSIONS = parseInt(process.env.WHATSAPP_MAX_SESSIONS || '10', 10);
 const MAX_MESSAGE_LENGTH = 4096;
 
+// JWT Types
+interface JWTPayload {
+  userId: string;
+  sub: string;
+  email?: string | null;
+  name?: string | null;
+  tokenType: string;
+  aud: string;
+  iss: string;
+}
+
+// JWT Verification
+function verifyAndExtractUserId(token: string): string {
+  const secret = process.env.AUTH_SECRET;
+  if (!secret) {
+    throw new Error('AUTH_SECRET not configured');
+  }
+
+  try {
+    const payload = jwt.verify(token, secret, {
+      audience: 'whatsapp-gateway',
+      issuer: 'todo-app',
+    }) as JWTPayload;
+
+    const userId = payload.userId || payload.sub;
+    if (!userId) {
+      throw new Error('Token missing userId');
+    }
+    return userId;
+  } catch (error: any) {
+    if (error.name === 'TokenExpiredError') {
+      throw new Error('Token expired');
+    } else if (error.name === 'JsonWebTokenError') {
+      throw new Error('Invalid token');
+    }
+    throw error;
+  }
+}
+
 // Types
 interface SessionMetadata {
-  ownerAuthTokenHash: string;
+  userId: string;
   phoneNumber: string | null;
   createdAt: string;
   lastConnected: string | null;
@@ -48,7 +88,7 @@ interface SessionsFile {
 
 interface WhatsAppSession {
   id: string;
-  ownerAuthTokenHash: string;
+  userId: string;
   sock: WASocket | null;
   currentQr: string | null;
   isConnected: boolean;
@@ -57,6 +97,7 @@ interface WhatsAppSession {
   credentialsPath: string;
   reconnectAttempts: number;
   maxReconnectAttempts: number;
+  lastAuthToken?: string; // Store latest valid token for agent calls
 }
 
 interface ConnectionStatus {
@@ -66,10 +107,6 @@ interface ConnectionStatus {
 }
 
 // Utility functions
-function hashToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
-}
-
 function jidToE164(jid: string): string | null {
   const match = jid.match(/^(\d+)(?::\d+)?@s\.whatsapp\.net$/);
   if (match) return `+${match[1]}`;
@@ -153,7 +190,7 @@ export class WhatsAppGateway {
 
         const session: WhatsAppSession = {
           id: sessionId,
-          ownerAuthTokenHash: metadata.ownerAuthTokenHash,
+          userId: metadata.userId,
           sock: null,
           currentQr: null,
           isConnected: false,
@@ -176,16 +213,19 @@ export class WhatsAppGateway {
 
   // Session lifecycle methods
   async createSession(authToken: string): Promise<string> {
+    // Verify JWT and extract userId
+    const userId = verifyAndExtractUserId(authToken);
+
     if (this.sessions.size >= MAX_SESSIONS) {
       throw new Error(`Maximum sessions (${MAX_SESSIONS}) reached`);
     }
 
-    const authTokenHash = hashToken(authToken);
-
     // Check if user already has a session
     for (const [existingId, session] of this.sessions) {
-      if (session.ownerAuthTokenHash === authTokenHash) {
-        logger.info(`♻️ [${INSTANCE_ID}] User already has session ${existingId}`);
+      if (session.userId === userId) {
+        // Update the stored auth token for future agent calls
+        session.lastAuthToken = authToken;
+        logger.info(`♻️ [${INSTANCE_ID}] User ${userId} already has session ${existingId}`);
         return existingId;
       }
     }
@@ -197,7 +237,7 @@ export class WhatsAppGateway {
 
     const session: WhatsAppSession = {
       id: sessionId,
-      ownerAuthTokenHash: authTokenHash,
+      userId,
       sock: null,
       currentQr: null,
       isConnected: false,
@@ -206,13 +246,14 @@ export class WhatsAppGateway {
       credentialsPath,
       reconnectAttempts: 0,
       maxReconnectAttempts: 5,
+      lastAuthToken: authToken,
     };
 
     this.sessions.set(sessionId, session);
 
     // Save metadata
     this.sessionsMetadata[sessionId] = {
-      ownerAuthTokenHash: authTokenHash,
+      userId,
       phoneNumber: null,
       createdAt: session.createdAt.toISOString(),
       lastConnected: null,
@@ -230,10 +271,14 @@ export class WhatsAppGateway {
     const session = this.sessions.get(sessionId);
     if (!session) return null;
 
-    const authTokenHash = hashToken(authToken);
-    if (session.ownerAuthTokenHash !== authTokenHash) {
+    // Verify JWT and extract userId
+    const userId = verifyAndExtractUserId(authToken);
+    if (session.userId !== userId) {
       return null; // Not authorized to access this session
     }
+
+    // Update the stored auth token for future agent calls
+    session.lastAuthToken = authToken;
 
     return session;
   }
@@ -431,18 +476,19 @@ export class WhatsAppGateway {
       // Send typing indicator
       await session.sock?.sendPresenceUpdate('composing', jid);
 
-      // Find the original authToken from the hash
-      // Note: We can't reverse the hash, but we have the hash stored
-      // The agent will use runtimeContext with a placeholder that the TODO app validates
+      // Use the stored auth token for agent calls
+      // This is the most recent valid JWT from this user's session
+      const authToken = session.lastAuthToken || '';
 
       // Route to projectManagerAgent with session context
       const response = await projectManagerAgent.generate(
         [{ role: 'user', content: text }],
         {
           runtimeContext: new Map([
-            ['authToken', session.ownerAuthTokenHash], // TODO app should accept hashed tokens
+            ['authToken', authToken],
             ['whatsappSession', session.id],
             ['whatsappPhone', session.phoneNumber || ''],
+            ['userId', session.userId],
           ])
         }
       );
@@ -593,13 +639,32 @@ export class WhatsAppGateway {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ sessionId }));
     } catch (error: any) {
+      // JWT errors should return 401
+      if (error.message === 'Token expired' || error.message === 'Invalid token' || error.message === 'AUTH_SECRET not configured') {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: error.message }));
+        return;
+      }
+      // Max sessions reached should return 409
+      if (error.message?.includes('Maximum sessions')) {
+        res.writeHead(409, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: error.message }));
+        return;
+      }
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: error.message }));
     }
   }
 
   private async handleGetQr(sessionId: string, authToken: string, res: ServerResponse): Promise<void> {
-    const session = this.getSession(sessionId, authToken);
+    let session: WhatsAppSession | null;
+    try {
+      session = this.getSession(sessionId, authToken);
+    } catch (error: any) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error.message }));
+      return;
+    }
 
     if (!session) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -630,7 +695,14 @@ export class WhatsAppGateway {
   }
 
   private async handleGetStatus(sessionId: string, authToken: string, res: ServerResponse): Promise<void> {
-    const session = this.getSession(sessionId, authToken);
+    let session: WhatsAppSession | null;
+    try {
+      session = this.getSession(sessionId, authToken);
+    } catch (error: any) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error.message }));
+      return;
+    }
 
     if (!session) {
       res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -649,11 +721,20 @@ export class WhatsAppGateway {
   }
 
   private async handleListSessions(authToken: string, res: ServerResponse): Promise<void> {
-    const authTokenHash = hashToken(authToken);
+    // Verify JWT and extract userId
+    let userId: string;
+    try {
+      userId = verifyAndExtractUserId(authToken);
+    } catch (error: any) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error.message }));
+      return;
+    }
+
     const userSessions: Array<{ sessionId: string; phoneNumber: string | null; connected: boolean }> = [];
 
     for (const [sessionId, session] of this.sessions) {
-      if (session.ownerAuthTokenHash === authTokenHash) {
+      if (session.userId === userId) {
         userSessions.push({
           sessionId,
           phoneNumber: session.phoneNumber,
@@ -667,7 +748,14 @@ export class WhatsAppGateway {
   }
 
   private async handleDeleteSession(sessionId: string, authToken: string, res: ServerResponse): Promise<void> {
-    const success = await this.destroySession(sessionId, authToken);
+    let success: boolean;
+    try {
+      success = await this.destroySession(sessionId, authToken);
+    } catch (error: any) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error.message }));
+      return;
+    }
 
     if (!success) {
       res.writeHead(404, { 'Content-Type': 'application/json' });

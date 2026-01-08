@@ -75,7 +75,10 @@ Defined in [src/mastra/tools/index.ts](src/mastra/tools/index.ts). All tools use
 | `GET` | `/sessions` | List user's sessions |
 | `DELETE` | `/sessions/{id}` | Disconnect session |
 
-All endpoints require `Authorization: Bearer {authToken}` header (same as project management tools).
+All endpoints require `Authorization: Bearer {JWT}` header. The JWT must be signed with `AUTH_SECRET` and include:
+- `userId` or `sub` claim for user identification
+- `aud: "whatsapp-gateway"` audience
+- `iss: "todo-app"` issuer
 
 **Session Storage:** `~/.mastra/whatsapp-sessions/` contains per-session Baileys credentials and `sessions.json` metadata.
 
@@ -105,6 +108,7 @@ Key variables (see documentation in `/docs` for setup details):
 - `CURATION_CLIENT_TOKEN` - Curation Platform MCP auth
 - `WHATSAPP_GATEWAY_PORT` - WhatsApp gateway port (default: 4112)
 - `WHATSAPP_MAX_SESSIONS` - Max concurrent WhatsApp sessions (default: 10)
+- `AUTH_SECRET` - JWT signing secret (must match client app's secret for WhatsApp gateway auth)
 
 ### Server Configuration
 
