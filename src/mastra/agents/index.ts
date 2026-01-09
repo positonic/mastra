@@ -1,5 +1,5 @@
 import { openai } from '@ai-sdk/openai';
-import { anthropic } from '@ai-sdk/anthropic';
+// import { anthropic } from '@ai-sdk/anthropic'; // Disabled - API key issue
 import { Agent } from '@mastra/core/agent';
 import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, createProjectActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
@@ -369,17 +369,7 @@ export const projectManagerAgent = new Agent({
     
     Always provide actionable insights with specific next steps, deadlines, and clear ownership, enriched with meeting context and team intelligence.
 `,
-  model: anthropic('claude-3-5-sonnet-20241022'),
-
-  // Add debug logging for incoming requests
-  beforeGenerate: async (messages, options) => {
-    console.log("=== PADDY AGENT DEBUG ===");
-    console.log("Agent called at:", new Date().toISOString());
-    console.log("Messages received:", JSON.stringify(messages, null, 2));
-    console.log("Options runtime context:", options?.runtimeContext ? Object.fromEntries(options.runtimeContext) : 'none');
-    console.log("Auth token in runtime context:", options?.runtimeContext?.get('authToken') ? 'PRESENT' : 'NOT_FOUND');
-    console.log("=== END PADDY AGENT DEBUG ===");
-  },
+  model: openai('gpt-4o'),
   tools: {
     getProjectContextTool,
     getProjectActionsTool,
