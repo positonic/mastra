@@ -1,4 +1,5 @@
 import { openai } from '@ai-sdk/openai';
+import { anthropic } from '@ai-sdk/anthropic';
 import { Agent } from '@mastra/core/agent';
 import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, createProjectActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
@@ -368,8 +369,8 @@ export const projectManagerAgent = new Agent({
     
     Always provide actionable insights with specific next steps, deadlines, and clear ownership, enriched with meeting context and team intelligence.
 `,
-  model: openai('gpt-4o-mini'),
-  
+  model: anthropic('claude-3-5-sonnet-latest'),
+
   // Add debug logging for incoming requests
   beforeGenerate: async (messages, options) => {
     console.log("=== PADDY AGENT DEBUG ===");
