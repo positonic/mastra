@@ -369,7 +369,7 @@ export const projectManagerAgent = new Agent({
     
     Always provide actionable insights with specific next steps, deadlines, and clear ownership, enriched with meeting context and team intelligence.
 `,
-  model: anthropic('claude-3-5-sonnet-latest'),
+  model: anthropic('claude-3-5-sonnet-20241022'),
 
   // Add debug logging for incoming requests
   beforeGenerate: async (messages, options) => {
