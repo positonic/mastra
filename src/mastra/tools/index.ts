@@ -883,7 +883,11 @@ export const getAllProjectsTool = createTool({
   id: "get-all-projects",
   description:
     "Get all user projects with their status, priority, goals, and outcomes",
-  inputSchema: z.object({}), // No input parameters needed - gets all projects for the authenticated user
+  inputSchema: z.object({
+    includeAll: z.boolean().optional().default(false).describe(
+      "When false (default), only returns ACTIVE projects. When true, returns all projects regardless of status."
+    ),
+  }),
   outputSchema: z.object({
     projects: z.array(
       z.object({
@@ -892,7 +896,6 @@ export const getAllProjectsTool = createTool({
         description: z.string().nullable(),
         status: z.string(),
         priority: z.string(),
-        progress: z.number(),
         createdAt: z.string(),
         reviewDate: z.string().nullable(),
         nextActionDate: z.string().nullable(),
@@ -916,6 +919,7 @@ export const getAllProjectsTool = createTool({
       })
     ),
     total: z.number(),
+    filtered: z.boolean().describe("True if results were filtered to ACTIVE projects only"),
   }),
   async execute({ context, runtimeContext }) {
     // CRITICAL: Add basic console log to verify if this even runs
@@ -995,23 +999,32 @@ export const getAllProjectsTool = createTool({
       // Ensure projects is always an array
       const projectsArray = Array.isArray(projects) ? projects : [];
 
+      // Extract includeAll from context (defaults to false)
+      const includeAll = context?.includeAll ?? false;
+
+      // Filter to ACTIVE projects unless includeAll is true
+      const filteredProjects = includeAll
+        ? projectsArray
+        : projectsArray.filter((project: any) => project.status === 'ACTIVE');
+
       console.log("📊 [DEBUG] Projects data structure:", {
         projectsIsArray: Array.isArray(projects),
-        projectsLength: Array.isArray(projects) ? projects.length : "not array",
-        projectsType: typeof projects,
-        sampleProject: projectsArray[0]
-          ? Object.keys(projectsArray[0])
+        totalProjects: projectsArray.length,
+        filteredProjects: filteredProjects.length,
+        includeAll,
+        filterApplied: !includeAll,
+        sampleProject: filteredProjects[0]
+          ? Object.keys(filteredProjects[0])
           : "no projects",
       });
 
       const result = {
-        projects: projectsArray.map((project: any) => ({
+        projects: filteredProjects.map((project: any) => ({
           id: project.id,
           name: project.name,
           description: project.description,
           status: project.status,
           priority: project.priority,
-          progress: project.progress ?? 0,
           createdAt: project.createdAt,
           reviewDate: project.reviewDate,
           nextActionDate: project.nextActionDate,
@@ -1031,7 +1044,8 @@ export const getAllProjectsTool = createTool({
               dueDate: outcome.dueDate,
             })) || [],
         })),
-        total: projectsArray.length,
+        total: filteredProjects.length,
+        filtered: !includeAll,
       };
 
       console.log(

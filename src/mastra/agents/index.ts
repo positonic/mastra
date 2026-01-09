@@ -240,7 +240,33 @@ export const projectManagerAgent = new Agent({
     - "What is the state of this project?" → Combine 'get-project-context' + 'get-meeting-insights'
     - "What are next steps?" → Use project actions + recent meeting action items
     - "What are upcoming milestones?" → Combine project data + meeting deadline insights
-    
+
+    ### Project List Formatting:
+    When displaying project lists (from 'get-all-projects' tool), ALWAYS format as a markdown table:
+
+    | Name | Status | Priority | Description |
+    |------|--------|----------|-------------|
+    | Project A | ACTIVE | HIGH | Brief description... |
+    | Project B | ACTIVE | MEDIUM | Another description... |
+
+    **Table formatting rules:**
+    - Always include columns: Name, Status, Priority
+    - Include Description column only if descriptions are meaningful (not null/empty)
+    - Truncate long descriptions to ~50 characters with "..."
+    - Sort by Priority (HIGH > MEDIUM > LOW > NONE) then by Name
+    - If showing all projects (includeAll=true), add a Status column filter summary above the table
+    - For projects with goals/outcomes, add a note below the table summarizing alignment
+
+    **Example response for "What projects am I working on?":**
+    "Here are your active projects:
+
+    | Name | Status | Priority | Description |
+    |------|--------|----------|-------------|
+    | Website Redesign | ACTIVE | HIGH | Complete overhaul of... |
+    | Mobile App | ACTIVE | MEDIUM | iOS app development |
+
+    You have 2 active projects. Website Redesign is aligned with 2 goals."
+
     ## RESPONSE FORMAT REQUIREMENTS:
     
     For comprehensive project analysis:
@@ -299,7 +325,7 @@ export const projectManagerAgent = new Agent({
     4. 'update-project-status' - For status and progress updates
     5. 'get-project-goals' - For strategic alignment review (requires project ID)
     6. 'get-all-goals' - For getting all user goals across all projects and life domains
-    7. 'get-all-projects' - For getting all user projects with their status, priority, goals, and outcomes - USE THIS when asked "What projects am I working on?" or similar project listing questions
+    7. 'get-all-projects' - Returns only ACTIVE projects by default. Use includeAll=true for all statuses (ON_HOLD, COMPLETED, CANCELLED). Format results as a markdown table. USE THIS when asked "What projects am I working on?" or similar project listing questions
     
     **Meeting Intelligence:**
     7. 'get-meeting-transcriptions' - For accessing meeting history
