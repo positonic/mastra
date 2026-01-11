@@ -39,6 +39,7 @@ const SESSIONS_DIR = path.join(os.homedir(), '.mastra', 'whatsapp-sessions');
 const SESSIONS_FILE = path.join(SESSIONS_DIR, 'sessions.json');
 const MAX_SESSIONS = parseInt(process.env.WHATSAPP_MAX_SESSIONS || '10', 10);
 const MAX_MESSAGE_LENGTH = 4096;
+const CONVERSATION_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
 
 // JWT Types
 interface JWTPayload {
@@ -125,6 +126,7 @@ interface WhatsAppSession {
   reconnectAttempts: number;
   maxReconnectAttempts: number;
   lastAuthToken?: string; // Store latest valid token for agent calls
+  conversations: Map<string, ConversationState>; // Track active conversations per chat
 }
 
 interface ConnectionStatus {
@@ -158,9 +160,17 @@ async function ensureDir(dir: string): Promise<void> {
 // Agent routing types and functions
 type AgentIdentifier = 'weather' | 'pierre' | 'ash' | 'paddy';
 
+const DEFAULT_AGENT: AgentIdentifier = 'paddy';
+
 interface ParsedMessage {
   text: string;
   agent: AgentIdentifier | null;
+}
+
+interface ConversationState {
+  agentId: AgentIdentifier;
+  lastInteraction: number;  // timestamp
+  lastAgentMessageId?: string;  // for reply detection
 }
 
 const AGENT_ALIASES: Record<string, AgentIdentifier> = {
@@ -191,6 +201,48 @@ function getAgentByIdentifier(identifier: AgentIdentifier) {
     'paddy': projectManagerAgent,
   };
   return agents[identifier];
+}
+
+// Conversation management helpers
+function isSelfChat(session: WhatsAppSession, jid: string): boolean {
+  const sessionPhone = session.phoneNumber?.replace(/\D/g, '');
+  const chatPhone = jid.replace(/@.*/, '').replace(/\D/g, '');
+  return !!sessionPhone && sessionPhone === chatPhone;
+}
+
+function extractQuotedText(msg: proto.IWebMessageInfo): string | null {
+  const contextInfo = msg.message?.extendedTextMessage?.contextInfo;
+  if (!contextInfo?.quotedMessage) return null;
+
+  return contextInfo.quotedMessage.conversation ||
+         contextInfo.quotedMessage.extendedTextMessage?.text ||
+         null;
+}
+
+function isReplyToAgent(
+  msg: proto.IWebMessageInfo,
+  session: WhatsAppSession,
+  jid: string
+): boolean {
+  const contextInfo = msg.message?.extendedTextMessage?.contextInfo;
+  if (!contextInfo?.stanzaId) return false;
+
+  const conversation = session.conversations.get(jid);
+  return conversation?.lastAgentMessageId === contextInfo.stanzaId;
+}
+
+function getActiveConversation(
+  session: WhatsAppSession,
+  jid: string
+): ConversationState | null {
+  const conversation = session.conversations.get(jid);
+  if (!conversation) return null;
+
+  const elapsed = Date.now() - conversation.lastInteraction;
+  if (elapsed > CONVERSATION_TIMEOUT_MS) {
+    return null; // Expired
+  }
+  return conversation;
 }
 
 // Main Gateway Class
@@ -264,6 +316,7 @@ export class WhatsAppGateway {
           credentialsPath,
           reconnectAttempts: 0,
           maxReconnectAttempts: 5,
+          conversations: new Map(),
         };
 
         this.sessions.set(sessionId, session);
@@ -312,6 +365,7 @@ export class WhatsAppGateway {
       reconnectAttempts: 0,
       maxReconnectAttempts: 5,
       lastAuthToken: authToken,
+      conversations: new Map(),
     };
 
     this.sessions.set(sessionId, session);
@@ -506,32 +560,74 @@ export class WhatsAppGateway {
         if (remoteJid.endsWith('@g.us')) continue;
 
         // We want to process messages FROM the session owner (fromMe = true)
-        // This allows the user to send commands to Paddy from any chat
+        // This allows the user to send commands from any chat
         if (!msg.key.fromMe) continue;
 
         // Extract text
         const text = extractText(msg.message);
         if (!text) continue;
 
+        // Extract quoted message if this is a reply
+        const quotedText = extractQuotedText(msg);
+
         // Parse for @mention
         const parsed = parseMessageForMention(text);
 
-        // Ignore messages without agent mention
-        if (!parsed.agent) {
-          logger.debug(`📭 [${INSTANCE_ID}] Ignoring message without @mention: ${text.substring(0, 30)}...`);
+        // Determine if we should process this message
+        const selfChat = isSelfChat(session, remoteJid);
+        const replyToAgent = isReplyToAgent(msg, session, remoteJid);
+        const activeConversation = getActiveConversation(session, remoteJid);
+
+        let agentId: AgentIdentifier | undefined;
+        let shouldProcess = false;
+
+        if (selfChat) {
+          // Self-chat: always process, use mention or default to Paddy
+          shouldProcess = true;
+          agentId = parsed.agent || DEFAULT_AGENT;
+        } else if (parsed.agent) {
+          // Explicit @mention: always process
+          shouldProcess = true;
+          agentId = parsed.agent;
+        } else if (replyToAgent && activeConversation) {
+          // Reply to agent's message within active conversation
+          shouldProcess = true;
+          agentId = activeConversation.agentId;
+        } else if (activeConversation) {
+          // Within active conversation window (no mention needed)
+          shouldProcess = true;
+          agentId = activeConversation.agentId;
+        }
+
+        if (!shouldProcess || !agentId) {
+          logger.debug(`📭 [${INSTANCE_ID}] Ignoring message: ${text.substring(0, 30)}...`);
           continue;
         }
 
+        // Update or create conversation state
+        session.conversations.set(remoteJid, {
+          agentId,
+          lastInteraction: Date.now(),
+          lastAgentMessageId: session.conversations.get(remoteJid)?.lastAgentMessageId,
+        });
+
         // Get the chat we're sending to (for logging)
         const chatE164 = jidToE164(remoteJid);
+        const chatType = selfChat ? 'self-chat' : (chatE164 || remoteJid);
 
-        logger.info(`📨 [${INSTANCE_ID}] @${parsed.agent} mentioned in session ${session.id} to ${chatE164 || remoteJid}: ${parsed.text.substring(0, 50)}...`);
+        logger.info(`📨 [${INSTANCE_ID}] Processing for @${agentId} in ${chatType}: ${parsed.text.substring(0, 50)}...`);
+
+        // Build message content with quoted context
+        let messageContent = parsed.text;
+        if (quotedText) {
+          messageContent = `[Replying to: "${quotedText}"]\n\n${parsed.text}`;
+        }
 
         // Mark as read
         await session.sock?.readMessages([{ remoteJid, id: msg.key.id!, participant: undefined, fromMe: false }]);
 
-        // Process with the mentioned agent
-        await this.processMessage(session, remoteJid, parsed.text, parsed.agent);
+        // Process with the agent
+        await this.processMessage(session, remoteJid, messageContent, agentId);
 
       } catch (error) {
         logger.error(`❌ [${INSTANCE_ID}] Error processing message in session ${session.id}:`, error);
@@ -581,7 +677,14 @@ export class WhatsAppGateway {
       const agentResponse = response.text;
 
       if (agentResponse) {
-        await this.sendLongMessage(session, jid, agentResponse);
+        const sentMsg = await this.sendLongMessage(session, jid, agentResponse);
+
+        // Update conversation with agent's message ID for reply detection
+        const conversation = session.conversations.get(jid);
+        if (conversation && sentMsg?.key?.id) {
+          conversation.lastAgentMessageId = sentMsg.key.id;
+        }
+
         logger.info(`✅ [${INSTANCE_ID}] Sent response to ${jidToE164(jid)} in session ${session.id}`);
       } else {
         await session.sock?.sendMessage(jid, {
@@ -597,22 +700,29 @@ export class WhatsAppGateway {
     }
   }
 
-  private async sendLongMessage(session: WhatsAppSession, jid: string, message: string): Promise<void> {
+  private async sendLongMessage(
+    session: WhatsAppSession,
+    jid: string,
+    message: string
+  ): Promise<proto.WebMessageInfo | undefined> {
     if (message.length <= MAX_MESSAGE_LENGTH) {
-      await session.sock?.sendMessage(jid, { text: message });
-      return;
+      return await session.sock?.sendMessage(jid, { text: message });
     }
 
     const chunks = this.splitMessage(message, MAX_MESSAGE_LENGTH);
+    let lastSentMessage: proto.WebMessageInfo | undefined;
+
     for (let i = 0; i < chunks.length; i++) {
       const prefix = i === 0 ? '' : `(${i + 1}/${chunks.length}) `;
-      await session.sock?.sendMessage(jid, { text: prefix + chunks[i] });
+      lastSentMessage = await session.sock?.sendMessage(jid, { text: prefix + chunks[i] });
 
       // Small delay between chunks
       if (i < chunks.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
+
+    return lastSentMessage;
   }
 
   private splitMessage(message: string, maxLength: number): string[] {
