@@ -18,7 +18,12 @@ import QRCode from 'qrcode';
 import { createLogger } from '@mastra/core/logger';
 import { Boom } from '@hapi/boom';
 
-import { projectManagerAgent } from '../agents/index.js';
+import {
+  weatherAgent,
+  pierreAgent,
+  ashAgent,
+  projectManagerAgent
+} from '../agents/index.js';
 
 const logger = createLogger({
   name: 'WhatsAppGateway',
@@ -148,6 +153,44 @@ function extractText(message: proto.IMessage | undefined | null): string | undef
 
 async function ensureDir(dir: string): Promise<void> {
   await fs.mkdir(dir, { recursive: true });
+}
+
+// Agent routing types and functions
+type AgentIdentifier = 'weather' | 'pierre' | 'ash' | 'paddy';
+
+interface ParsedMessage {
+  text: string;
+  agent: AgentIdentifier | null;
+}
+
+const AGENT_ALIASES: Record<string, AgentIdentifier> = {
+  'weather': 'weather',
+  'pierre': 'pierre',
+  'ash': 'ash',
+  'paddy': 'paddy',
+};
+
+function parseMessageForMention(text: string): ParsedMessage {
+  const match = text.match(/^@(\w+)\s*/i);
+  if (!match) {
+    return { text, agent: null };
+  }
+
+  const mention = match[1].toLowerCase();
+  const agent = AGENT_ALIASES[mention] || null;
+  const cleanText = text.substring(match[0].length).trim();
+
+  return { text: cleanText || text, agent };
+}
+
+function getAgentByIdentifier(identifier: AgentIdentifier) {
+  const agents = {
+    'weather': weatherAgent,
+    'pierre': pierreAgent,
+    'ash': ashAgent,
+    'paddy': projectManagerAgent,
+  };
+  return agents[identifier];
 }
 
 // Main Gateway Class
@@ -470,16 +513,25 @@ export class WhatsAppGateway {
         const text = extractText(msg.message);
         if (!text) continue;
 
+        // Parse for @mention
+        const parsed = parseMessageForMention(text);
+
+        // Ignore messages without agent mention
+        if (!parsed.agent) {
+          logger.debug(`📭 [${INSTANCE_ID}] Ignoring message without @mention: ${text.substring(0, 30)}...`);
+          continue;
+        }
+
         // Get the chat we're sending to (for logging)
         const chatE164 = jidToE164(remoteJid);
 
-        logger.info(`📨 [${INSTANCE_ID}] User sent message in session ${session.id} to ${chatE164 || remoteJid}: ${text.substring(0, 50)}...`);
+        logger.info(`📨 [${INSTANCE_ID}] @${parsed.agent} mentioned in session ${session.id} to ${chatE164 || remoteJid}: ${parsed.text.substring(0, 50)}...`);
 
         // Mark as read
         await session.sock?.readMessages([{ remoteJid, id: msg.key.id!, participant: undefined, fromMe: false }]);
 
-        // Process with agent
-        await this.processMessage(session, remoteJid, text);
+        // Process with the mentioned agent
+        await this.processMessage(session, remoteJid, parsed.text, parsed.agent);
 
       } catch (error) {
         logger.error(`❌ [${INSTANCE_ID}] Error processing message in session ${session.id}:`, error);
@@ -487,7 +539,12 @@ export class WhatsAppGateway {
     }
   }
 
-  private async processMessage(session: WhatsAppSession, jid: string, text: string): Promise<void> {
+  private async processMessage(
+    session: WhatsAppSession,
+    jid: string,
+    text: string,
+    agentId: AgentIdentifier
+  ): Promise<void> {
     try {
       // Send typing indicator
       await session.sock?.sendPresenceUpdate('composing', jid);
@@ -504,8 +561,12 @@ export class WhatsAppGateway {
 
       const authToken = session.lastAuthToken;
 
-      // Route to projectManagerAgent with session context
-      const response = await projectManagerAgent.generate(
+      // Select agent based on mention
+      const agent = getAgentByIdentifier(agentId);
+      logger.info(`🤖 [${INSTANCE_ID}] Routing to @${agentId} for session ${session.id}`);
+
+      // Route to selected agent with session context
+      const response = await agent.generate(
         [{ role: 'user', content: text }],
         {
           runtimeContext: new Map([
