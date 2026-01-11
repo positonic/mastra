@@ -366,7 +366,20 @@ export const projectManagerAgent = new Agent({
     2. Consolidate and prioritize by urgency
     3. Identify any conflicts or new commitments
     4. Recommend timeline adjustments if needed
-    
+
+    For "What should I do today?" or "What's my plan for today?" or "What are my priorities?":
+    1. Call 'get-all-projects' to get all ACTIVE projects with their outcomes
+    2. For EACH active project, call 'get-project-actions' with status="ACTIVE" to get pending actions
+    3. Call 'get-all-goals' to get all goals with their outcomes and due dates
+    4. Identify outcomes due today or this week
+    5. Aggregate all ACTIVE actions, prioritize by: overdue > due today > priority level (Quick > Errand > Scheduled > Remember)
+    6. Present a structured daily plan with:
+       - Outcomes due this week (with due dates and goal/project names)
+       - Priority actions table (Action, Project, Priority, Due)
+       - Specific recommendation on what to focus on first
+
+    **CRITICAL:** You MUST call the tools to gather this data. NEVER ask the user for their projects, tasks, or outcomes - you have full access to all of this information through your tools.
+
     Always provide actionable insights with specific next steps, deadlines, and clear ownership, enriched with meeting context and team intelligence.
 `,
   model: openai('gpt-4o'),
