@@ -1,5 +1,5 @@
 import { createServer, IncomingMessage, ServerResponse, Server } from 'http';
-import { randomUUID } from 'crypto';
+import crypto, { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -102,12 +102,53 @@ function verifyAndExtractUserId(token: string): string {
   }
 }
 
+// Token encryption for secure storage at rest
+// Format: salt:iv:authTag:ciphertext (all hex encoded)
+const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
+
+function encryptToken(token: string, secret: string): string {
+  const salt = crypto.randomBytes(16);
+  const key = crypto.scryptSync(secret, salt, 32);
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, key, iv);
+
+  let encrypted = cipher.update(token, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag();
+
+  return `${salt.toString('hex')}:${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
+}
+
+function decryptToken(encrypted: string, secret: string): string | null {
+  try {
+    const parts = encrypted.split(':');
+    if (parts.length !== 4) return null;
+
+    const [saltHex, ivHex, authTagHex, data] = parts;
+    const salt = Buffer.from(saltHex, 'hex');
+    const key = crypto.scryptSync(secret, salt, 32);
+    const iv = Buffer.from(ivHex, 'hex');
+    const authTag = Buffer.from(authTagHex, 'hex');
+
+    const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, key, iv);
+    decipher.setAuthTag(authTag);
+
+    let decrypted = decipher.update(data, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (error) {
+    logger.warn(`⚠️ Failed to decrypt token: ${error}`);
+    return null;
+  }
+}
+
 // Types
 interface SessionMetadata {
   userId: string;
   phoneNumber: string | null;
   createdAt: string;
   lastConnected: string | null;
+  encryptedAuthToken?: string; // Encrypted JWT for persistence across restarts
 }
 
 interface SessionsFile {
@@ -286,6 +327,20 @@ export class WhatsAppGateway {
 
   private async saveSessionsMetadata(): Promise<void> {
     try {
+      const secret = process.env.AUTH_SECRET;
+
+      // Before saving, encrypt any auth tokens from active sessions
+      if (secret) {
+        for (const [sessionId, session] of this.sessions) {
+          if (session.lastAuthToken && this.sessionsMetadata[sessionId]) {
+            this.sessionsMetadata[sessionId].encryptedAuthToken = encryptToken(
+              session.lastAuthToken,
+              secret
+            );
+          }
+        }
+      }
+
       await fs.writeFile(SESSIONS_FILE, JSON.stringify(this.sessionsMetadata, null, 2));
     } catch (error) {
       logger.error(`❌ [${INSTANCE_ID}] Error saving sessions metadata:`, error);
@@ -293,6 +348,8 @@ export class WhatsAppGateway {
   }
 
   private async reconnectExistingSessions(): Promise<void> {
+    const secret = process.env.AUTH_SECRET;
+
     for (const [sessionId, metadata] of Object.entries(this.sessionsMetadata)) {
       try {
         const credentialsPath = path.join(SESSIONS_DIR, sessionId);
@@ -303,6 +360,17 @@ export class WhatsAppGateway {
         } catch {
           logger.info(`⚠️ [${INSTANCE_ID}] Session ${sessionId} has no credentials, skipping`);
           continue;
+        }
+
+        // Attempt to restore encrypted auth token
+        let restoredAuthToken: string | undefined;
+        if (metadata.encryptedAuthToken && secret) {
+          restoredAuthToken = decryptToken(metadata.encryptedAuthToken, secret) ?? undefined;
+          if (restoredAuthToken) {
+            logger.info(`🔑 [${INSTANCE_ID}] Restored auth token for session ${sessionId}`);
+          } else {
+            logger.warn(`⚠️ [${INSTANCE_ID}] Failed to decrypt auth token for session ${sessionId}, will need refresh`);
+          }
         }
 
         const session: WhatsAppSession = {
@@ -316,6 +384,7 @@ export class WhatsAppGateway {
           credentialsPath,
           reconnectAttempts: 0,
           maxReconnectAttempts: 5,
+          lastAuthToken: restoredAuthToken,
           conversations: new Map(),
         };
 
@@ -566,6 +635,24 @@ export class WhatsAppGateway {
         // Extract text
         const text = extractText(msg.message);
         if (!text) continue;
+
+        // Check for conversation termination command
+        if (text.toLowerCase().trim() === 'bye') {
+          const hadConversation = session.conversations.has(remoteJid);
+          session.conversations.delete(remoteJid);
+
+          if (hadConversation) {
+            // React with thumbs up to acknowledge
+            await session.sock?.sendMessage(remoteJid, {
+              react: {
+                text: '👍',
+                key: msg.key
+              }
+            });
+            logger.info(`👋 [${INSTANCE_ID}] Conversation ended in ${remoteJid}`);
+          }
+          continue;
+        }
 
         // Extract quoted message if this is a reply
         const quotedText = extractQuotedText(msg);
