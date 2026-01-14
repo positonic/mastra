@@ -640,6 +640,87 @@ export const createProjectActionTool = createTool({
   },
 });
 
+export const quickCreateActionTool = createTool({
+  id: "quick-create-action",
+  description:
+    "Create a new action using natural language. Automatically parses dates like 'tomorrow' or 'next Monday' and matches project names from the text. Use this when the user wants to create an action without specifying project ID or priority explicitly.",
+  inputSchema: z.object({
+    text: z
+      .string()
+      .describe(
+        "Natural language action description. Can include dates ('tomorrow', 'next week', 'today') and project names ('for Marketing project', 'add to Exercise'). Examples: 'Call John tomorrow', 'Review docs for Marketing project', 'Buy groceries next Monday'"
+      ),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    action: z.object({
+      id: z.string(),
+      name: z.string(),
+      priority: z.string(),
+      dueDate: z.string().optional().nullable(),
+      project: z
+        .object({
+          id: z.string(),
+          name: z.string(),
+        })
+        .optional()
+        .nullable(),
+    }),
+    parsing: z
+      .object({
+        originalInput: z.string(),
+        datePhrase: z.string().nullable(),
+        projectPhrase: z.string().nullable(),
+        matchedProject: z
+          .object({
+            id: z.string(),
+            name: z.string(),
+          })
+          .nullable(),
+      })
+      .optional(),
+  }),
+  async execute({ context, runtimeContext }) {
+    const authToken = runtimeContext?.get("authToken");
+    if (!authToken) {
+      throw new Error("No authentication token available");
+    }
+
+    console.log(
+      `🎯 [quickCreateAction] Creating action from text: "${context.text}"`
+    );
+
+    const response = await fetch(
+      `${TODO_APP_BASE_URL}/api/trpc/mastra.quickCreateAction`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          json: { text: context.text },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ [quickCreateAction] Failed: ${errorText}`);
+      throw new Error(`Failed to create action: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const result = data.result?.data || data;
+
+    console.log(
+      `✅ [quickCreateAction] Created action: ${result.action?.name} (project: ${result.action?.project?.name || "none"})`
+    );
+
+    return result;
+  },
+});
+
 export const updateProjectStatusTool = createTool({
   id: "update-project-status",
   description: "Update project status and progress information",

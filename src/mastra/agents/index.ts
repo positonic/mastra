@@ -1,7 +1,7 @@
 import { openai } from '@ai-sdk/openai';
 // import { anthropic } from '@ai-sdk/anthropic'; // Disabled - API key issue
 import { Agent } from '@mastra/core/agent';
-import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, createProjectActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool } from '../tools';
+import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
 export const weatherAgent = new Agent({
@@ -386,7 +386,7 @@ export const projectManagerAgent = new Agent({
   tools: {
     getProjectContextTool,
     getProjectActionsTool,
-    createProjectActionTool,
+    quickCreateActionTool,
     updateProjectStatusTool,
     getProjectGoalsTool,
     getAllGoalsTool,
