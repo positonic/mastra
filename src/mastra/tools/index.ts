@@ -589,7 +589,7 @@ export const createProjectActionTool = createTool({
       .describe("Detailed description of the action"),
     priority: z
       .enum(["Quick", "Short", "Long", "Research"])
-      .describe("Action priority level"),
+      .describe("Estimated effort/time: Quick (<5min), Short (<30min), Long (>30min), Research (needs investigation first)"),
     dueDate: z.string().optional().describe("Due date in ISO format"),
   }),
   outputSchema: z.object({

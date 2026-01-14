@@ -636,6 +636,24 @@ export class WhatsAppGateway {
         const text = extractText(msg.message);
         if (!text) continue;
 
+        // Check for conversation termination command
+        if (text.toLowerCase().trim() === 'bye') {
+          const hadConversation = session.conversations.has(remoteJid);
+          session.conversations.delete(remoteJid);
+
+          if (hadConversation) {
+            // React with thumbs up to acknowledge
+            await session.sock?.sendMessage(remoteJid, {
+              react: {
+                text: '👍',
+                key: msg.key
+              }
+            });
+            logger.info(`👋 [${INSTANCE_ID}] Conversation ended in ${remoteJid}`);
+          }
+          continue;
+        }
+
         // Extract quoted message if this is a reply
         const quotedText = extractQuotedText(msg);
 
