@@ -18,6 +18,7 @@ import QRCode from 'qrcode';
 import { createLogger } from '@mastra/core/logger';
 import { Boom } from '@hapi/boom';
 
+import { RuntimeContext } from '@mastra/core/di';
 import {
   weatherAgent,
   pierreAgent,
@@ -42,6 +43,10 @@ const MAX_SESSIONS = parseInt(process.env.WHATSAPP_MAX_SESSIONS || '10', 10);
 const MAX_MESSAGE_LENGTH = 4096;
 const CONVERSATION_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
 const PRIVATE_RESPONSE_MODE = process.env.WHATSAPP_PRIVATE_RESPONSES === 'true'; // Reply in self-chat only
+
+// Token refresh configuration
+const TODO_APP_BASE_URL = process.env.TODO_APP_BASE_URL || 'http://localhost:3000';
+const WHATSAPP_GATEWAY_SECRET = process.env.WHATSAPP_GATEWAY_SECRET;
 
 // Invisible bot signature to detect messages sent by any instance of this gateway
 // Uses zero-width characters that are invisible to users but detectable by code
@@ -743,6 +748,59 @@ export class WhatsAppGateway {
     }
   }
 
+  /**
+   * Refresh the auth token for a session by calling the exponential API.
+   * This is used when the current token has expired.
+   */
+  private async refreshAuthToken(session: WhatsAppSession): Promise<string | null> {
+    if (!WHATSAPP_GATEWAY_SECRET) {
+      logger.warn(`⚠️ [${INSTANCE_ID}] Cannot refresh token: WHATSAPP_GATEWAY_SECRET not configured`);
+      return null;
+    }
+
+    try {
+      logger.info(`🔄 [${INSTANCE_ID}] Attempting to refresh auth token for session ${session.id}`);
+
+      const response = await fetch(`${TODO_APP_BASE_URL}/api/whatsapp-gateway/refresh-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Gateway-Secret': WHATSAPP_GATEWAY_SECRET,
+        },
+        body: JSON.stringify({ sessionId: session.id }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error(`❌ [${INSTANCE_ID}] Token refresh failed: ${response.status} - ${errorText}`);
+        return null;
+      }
+
+      const data = await response.json() as { token: string; expiresAt: string };
+      session.lastAuthToken = data.token;
+
+      // Save the new encrypted token to metadata
+      await this.saveSessionsMetadata();
+
+      logger.info(`✅ [${INSTANCE_ID}] Token refreshed successfully for session ${session.id}, expires at ${data.expiresAt}`);
+      return data.token;
+    } catch (error) {
+      logger.error(`❌ [${INSTANCE_ID}] Error refreshing token:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Check if an error indicates an unauthorized/expired token.
+   */
+  private isUnauthorizedError(error: unknown): boolean {
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase();
+      return message.includes('unauthorized') || message.includes('401');
+    }
+    return false;
+  }
+
   private async processMessage(
     session: WhatsAppSession,
     jid: string,
@@ -759,34 +817,61 @@ export class WhatsAppGateway {
       // Send typing indicator
       await session.sock?.sendPresenceUpdate('composing', responseJid);
 
-      // Check if we have a valid auth token
-      // After server restart, lastAuthToken will be undefined since it's not persisted
+      // Check if we have a valid auth token, try to refresh if missing
       if (!session.lastAuthToken) {
-        logger.warn(`⚠️ [${INSTANCE_ID}] Session ${session.id} has no auth token (likely server restart)`);
-        await session.sock?.sendMessage(responseJid, {
-          text: "Your session needs to be refreshed. Please open the app and reconnect your WhatsApp to continue using the assistant."
-        });
-        return;
+        logger.warn(`⚠️ [${INSTANCE_ID}] Session ${session.id} has no auth token, attempting refresh...`);
+        const newToken = await this.refreshAuthToken(session);
+        if (!newToken) {
+          await session.sock?.sendMessage(responseJid, {
+            text: "Your session needs to be refreshed. Please open the app and reconnect your WhatsApp to continue using the assistant."
+          });
+          return;
+        }
       }
-
-      const authToken = session.lastAuthToken;
 
       // Select agent based on mention
       const agent = getAgentByIdentifier(agentId);
       logger.info(`🤖 [${INSTANCE_ID}] Routing to @${agentId} for session ${session.id}`);
 
-      // Route to selected agent with session context
-      const response = await agent.generate(
-        [{ role: 'user', content: text }],
-        {
-          runtimeContext: new Map([
-            ['authToken', authToken],
-            ['whatsappSession', session.id],
-            ['whatsappPhone', session.phoneNumber || ''],
-            ['userId', session.userId],
-          ])
+      // Try to call the agent, with automatic token refresh on auth failure
+      let response;
+      let authToken = session.lastAuthToken!;
+
+      // Helper to create runtime context with auth token
+      const createRuntimeContext = (token: string) => {
+        return new RuntimeContext([
+          ['authToken', token],
+          ['whatsappSession', session.id],
+          ['whatsappPhone', session.phoneNumber || ''],
+          ['userId', session.userId],
+        ]);
+      };
+
+      try {
+        // First attempt with current token
+        response = await agent.generate(
+          [{ role: 'user', content: text }],
+          { runtimeContext: createRuntimeContext(authToken) }
+        );
+      } catch (error) {
+        // Check if this is an auth error
+        if (this.isUnauthorizedError(error)) {
+          logger.warn(`⚠️ [${INSTANCE_ID}] Auth error detected, attempting token refresh...`);
+          const newToken = await this.refreshAuthToken(session);
+          if (newToken) {
+            authToken = newToken;
+            // Retry with new token
+            response = await agent.generate(
+              [{ role: 'user', content: text }],
+              { runtimeContext: createRuntimeContext(authToken) }
+            );
+          } else {
+            throw error; // Re-throw if refresh failed
+          }
+        } else {
+          throw error;
         }
-      );
+      }
 
       const agentResponse = response.text;
 
