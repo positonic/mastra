@@ -35,7 +35,8 @@ const INSTANCE_ID = `wa-gateway-${Date.now()}-${Math.random().toString(36).slice
 
 // Configuration
 const GATEWAY_PORT = parseInt(process.env.WHATSAPP_GATEWAY_PORT || '4112', 10);
-const SESSIONS_DIR = path.join(os.homedir(), '.mastra', 'whatsapp-sessions');
+// Use WHATSAPP_SESSIONS_DIR env var for Railway volume mount, or default to home directory for local dev
+const SESSIONS_DIR = process.env.WHATSAPP_SESSIONS_DIR || path.join(os.homedir(), '.mastra', 'whatsapp-sessions');
 const SESSIONS_FILE = path.join(SESSIONS_DIR, 'sessions.json');
 const MAX_SESSIONS = parseInt(process.env.WHATSAPP_MAX_SESSIONS || '10', 10);
 const MAX_MESSAGE_LENGTH = 4096;
