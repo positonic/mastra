@@ -40,6 +40,7 @@ const SESSIONS_FILE = path.join(SESSIONS_DIR, 'sessions.json');
 const MAX_SESSIONS = parseInt(process.env.WHATSAPP_MAX_SESSIONS || '10', 10);
 const MAX_MESSAGE_LENGTH = 4096;
 const CONVERSATION_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
+const PRIVATE_RESPONSE_MODE = process.env.WHATSAPP_PRIVATE_RESPONSES === 'true'; // Reply in self-chat only
 
 // Invisible bot signature to detect messages sent by any instance of this gateway
 // Uses zero-width characters that are invisible to users but detectable by code
@@ -748,14 +749,20 @@ export class WhatsAppGateway {
     agentId: AgentIdentifier
   ): Promise<void> {
     try {
+      // Determine where to send the response
+      // In private mode, always respond in self-chat so only the user sees it
+      const selfChatJid = session.sock?.user?.id;
+      const isSelfChat = selfChatJid && jid === selfChatJid;
+      const responseJid = (PRIVATE_RESPONSE_MODE && !isSelfChat && selfChatJid) ? selfChatJid : jid;
+
       // Send typing indicator
-      await session.sock?.sendPresenceUpdate('composing', jid);
+      await session.sock?.sendPresenceUpdate('composing', responseJid);
 
       // Check if we have a valid auth token
       // After server restart, lastAuthToken will be undefined since it's not persisted
       if (!session.lastAuthToken) {
         logger.warn(`⚠️ [${INSTANCE_ID}] Session ${session.id} has no auth token (likely server restart)`);
-        await session.sock?.sendMessage(jid, {
+        await session.sock?.sendMessage(responseJid, {
           text: "Your session needs to be refreshed. Please open the app and reconnect your WhatsApp to continue using the assistant."
         });
         return;
@@ -783,7 +790,14 @@ export class WhatsAppGateway {
       const agentResponse = response.text;
 
       if (agentResponse) {
-        const sentMsg = await this.sendLongMessage(session, jid, agentResponse);
+        // In private mode, prefix with context about which chat the question was from
+        let finalResponse = agentResponse;
+        if (PRIVATE_RESPONSE_MODE && !isSelfChat) {
+          const chatContext = jidToE164(jid) || jid.split('@')[0];
+          finalResponse = `[Re: ${chatContext}]\n\n${agentResponse}`;
+        }
+
+        const sentMsg = await this.sendLongMessage(session, responseJid, finalResponse);
 
         // Update conversation with agent's message ID for reply detection
         const conversation = session.conversations.get(jid);
@@ -791,16 +805,18 @@ export class WhatsAppGateway {
           conversation.lastAgentMessageId = sentMsg.key.id;
         }
 
-        logger.info(`✅ [${INSTANCE_ID}] Sent response to ${jidToE164(jid)} in session ${session.id}`);
+        logger.info(`✅ [${INSTANCE_ID}] Sent response to ${jidToE164(responseJid)} in session ${session.id}`);
       } else {
-        await session.sock?.sendMessage(jid, {
+        await session.sock?.sendMessage(responseJid, {
           text: "Sorry, I couldn't process your request. Please try again."
         });
       }
 
     } catch (error) {
       logger.error(`❌ [${INSTANCE_ID}] Error processing message in session ${session.id}:`, error);
-      await session.sock?.sendMessage(jid, {
+      // For errors, we may not have responseJid calculated yet, so use jid as fallback
+      const errorJid = jid;
+      await session.sock?.sendMessage(errorJid, {
         text: "Sorry, I encountered an error. Please try again later."
       });
     }
