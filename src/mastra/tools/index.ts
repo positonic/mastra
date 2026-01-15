@@ -1383,7 +1383,7 @@ export const getSlackUserInfoTool = createTool({
 export const getMeetingTranscriptionsTool = createTool({
   id: "get-meeting-transcriptions",
   description:
-    "Get meeting transcriptions with filtering by project, date range, participants, or meeting type",
+    "Get meeting and call transcriptions. Use this for any request about calls, meetings, phone conversations, or video calls. Supports filtering by project, date range, participants, or meeting type.",
   inputSchema: z.object({
     projectId: z.string().optional().describe("Filter by specific project ID"),
     startDate: z
@@ -1402,8 +1402,18 @@ export const getMeetingTranscriptionsTool = createTool({
     limit: z
       .number()
       .optional()
-      .default(10)
-      .describe("Maximum number of transcriptions to return"),
+      .default(5)
+      .describe("Maximum number of transcriptions to return (default: 5)"),
+    truncateTranscript: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe("Truncate transcript to prevent context overflow (default: true)"),
+    maxTranscriptLength: z
+      .number()
+      .optional()
+      .default(2000)
+      .describe("Max characters per transcript when truncating (default: 2000)"),
   }),
   outputSchema: z.object({
     transcriptions: z.array(
@@ -1422,13 +1432,13 @@ export const getMeetingTranscriptionsTool = createTool({
     total: z.number(),
   }),
   execute: async ({ context, runtimeContext }) => {
-    const { projectId, startDate, endDate, participants, meetingType, limit } =
+    const { projectId, startDate, endDate, participants, meetingType, limit, truncateTranscript, maxTranscriptLength } =
       context;
 
     console.log("🔍 [MEETING TRANSCRIPTIONS DEBUG]", {
       timestamp: new Date().toISOString(),
       TODO_APP_BASE_URL,
-      context: { projectId, participants, limit },
+      context: { projectId, participants, limit, truncateTranscript, maxTranscriptLength },
       runtimeContextKeys: runtimeContext
         ? Array.from(runtimeContext.keys())
         : "none",
@@ -1484,8 +1494,24 @@ export const getMeetingTranscriptionsTool = createTool({
       }
 
       const data = await response.json();
-      console.log("📊 [DATA SUCCESS] Response data keys:", Object.keys(data));
-      return data.result?.data || data;
+      const result = data.result?.data || data;
+
+      // Truncate transcripts to prevent context overflow
+      if (truncateTranscript && result.transcriptions) {
+        result.transcriptions = result.transcriptions.map((t: any) => ({
+          ...t,
+          transcript: t.transcript && t.transcript.length > maxTranscriptLength
+            ? t.transcript.slice(0, maxTranscriptLength) + '...[truncated]'
+            : t.transcript,
+        }));
+      }
+
+      console.log("📊 [DATA SUCCESS] Response data:", {
+        keys: Object.keys(result),
+        transcriptionCount: result.transcriptions?.length,
+        truncated: truncateTranscript,
+      });
+      return result;
     } catch (error) {
       console.error("💥 [FETCH ERROR] Network/Connection error:", {
         message: error.message,
@@ -1501,7 +1527,7 @@ export const getMeetingTranscriptionsTool = createTool({
 export const queryMeetingContextTool = createTool({
   id: "query-meeting-context",
   description:
-    "Semantic search across meeting transcriptions to find decisions, action items, deadlines, and project discussions",
+    "Semantic search across meeting and call transcriptions to find decisions, action items, deadlines, and project discussions. Use this for searching specific topics discussed in calls or meetings.",
   inputSchema: z.object({
     query: z
       .string()
@@ -1582,7 +1608,7 @@ export const queryMeetingContextTool = createTool({
 export const getMeetingInsightsTool = createTool({
   id: "get-meeting-insights",
   description:
-    "Extract key insights from recent meetings including decisions, action items, deadlines, and project evolution",
+    "Extract key insights from recent meetings and calls including decisions, action items, deadlines, and project evolution. Use this to summarize what was discussed in calls or meetings.",
   inputSchema: z.object({
     projectId: z.string().optional().describe("Focus on specific project"),
     timeframe: z
