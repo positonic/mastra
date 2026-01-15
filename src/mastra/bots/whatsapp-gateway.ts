@@ -41,6 +41,10 @@ const MAX_SESSIONS = parseInt(process.env.WHATSAPP_MAX_SESSIONS || '10', 10);
 const MAX_MESSAGE_LENGTH = 4096;
 const CONVERSATION_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
 
+// Invisible bot signature to detect messages sent by any instance of this gateway
+// Uses zero-width characters that are invisible to users but detectable by code
+const BOT_SIGNATURE = '\u200B\u200C\u200B'; // Zero-width space + zero-width non-joiner + zero-width space
+
 // JWT Types
 interface JWTPayload {
   userId: string;
@@ -168,6 +172,7 @@ interface WhatsAppSession {
   maxReconnectAttempts: number;
   lastAuthToken?: string; // Store latest valid token for agent calls
   conversations: Map<string, ConversationState>; // Track active conversations per chat
+  sentMessageIds: Set<string>; // Track messages sent by the bot to avoid feedback loops
 }
 
 interface ConnectionStatus {
@@ -386,6 +391,7 @@ export class WhatsAppGateway {
           maxReconnectAttempts: 5,
           lastAuthToken: restoredAuthToken,
           conversations: new Map(),
+          sentMessageIds: new Set(),
         };
 
         this.sessions.set(sessionId, session);
@@ -435,6 +441,7 @@ export class WhatsAppGateway {
       maxReconnectAttempts: 5,
       lastAuthToken: authToken,
       conversations: new Map(),
+      sentMessageIds: new Set(),
     };
 
     this.sessions.set(sessionId, session);
@@ -632,9 +639,21 @@ export class WhatsAppGateway {
         // This allows the user to send commands from any chat
         if (!msg.key.fromMe) continue;
 
+        // Skip messages that the bot itself sent (avoid feedback loops)
+        if (msg.key.id && session.sentMessageIds.has(msg.key.id)) {
+          continue;
+        }
+
         // Extract text
         const text = extractText(msg.message);
         if (!text) continue;
+
+        // Skip messages with bot signature (handles cross-instance deduplication)
+        // This catches messages sent by other instances (local/deployed) of this gateway
+        if (text.includes(BOT_SIGNATURE)) {
+          logger.debug(`🤖 [${INSTANCE_ID}] Skipping bot-signed message`);
+          continue;
+        }
 
         // Check for conversation termination command
         if (text.toLowerCase().trim() === 'bye') {
@@ -792,16 +811,40 @@ export class WhatsAppGateway {
     jid: string,
     message: string
   ): Promise<proto.WebMessageInfo | undefined> {
-    if (message.length <= MAX_MESSAGE_LENGTH) {
-      return await session.sock?.sendMessage(jid, { text: message });
+    // Add invisible bot signature to all outgoing messages for cross-instance deduplication
+    const signedMessage = message + BOT_SIGNATURE;
+
+    if (signedMessage.length <= MAX_MESSAGE_LENGTH) {
+      const sent = await session.sock?.sendMessage(jid, { text: signedMessage });
+      // Track sent message ID to avoid feedback loops
+      if (sent?.key?.id) {
+        session.sentMessageIds.add(sent.key.id);
+        // Limit set size to prevent memory growth
+        if (session.sentMessageIds.size > 1000) {
+          const oldest = session.sentMessageIds.values().next().value;
+          if (oldest) session.sentMessageIds.delete(oldest);
+        }
+      }
+      return sent;
     }
 
-    const chunks = this.splitMessage(message, MAX_MESSAGE_LENGTH);
+    const chunks = this.splitMessage(message, MAX_MESSAGE_LENGTH - BOT_SIGNATURE.length);
     let lastSentMessage: proto.WebMessageInfo | undefined;
 
     for (let i = 0; i < chunks.length; i++) {
       const prefix = i === 0 ? '' : `(${i + 1}/${chunks.length}) `;
-      lastSentMessage = await session.sock?.sendMessage(jid, { text: prefix + chunks[i] });
+      // Add bot signature to each chunk for cross-instance deduplication
+      const sent = await session.sock?.sendMessage(jid, { text: prefix + chunks[i] + BOT_SIGNATURE });
+
+      // Track sent message ID to avoid feedback loops
+      if (sent?.key?.id) {
+        session.sentMessageIds.add(sent.key.id);
+        if (session.sentMessageIds.size > 1000) {
+          const oldest = session.sentMessageIds.values().next().value;
+          if (oldest) session.sentMessageIds.delete(oldest);
+        }
+      }
+      lastSentMessage = sent;
 
       // Small delay between chunks
       if (i < chunks.length - 1) {
