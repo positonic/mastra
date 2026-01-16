@@ -1737,3 +1737,118 @@ export const getMeetingInsightsTool = createTool({
     return data.result?.data || data;
   },
 });
+
+export const getCalendarEventsTool = createTool({
+  id: "get-calendar-events",
+  description:
+    "Get calendar events for today or upcoming days. Use this tool for any request about calendar, schedule, meetings today, upcoming meetings, what's on the calendar, or scheduled events. This retrieves actual calendar/scheduled events, NOT past meeting transcriptions.",
+  inputSchema: z.object({
+    timeframe: z
+      .enum(["today", "upcoming", "custom"])
+      .default("today")
+      .describe(
+        "'today' for today's events, 'upcoming' for next N days, 'custom' for specific date range"
+      ),
+    days: z
+      .number()
+      .min(1)
+      .max(30)
+      .optional()
+      .default(7)
+      .describe("Number of days to look ahead (only used when timeframe='upcoming')"),
+    timeMin: z
+      .string()
+      .optional()
+      .describe("Start date in ISO format (only for timeframe='custom')"),
+    timeMax: z
+      .string()
+      .optional()
+      .describe("End date in ISO format (only for timeframe='custom')"),
+  }),
+  outputSchema: z.object({
+    events: z.array(
+      z.object({
+        id: z.string(),
+        summary: z.string(),
+        description: z.string().optional(),
+        start: z.string(),
+        end: z.string(),
+        location: z.string().optional(),
+        attendees: z.array(z.string()).optional(),
+        htmlLink: z.string().optional(),
+        status: z.string().optional(),
+      })
+    ),
+    calendarConnected: z.boolean(),
+    error: z.string().optional(),
+  }),
+  execute: async ({ context, runtimeContext }) => {
+    const { timeframe, days, timeMin, timeMax } = context;
+
+    console.log("📅 [CALENDAR EVENTS DEBUG]", {
+      timestamp: new Date().toISOString(),
+      TODO_APP_BASE_URL,
+      context: { timeframe, days, timeMin, timeMax },
+      runtimeContextKeys: runtimeContext
+        ? Array.from(runtimeContext.keys())
+        : "none",
+    });
+
+    const authToken = runtimeContext?.get("authToken");
+    if (!authToken) {
+      console.error("❌ [AUTH ERROR] No authentication token available");
+      throw new Error("No authentication token available");
+    }
+
+    console.log("🔑 [AUTH] Token available, length:", authToken.length);
+
+    const url = `${TODO_APP_BASE_URL}/api/trpc/mastra.getCalendarEvents`;
+    console.log("🌐 [FETCH] Attempting to call:", url);
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          json: { timeframe, days, timeMin, timeMax },
+          meta: {},
+        }),
+      });
+
+      console.log("✅ [FETCH SUCCESS] Response received:", {
+        status: response.status,
+        statusText: response.statusText,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("❌ [HTTP ERROR]", {
+          status: response.status,
+          statusText: response.statusText,
+          errorText,
+        });
+        throw new Error(`Failed to get calendar events: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const result = data.result?.data || data;
+
+      console.log("📊 [DATA SUCCESS] Response data:", {
+        eventCount: result.events?.length,
+        calendarConnected: result.calendarConnected,
+      });
+
+      return result;
+    } catch (error: any) {
+      console.error("💥 [FETCH ERROR] Network/Connection error:", {
+        message: error.message,
+        name: error.name,
+        url,
+      });
+      throw error;
+    }
+  },
+});

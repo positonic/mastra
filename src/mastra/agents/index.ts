@@ -1,7 +1,7 @@
 import { openai } from '@ai-sdk/openai';
 // import { anthropic } from '@ai-sdk/anthropic'; // Disabled - API key issue
 import { Agent } from '@mastra/core/agent';
-import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool } from '../tools';
+import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
 export const weatherAgent = new Agent({
@@ -237,7 +237,17 @@ export const projectManagerAgent = new Agent({
     - "Show me project evolution over time" → Use 'get-meeting-transcriptions' with date filtering
 
     **IMPORTANT**: For ANY question about specific meetings, calls, meeting/call content, or participants, ALWAYS use the meeting transcription tools first before responding. "Calls" and "meetings" refer to the same transcription data from Fireflies.
-    
+
+    ### Calendar and Schedule Queries:
+    For questions about upcoming meetings, today's schedule, or calendar events:
+    - "What's on my calendar today?" → Use 'get-calendar-events' with timeframe='today'
+    - "What meetings do I have today?" → Use 'get-calendar-events' with timeframe='today'
+    - "What's my schedule this week?" → Use 'get-calendar-events' with timeframe='upcoming' and days=7
+    - "Do I have any meetings tomorrow?" → Use 'get-calendar-events' with timeframe='upcoming' and days=2
+    - "Show my upcoming meetings" → Use 'get-calendar-events' with timeframe='upcoming'
+
+    **IMPORTANT**: Calendar queries are about FUTURE scheduled events from Google Calendar. Meeting transcription queries are about PAST meetings that have already happened. If the user's Google Calendar is not connected, inform them they need to connect it in Settings.
+
     ### Project Status Questions:
     For current project state queries:
     - "What is the state of this project?" → Combine 'get-project-context' + 'get-meeting-insights'
@@ -334,11 +344,14 @@ export const projectManagerAgent = new Agent({
     7. 'get-meeting-transcriptions' - For accessing meeting history
     8. 'query-meeting-context' - For semantic search of meeting content
     9. 'get-meeting-insights' - For extracted decisions, actions, and deadlines
-    
+
+    **Calendar:**
+    10. 'get-calendar-events' - For fetching upcoming calendar events (today, this week, custom range). Use for "What's on my calendar?" queries.
+
     **Communication:**
-    10. 'send-slack-message' - For sending updates to Slack
-    11. 'update-slack-message' - For updating existing messages
-    12. 'get-slack-user-info' - For retrieving user information
+    11. 'send-slack-message' - For sending updates to Slack
+    12. 'update-slack-message' - For updating existing messages
+    13. 'get-slack-user-info' - For retrieving user information
     
     ## KEY RESPONSIBILITIES:
     - Monitor project health across all data sources
@@ -398,7 +411,8 @@ export const projectManagerAgent = new Agent({
     getMeetingInsightsTool,
     sendSlackMessageTool,
     updateSlackMessageTool,
-    getSlackUserInfoTool
+    getSlackUserInfoTool,
+    getCalendarEventsTool,
   },
 });
 
