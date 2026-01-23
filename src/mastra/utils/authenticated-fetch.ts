@@ -105,6 +105,10 @@ export async function authenticatedFetch<T>(
         const data = (await response.json()) as T;
         return { data, refreshedToken: newToken };
       }
+
+      // Log the actual error for debugging
+      const retryErrorText = await response.text().catch(() => 'Could not read response body');
+      console.error(`[authenticated-fetch] Retry failed with status ${response.status}: ${retryErrorText}`);
     }
 
     // Refresh failed or retry failed - capture to Sentry
