@@ -864,10 +864,29 @@ export class WhatsAppGateway {
         ]);
       };
 
+      // WhatsApp-specific formatting context for the agent
+      const whatsappSystemContext = `You are responding via WhatsApp. Format your responses for WhatsApp:
+- Use *bold* for emphasis (renders correctly)
+- Use numbered lists (1. 2. 3.) instead of markdown tables
+- Keep responses concise - WhatsApp has a 4096 character limit per message
+- NO markdown tables - they don't render properly
+- NO headers with # - use *bold text* instead
+- NO markdown links [text](url) - just write the text
+
+Example format for lists:
+1. *Item Name* (Status, Priority)
+   Brief description here...
+
+2. *Another Item* (Status, Priority)
+   Another description...`;
+
       try {
         // First attempt with current token
         response = await agent.generate(
-          [{ role: 'user', content: text }],
+          [
+            { role: 'system', content: whatsappSystemContext },
+            { role: 'user', content: text }
+          ],
           { runtimeContext: createRuntimeContext(authToken) }
         );
       } catch (error) {
@@ -879,7 +898,10 @@ export class WhatsAppGateway {
             authToken = newToken;
             // Retry with new token
             response = await agent.generate(
-              [{ role: 'user', content: text }],
+              [
+                { role: 'system', content: whatsappSystemContext },
+                { role: 'user', content: text }
+              ],
               { runtimeContext: createRuntimeContext(authToken) }
             );
           } else {
