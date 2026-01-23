@@ -1,7 +1,7 @@
 import { openai } from '@ai-sdk/openai';
 // import { anthropic } from '@ai-sdk/anthropic'; // Disabled - API key issue
 import { Agent } from '@mastra/core/agent';
-import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool } from '../tools';
+import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, lookupContactByEmailTool, getWhatsAppContextTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
 export const weatherAgent = new Agent({
@@ -248,6 +248,22 @@ export const projectManagerAgent = new Agent({
 
     **IMPORTANT**: Calendar queries are about FUTURE scheduled events from Google Calendar. Meeting transcription queries are about PAST meetings that have already happened. If the user's Google Calendar is not connected, inform them they need to connect it in Settings.
 
+    ### WhatsApp Context for Calendar Events:
+    When the user asks about a calendar event's context or agenda and you don't have enough information:
+    1. If the event has attendees, OFFER to check WhatsApp messages: "I can check your recent WhatsApp messages with [Attendee Name] for context. Would you like me to?"
+    2. WAIT for explicit user confirmation (yes, sure, go ahead, please do, etc.) before fetching messages
+    3. NEVER fetch WhatsApp messages without user consent
+    4. Once confirmed, use 'lookup-contact-by-email' to find the attendee's phone number from their calendar email
+    5. If phone found, use 'get-whatsapp-context' with the phone number to fetch recent messages
+    6. Summarize relevant context from the messages (don't quote verbatim unless helpful)
+    7. If no contact found or no messages, let the user know gracefully
+
+    **Example flow:**
+    - User: "What's my meeting with John about?"
+    - You: "I see you have a meeting with john@company.com at 2pm. I don't have agenda details, but I can check your recent WhatsApp messages with John for context. Would you like me to?"
+    - User: "Yes please"
+    - You: [lookup contact by email] → [get WhatsApp context] → "Based on your recent WhatsApp conversation, it looks like John mentioned wanting to discuss the Q1 budget..."
+
     ### Project Status Questions:
     For current project state queries:
     - "What is the state of this project?" → Combine 'get-project-context' + 'get-meeting-insights'
@@ -352,6 +368,10 @@ export const projectManagerAgent = new Agent({
     11. 'send-slack-message' - For sending updates to Slack
     12. 'update-slack-message' - For updating existing messages
     13. 'get-slack-user-info' - For retrieving user information
+
+    **WhatsApp Context (Requires User Consent):**
+    14. 'lookup-contact-by-email' - Find contact's phone number from their email in CRM
+    15. 'get-whatsapp-context' - Fetch recent WhatsApp messages with a contact (ONLY after user confirms)
     
     ## KEY RESPONSIBILITIES:
     - Monitor project health across all data sources
@@ -413,6 +433,8 @@ export const projectManagerAgent = new Agent({
     updateSlackMessageTool,
     getSlackUserInfoTool,
     getCalendarEventsTool,
+    lookupContactByEmailTool,
+    getWhatsAppContextTool,
   },
 });
 

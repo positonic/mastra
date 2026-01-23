@@ -167,6 +167,14 @@ interface SessionsFile {
   [sessionId: string]: SessionMetadata;
 }
 
+// Cached message structure for context retrieval
+interface CachedMessage {
+  timestamp: Date;
+  fromMe: boolean;
+  text: string;
+  messageId: string;
+}
+
 interface WhatsAppSession {
   id: string;
   userId: string;
@@ -181,6 +189,7 @@ interface WhatsAppSession {
   lastAuthToken?: string; // Store latest valid token for agent calls
   conversations: Map<string, ConversationState>; // Track active conversations per chat
   sentMessageIds: Set<string>; // Track messages sent by the bot to avoid feedback loops
+  messageCache: Map<string, CachedMessage[]>; // Cache messages per contact JID for context
 }
 
 interface ConnectionStatus {
@@ -400,6 +409,7 @@ export class WhatsAppGateway {
           lastAuthToken: restoredAuthToken,
           conversations: new Map(),
           sentMessageIds: new Set(),
+          messageCache: new Map(),
         };
 
         this.sessions.set(sessionId, session);
@@ -450,6 +460,7 @@ export class WhatsAppGateway {
       lastAuthToken: authToken,
       conversations: new Map(),
       sentMessageIds: new Set(),
+      messageCache: new Map(),
     };
 
     this.sessions.set(sessionId, session);
@@ -642,6 +653,18 @@ export class WhatsAppGateway {
 
         // Skip group messages for now
         if (remoteJid.endsWith('@g.us')) continue;
+
+        // Cache ALL messages from individual chats for context retrieval
+        // This happens before other filtering so we capture both incoming and outgoing messages
+        const textForCache = extractText(msg.message);
+        if (textForCache && msg.key.id) {
+          this.cacheMessage(session, remoteJid, {
+            timestamp: new Date(msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now()),
+            fromMe: msg.key.fromMe ?? false,
+            text: textForCache,
+            messageId: msg.key.id,
+          });
+        }
 
         // We want to process messages FROM the session owner (fromMe = true)
         // This allows the user to send commands from any chat
@@ -1247,6 +1270,99 @@ Example format for lists:
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true }));
+  }
+
+  // Message caching for context retrieval
+  private static readonly MAX_CACHED_MESSAGES_PER_CONTACT = 50;
+
+  private cacheMessage(session: WhatsAppSession, contactJid: string, message: CachedMessage): void {
+    let messages = session.messageCache.get(contactJid);
+    if (!messages) {
+      messages = [];
+      session.messageCache.set(contactJid, messages);
+    }
+
+    // Avoid duplicates
+    if (messages.some(m => m.messageId === message.messageId)) {
+      return;
+    }
+
+    messages.push(message);
+
+    // Keep only the most recent messages
+    if (messages.length > WhatsAppGateway.MAX_CACHED_MESSAGES_PER_CONTACT) {
+      messages.shift(); // Remove oldest
+    }
+
+    // Sort by timestamp (most recent last)
+    messages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  }
+
+  /**
+   * Fetch recent messages with a contact from the cache.
+   * Returns messages that have been received/sent since the gateway connected.
+   *
+   * @param sessionId - The WhatsApp session ID
+   * @param phoneNumber - Phone number in international format (e.g., +1234567890)
+   * @param limit - Maximum number of messages to return (default: 20)
+   * @returns Array of cached messages or error info
+   */
+  fetchRecentMessages(
+    sessionId: string,
+    phoneNumber: string,
+    limit: number = 20
+  ): {
+    found: boolean;
+    messages?: Array<{ timestamp: string; fromMe: boolean; text: string }>;
+    error?: string;
+  } {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return { found: false, error: 'Session not found' };
+    }
+
+    if (!session.isConnected) {
+      return { found: false, error: 'Session not connected' };
+    }
+
+    // Convert phone number to JID format
+    // Remove '+' and any non-digit characters, then add @s.whatsapp.net
+    const normalizedPhone = phoneNumber.replace(/[^\d]/g, '');
+    const contactJid = `${normalizedPhone}@s.whatsapp.net`;
+
+    logger.info(`📨 [${INSTANCE_ID}] Fetching cached messages for ${contactJid} (limit: ${limit})`);
+
+    const cachedMessages = session.messageCache.get(contactJid);
+    if (!cachedMessages || cachedMessages.length === 0) {
+      logger.info(`📭 [${INSTANCE_ID}] No cached messages found for ${contactJid}`);
+      return {
+        found: false,
+        error: 'No cached messages found. Messages are only available after the WhatsApp gateway connects.',
+      };
+    }
+
+    // Get the most recent N messages
+    const recentMessages = cachedMessages
+      .slice(-limit)
+      .map(msg => ({
+        timestamp: msg.timestamp.toISOString(),
+        fromMe: msg.fromMe,
+        text: msg.text,
+      }));
+
+    logger.info(`✅ [${INSTANCE_ID}] Found ${recentMessages.length} cached messages for ${contactJid}`);
+
+    return {
+      found: true,
+      messages: recentMessages,
+    };
+  }
+
+  /**
+   * Get a session by ID (for use by tools)
+   */
+  getSession(sessionId: string): WhatsAppSession | undefined {
+    return this.sessions.get(sessionId);
   }
 
   // Cleanup

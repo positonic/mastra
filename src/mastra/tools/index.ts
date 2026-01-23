@@ -8,6 +8,7 @@ import {
   authenticatedTrpcCall,
   authenticatedTrpcQuery,
 } from "../utils/authenticated-fetch.js";
+import { getWhatsAppGateway } from "../bots/whatsapp-gateway.js";
 
 interface GeocodingResponse {
   results: {
@@ -1521,6 +1522,124 @@ export const getCalendarEventsTool = createTool({
     );
 
     console.log(`✅ [getCalendarEvents] Retrieved ${result.events?.length || 0} events`);
+    return result;
+  },
+});
+
+export const lookupContactByEmailTool = createTool({
+  id: "lookup-contact-by-email",
+  description:
+    "Find a contact's phone number by their email address using the CRM. Use this to match calendar attendees to phone numbers for WhatsApp context.",
+  inputSchema: z.object({
+    email: z.string().email().describe("Email address to look up"),
+  }),
+  outputSchema: z.object({
+    found: z.boolean(),
+    contact: z
+      .object({
+        id: z.string(),
+        firstName: z.string().nullable(),
+        lastName: z.string().nullable(),
+        email: z.string().nullable(),
+        phone: z.string().nullable(),
+      })
+      .optional(),
+  }),
+  execute: async ({ context, runtimeContext }) => {
+    const { email } = context;
+
+    console.log(`🔍 [lookupContactByEmail] Looking up contact for: ${email}`);
+
+    const authToken = runtimeContext?.get("authToken");
+    const sessionId = runtimeContext?.get("whatsappSession");
+    const userId = runtimeContext?.get("userId");
+
+    if (!authToken) {
+      console.error("❌ [lookupContactByEmail] No authentication token available");
+      throw new Error("No authentication token available");
+    }
+
+    const { data: result } = await authenticatedTrpcQuery(
+      "mastra.lookupContactByEmail?input=" + encodeURIComponent(JSON.stringify({ email })),
+      { authToken, sessionId, userId }
+    );
+
+    if (result.found) {
+      console.log(`✅ [lookupContactByEmail] Found contact: ${result.contact?.firstName} ${result.contact?.lastName}`);
+    } else {
+      console.log(`⚠️ [lookupContactByEmail] No contact found for ${email}`);
+    }
+
+    return result;
+  },
+});
+
+export const getWhatsAppContextTool = createTool({
+  id: "get-whatsapp-context",
+  description:
+    "Fetch recent WhatsApp messages with a contact for meeting context. IMPORTANT: Only use this AFTER the user explicitly confirms they want you to check their WhatsApp messages. Never fetch messages without user consent.",
+  inputSchema: z.object({
+    phoneNumber: z
+      .string()
+      .describe("Phone number in international format (e.g., +1234567890)"),
+    contactName: z
+      .string()
+      .describe("Name of the contact for context in logs"),
+    limit: z
+      .number()
+      .default(20)
+      .describe("Number of recent messages to fetch (default: 20)"),
+  }),
+  outputSchema: z.object({
+    found: z.boolean(),
+    messages: z
+      .array(
+        z.object({
+          timestamp: z.string(),
+          fromMe: z.boolean(),
+          text: z.string(),
+        })
+      )
+      .optional(),
+    error: z.string().optional(),
+  }),
+  execute: async ({ context, runtimeContext }) => {
+    const { phoneNumber, contactName, limit } = context;
+    const sessionId = runtimeContext?.get("whatsappSession");
+
+    console.log(
+      `📱 [getWhatsAppContext] Fetching messages with ${contactName} (${phoneNumber})`
+    );
+
+    if (!sessionId) {
+      console.error("❌ [getWhatsAppContext] No WhatsApp session ID available");
+      return {
+        found: false,
+        error: "No WhatsApp session available. Please connect WhatsApp first.",
+      };
+    }
+
+    const gateway = getWhatsAppGateway();
+    if (!gateway) {
+      console.error("❌ [getWhatsAppContext] WhatsApp gateway not available");
+      return {
+        found: false,
+        error: "WhatsApp gateway not available",
+      };
+    }
+
+    const result = gateway.fetchRecentMessages(sessionId, phoneNumber, limit);
+
+    if (result.found) {
+      console.log(
+        `✅ [getWhatsAppContext] Found ${result.messages?.length || 0} messages with ${contactName}`
+      );
+    } else {
+      console.log(
+        `⚠️ [getWhatsAppContext] No messages found: ${result.error}`
+      );
+    }
+
     return result;
   },
 });
