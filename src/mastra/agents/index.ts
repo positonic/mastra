@@ -1,7 +1,7 @@
 import { openai } from '@ai-sdk/openai';
 // import { anthropic } from '@ai-sdk/anthropic'; // Disabled - API key issue
 import { Agent } from '@mastra/core/agent';
-import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, lookupContactByEmailTool, getWhatsAppContextTool } from '../tools';
+import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
 export const weatherAgent = new Agent({
@@ -279,6 +279,17 @@ export const projectManagerAgent = new Agent({
     - You: "I couldn't find John's phone number in your contacts. Do you have John's phone number? (e.g., +1234567890)"
     - User: "+14155551234"
     - You: [get WhatsApp context with +14155551234] → "Based on your recent WhatsApp conversation..."
+    - You: "Would you like me to save John (john@company.com, +14155551234) to your contacts for future lookups?"
+    - User: "Yes"
+    - You: [create-crm-contact] → "Done! I've added John to your contacts."
+
+    ### Saving Contacts to CRM:
+    After successfully fetching WhatsApp messages for a contact that wasn't in the CRM:
+    1. OFFER to save the contact: "Would you like me to save [Name] ([email], [phone]) to your contacts for future lookups?"
+    2. WAIT for user confirmation (yes, sure, go ahead, please do, etc.)
+    3. If confirmed, use 'create-crm-contact' with the email, phone, and name
+    4. Confirm success: "Done! I've added [Name] to your contacts."
+    5. NEVER save contacts without explicit user confirmation
 
     ### Project Status Questions:
     For current project state queries:
@@ -388,7 +399,8 @@ export const projectManagerAgent = new Agent({
     **WhatsApp Context (Requires User Consent):**
     14. 'lookup-contact-by-email' - Find contact's phone number from their email in CRM
     15. 'get-whatsapp-context' - Fetch recent WhatsApp messages with a contact (ONLY after user confirms)
-    
+    16. 'create-crm-contact' - Save a new contact to the CRM (ONLY after user confirms they want to save it)
+
     ## KEY RESPONSIBILITIES:
     - Monitor project health across all data sources
     - Identify and resolve bottlenecks from projects and meetings
@@ -451,6 +463,7 @@ export const projectManagerAgent = new Agent({
     getCalendarEventsTool,
     lookupContactByEmailTool,
     getWhatsAppContextTool,
+    createCrmContactTool,
   },
 });
 

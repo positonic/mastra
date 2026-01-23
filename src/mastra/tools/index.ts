@@ -1645,3 +1645,66 @@ export const getWhatsAppContextTool = createTool({
     return result;
   },
 });
+
+export const createCrmContactTool = createTool({
+  id: "create-crm-contact",
+  description:
+    "Save a new contact to the CRM. Use this after looking up a contact fails and the user provides their phone number AND confirms they want to save it. Always ask for confirmation before saving.",
+  inputSchema: z.object({
+    email: z.string().email().describe("Contact's email address"),
+    phone: z.string().describe("Contact's phone number in international format (e.g., +1234567890)"),
+    firstName: z.string().optional().describe("Contact's first name"),
+    lastName: z.string().optional().describe("Contact's last name"),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    created: z.boolean().optional(),
+    updated: z.boolean().optional(),
+    contactId: z.string().optional(),
+    error: z.string().optional(),
+  }),
+  execute: async ({ context, runtimeContext }) => {
+    const { email, phone, firstName, lastName } = context;
+
+    console.log(`💾 [createCrmContact] Saving contact: ${firstName} ${lastName} (${email}, ${phone})`);
+
+    const authToken = runtimeContext?.get("authToken");
+    const sessionId = runtimeContext?.get("whatsappSession");
+    const userId = runtimeContext?.get("userId");
+
+    if (!authToken) {
+      console.error("❌ [createCrmContact] No authentication token available");
+      return { success: false, error: "No authentication token available" };
+    }
+
+    try {
+      const { data: result } = await authenticatedTrpcCall<{
+        created: boolean;
+        updated: boolean;
+        contactId?: string;
+        error?: string;
+      }>(
+        "mastra.createCrmContact",
+        { email, phone, firstName, lastName },
+        { authToken, sessionId, userId }
+      );
+
+      if (result.created) {
+        console.log(`✅ [createCrmContact] Created new contact: ${result.contactId}`);
+        return { success: true, created: true, contactId: result.contactId };
+      } else if (result.updated) {
+        console.log(`✅ [createCrmContact] Updated existing contact with phone: ${result.contactId}`);
+        return { success: true, updated: true, contactId: result.contactId };
+      } else {
+        console.log(`⚠️ [createCrmContact] ${result.error}`);
+        return { success: false, error: result.error };
+      }
+    } catch (error) {
+      console.error("❌ [createCrmContact] Error:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to create contact",
+      };
+    }
+  },
+});
