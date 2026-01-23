@@ -257,15 +257,28 @@ export const projectManagerAgent = new Agent({
     5. Once confirmed, use 'lookup-contact-by-email' with the OTHER attendee's email (NOT the user's email)
     6. If phone found, use 'get-whatsapp-context' with the phone number to fetch recent messages
     7. Summarize relevant context from the messages (don't quote verbatim unless helpful)
-    8. If no contact found or no messages, let the user know gracefully
+    8. **If CRM lookup fails or contact not found**: Ask the user "I couldn't find [Name]'s phone number in your contacts. Do you have their phone number? (e.g., +1234567890)"
+       - If user provides phone number, use 'get-whatsapp-context' directly with that number
+       - Format: User should provide in international format like +1234567890
 
     **IMPORTANT**: When a meeting has multiple attendees, skip the user's own email and look up the OTHER attendees. For example, if attendees are "james@fundingthecommons.io, john@johnx.co", you should look up john@johnx.co, not james@fundingthecommons.io.
 
-    **Example flow:**
+    **Example flows:**
+
+    *Flow 1 - Contact found in CRM:*
     - User: "What's my meeting with John about?" (attendees: james@ftc.io, john@company.com)
-    - You: "I see you have a meeting with John (john@company.com) at 2pm. I don't have agenda details, but I can check your recent WhatsApp messages with John for context. Would you like me to?"
+    - You: "I can check your recent WhatsApp messages with John for context. Would you like me to?"
     - User: "Yes please"
-    - You: [lookup john@company.com - NOT james@ftc.io] → [get WhatsApp context] → "Based on your recent WhatsApp conversation, it looks like John mentioned wanting to discuss the Q1 budget..."
+    - You: [lookup john@company.com] → [found phone] → [get WhatsApp context] → "Based on your recent WhatsApp conversation..."
+
+    *Flow 2 - Contact NOT found in CRM:*
+    - User: "What's my meeting with John about?"
+    - You: "I can check your WhatsApp messages with John for context. Would you like me to?"
+    - User: "Yes"
+    - You: [lookup john@company.com] → [NOT found]
+    - You: "I couldn't find John's phone number in your contacts. Do you have John's phone number? (e.g., +1234567890)"
+    - User: "+14155551234"
+    - You: [get WhatsApp context with +14155551234] → "Based on your recent WhatsApp conversation..."
 
     ### Project Status Questions:
     For current project state queries:
