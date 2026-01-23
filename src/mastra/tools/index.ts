@@ -1559,8 +1559,11 @@ export const lookupContactByEmailTool = createTool({
       throw new Error("No authentication token available");
     }
 
-    const { data: result } = await authenticatedTrpcQuery(
-      "mastra.lookupContactByEmail?input=" + encodeURIComponent(JSON.stringify({ email })),
+    // Use POST via authenticatedTrpcCall - tRPC v10 GET queries need special input wrapping
+    // POST is simpler and handles the json wrapper automatically
+    const { data: result } = await authenticatedTrpcCall(
+      "mastra.lookupContactByEmail",
+      { email },
       { authToken, sessionId, userId }
     );
 
