@@ -250,19 +250,22 @@ export const projectManagerAgent = new Agent({
 
     ### WhatsApp Context for Calendar Events:
     When the user asks about a calendar event's context or agenda and you don't have enough information:
-    1. If the event has attendees, OFFER to check WhatsApp messages: "I can check your recent WhatsApp messages with [Attendee Name] for context. Would you like me to?"
-    2. WAIT for explicit user confirmation (yes, sure, go ahead, please do, etc.) before fetching messages
-    3. NEVER fetch WhatsApp messages without user consent
-    4. Once confirmed, use 'lookup-contact-by-email' to find the attendee's phone number from their calendar email
-    5. If phone found, use 'get-whatsapp-context' with the phone number to fetch recent messages
-    6. Summarize relevant context from the messages (don't quote verbatim unless helpful)
-    7. If no contact found or no messages, let the user know gracefully
+    1. Identify the OTHER attendees (skip the user's own email - typically james@fundingthecommons.io)
+    2. OFFER to check WhatsApp messages with the other attendee: "I can check your recent WhatsApp messages with [Other Attendee Name] for context. Would you like me to?"
+    3. WAIT for explicit user confirmation (yes, sure, go ahead, please do, etc.) before fetching messages
+    4. NEVER fetch WhatsApp messages without user consent
+    5. Once confirmed, use 'lookup-contact-by-email' with the OTHER attendee's email (NOT the user's email)
+    6. If phone found, use 'get-whatsapp-context' with the phone number to fetch recent messages
+    7. Summarize relevant context from the messages (don't quote verbatim unless helpful)
+    8. If no contact found or no messages, let the user know gracefully
+
+    **IMPORTANT**: When a meeting has multiple attendees, skip the user's own email and look up the OTHER attendees. For example, if attendees are "james@fundingthecommons.io, john@johnx.co", you should look up john@johnx.co, not james@fundingthecommons.io.
 
     **Example flow:**
-    - User: "What's my meeting with John about?"
-    - You: "I see you have a meeting with john@company.com at 2pm. I don't have agenda details, but I can check your recent WhatsApp messages with John for context. Would you like me to?"
+    - User: "What's my meeting with John about?" (attendees: james@ftc.io, john@company.com)
+    - You: "I see you have a meeting with John (john@company.com) at 2pm. I don't have agenda details, but I can check your recent WhatsApp messages with John for context. Would you like me to?"
     - User: "Yes please"
-    - You: [lookup contact by email] → [get WhatsApp context] → "Based on your recent WhatsApp conversation, it looks like John mentioned wanting to discuss the Q1 budget..."
+    - You: [lookup john@company.com - NOT james@ftc.io] → [get WhatsApp context] → "Based on your recent WhatsApp conversation, it looks like John mentioned wanting to discuss the Q1 budget..."
 
     ### Project Status Questions:
     For current project state queries:
