@@ -230,10 +230,20 @@ interface ParsedMessage {
   agent: AgentIdentifier | null;
 }
 
+// Message history entry for conversation context
+interface HistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+// Maximum number of history messages to keep (to prevent context overflow)
+const MAX_HISTORY_MESSAGES = 10;
+
 interface ConversationState {
   agentId: AgentIdentifier;
   lastInteraction: number;  // timestamp
   lastAgentMessageId?: string;  // for reply detection
+  history: HistoryMessage[];  // conversation history for agent context
 }
 
 const AGENT_ALIASES: Record<string, AgentIdentifier> = {
@@ -741,11 +751,13 @@ export class WhatsAppGateway {
           continue;
         }
 
-        // Update or create conversation state
+        // Update or create conversation state (preserve history if continuing conversation)
+        const existingConversation = session.conversations.get(remoteJid);
         session.conversations.set(remoteJid, {
           agentId,
           lastInteraction: Date.now(),
-          lastAgentMessageId: session.conversations.get(remoteJid)?.lastAgentMessageId,
+          lastAgentMessageId: existingConversation?.lastAgentMessageId,
+          history: existingConversation?.history ?? [],  // Preserve history or start fresh
         });
 
         // Get the chat we're sending to (for logging)
@@ -903,13 +915,30 @@ Example format for lists:
 2. *Another Item* (Status, Priority)
    Another description...`;
 
+      // Get conversation history for context
+      const conversation = session.conversations.get(jid);
+      const history = conversation?.history ?? [];
+
+      // Add current user message to history
+      history.push({ role: 'user', content: text });
+
+      // Trim history if too long (keep most recent messages)
+      while (history.length > MAX_HISTORY_MESSAGES) {
+        history.shift();
+      }
+
+      // Build messages array with system context + conversation history
+      const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+        { role: 'system', content: whatsappSystemContext },
+        ...history
+      ];
+
+      logger.debug(`📝 [${INSTANCE_ID}] Sending ${history.length} history messages to agent`);
+
       try {
         // First attempt with current token
         response = await agent.generate(
-          [
-            { role: 'system', content: whatsappSystemContext },
-            { role: 'user', content: text }
-          ],
+          messages,
           { runtimeContext: createRuntimeContext(authToken) }
         );
       } catch (error) {
@@ -921,10 +950,7 @@ Example format for lists:
             authToken = newToken;
             // Retry with new token
             response = await agent.generate(
-              [
-                { role: 'system', content: whatsappSystemContext },
-                { role: 'user', content: text }
-              ],
+              messages,
               { runtimeContext: createRuntimeContext(authToken) }
             );
           } else {
@@ -938,6 +964,14 @@ Example format for lists:
       const agentResponse = response.text;
 
       if (agentResponse) {
+        // Add assistant response to conversation history
+        history.push({ role: 'assistant', content: agentResponse });
+
+        // Trim history again if needed after adding response
+        while (history.length > MAX_HISTORY_MESSAGES) {
+          history.shift();
+        }
+
         // In private mode, prefix with context about which chat the question was from
         let finalResponse = agentResponse;
         if (PRIVATE_RESPONSE_MODE && !isSelfChat) {
@@ -947,13 +981,15 @@ Example format for lists:
 
         const sentMsg = await this.sendLongMessage(session, responseJid, finalResponse);
 
-        // Update conversation with agent's message ID for reply detection
-        const conversation = session.conversations.get(jid);
-        if (conversation && sentMsg?.key?.id) {
-          conversation.lastAgentMessageId = sentMsg.key.id;
+        // Update conversation with agent's message ID and updated history
+        const conversationState = session.conversations.get(jid);
+        if (conversationState) {
+          conversationState.lastAgentMessageId = sentMsg?.key?.id;
+          conversationState.history = history;
+          conversationState.lastInteraction = Date.now();
         }
 
-        logger.info(`✅ [${INSTANCE_ID}] Sent response to ${jidToE164(responseJid)} in session ${session.id}`);
+        logger.info(`✅ [${INSTANCE_ID}] Sent response to ${jidToE164(responseJid)} in session ${session.id} (history: ${history.length} msgs)`);
       } else {
         await session.sock?.sendMessage(responseJid, {
           text: "Sorry, I couldn't process your request. Please try again."
