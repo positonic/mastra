@@ -25,6 +25,7 @@ import {
   ashAgent,
   projectManagerAgent
 } from '../agents/index.js';
+import { captureException, captureAuthFailure } from '../utils/sentry.js';
 
 const logger = createLogger({
   name: 'WhatsAppGateway',
@@ -773,6 +774,15 @@ export class WhatsAppGateway {
       if (!response.ok) {
         const errorText = await response.text();
         logger.error(`❌ [${INSTANCE_ID}] Token refresh failed: ${response.status} - ${errorText}`);
+
+        // Capture auth failure to Sentry
+        captureAuthFailure(new Error(`Token refresh failed: ${response.status}`), {
+          userId: session.userId,
+          sessionId: session.id,
+          endpoint: `${TODO_APP_BASE_URL}/api/whatsapp-gateway/refresh-token`,
+          statusCode: response.status,
+        });
+
         return null;
       }
 
@@ -786,6 +796,13 @@ export class WhatsAppGateway {
       return data.token;
     } catch (error) {
       logger.error(`❌ [${INSTANCE_ID}] Error refreshing token:`, error);
+
+      captureException(error, {
+        userId: session.userId,
+        sessionId: session.id,
+        operation: 'refreshAuthToken',
+      });
+
       return null;
     }
   }
@@ -900,6 +917,15 @@ export class WhatsAppGateway {
 
     } catch (error) {
       logger.error(`❌ [${INSTANCE_ID}] Error processing message in session ${session.id}:`, error);
+
+      // Capture to Sentry with context
+      captureException(error, {
+        userId: session.userId,
+        sessionId: session.id,
+        operation: 'processMessage',
+        extra: { agentId, jid, textPreview: text.substring(0, 100) },
+      });
+
       // For errors, we may not have responseJid calculated yet, so use jid as fallback
       const errorJid = jid;
       await session.sock?.sendMessage(errorJid, {

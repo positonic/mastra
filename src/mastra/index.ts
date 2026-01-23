@@ -1,9 +1,12 @@
-
 import { Mastra } from '@mastra/core/mastra';
 import { createLogger } from '@mastra/core/logger';
 import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent } from './agents';
 import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js';
 import { createWhatsAppGateway, cleanupWhatsAppGateway } from './bots/whatsapp-gateway.js';
+import { initSentry, captureException, flushSentry } from './utils/sentry.js';
+
+// Initialize Sentry first (before anything else)
+initSentry();
 
 const logger = createLogger({
   name: 'Mastra',
@@ -30,20 +33,30 @@ if (!enableTelegram) {
 export const whatsAppGateway = createWhatsAppGateway();
 
 // Add graceful shutdown handling
-const shutdown = async (signal: string) => {
+const shutdown = async (signal: string, error?: Error) => {
   logger.info(`🛑 [MAIN] Received ${signal}, starting graceful shutdown...`);
-  
+
   try {
+    // Capture error to Sentry if provided
+    if (error) {
+      captureException(error, { operation: `shutdown:${signal}` });
+    }
+
     // Cleanup bots and gateways
     if (enableTelegram) {
       await cleanupTelegramBot();
     }
     await cleanupWhatsAppGateway();
 
+    // Flush Sentry events before exit
+    await flushSentry();
+
     logger.info(`✅ [MAIN] Graceful shutdown completed`);
-    process.exit(0);
-  } catch (error) {
-    logger.error('🚨 [MAIN] Error during shutdown:', error);
+    process.exit(error ? 1 : 0);
+  } catch (shutdownError) {
+    logger.error('🚨 [MAIN] Error during shutdown:', shutdownError);
+    captureException(shutdownError, { operation: 'shutdown:error' });
+    await flushSentry();
     process.exit(1);
   }
 };
@@ -53,11 +66,14 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('uncaughtException', (error) => {
   logger.error('🚨 [MAIN] Uncaught exception:', error);
-  shutdown('UNCAUGHT_EXCEPTION');
+  captureException(error, { operation: 'uncaughtException' });
+  shutdown('UNCAUGHT_EXCEPTION', error);
 });
 process.on('unhandledRejection', (reason, promise) => {
   logger.error('🚨 [MAIN] Unhandled rejection at:', promise, 'reason:', reason);
-  shutdown('UNHANDLED_REJECTION');
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  captureException(error, { operation: 'unhandledRejection' });
+  shutdown('UNHANDLED_REJECTION', error);
 });
 
 logger.info(`🚀 [MAIN] Mastra initialized with PID ${process.pid}`);

@@ -4,6 +4,10 @@ import { openai } from "@ai-sdk/openai";
 import { embed } from "ai";
 import { z } from "zod";
 import { WebClient } from "@slack/web-api";
+import {
+  authenticatedTrpcCall,
+  authenticatedTrpcQuery,
+} from "../utils/authenticated-fetch.js";
 
 interface GeocodingResponse {
   results: {
@@ -489,31 +493,20 @@ export const getProjectContextTool = createTool({
   async execute({ context, runtimeContext }) {
     const { projectId } = context;
     const authToken = runtimeContext?.get("authToken");
+    const sessionId = runtimeContext?.get("whatsappSession");
+    const userId = runtimeContext?.get("userId");
+
     if (!authToken) {
       throw new Error("No authentication token available");
     }
 
-    const response = await fetch(
-      `${TODO_APP_BASE_URL}/api/trpc/mastra.projectContext`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          json: { projectId },
-          meta: {},
-        }),
-      }
+    const { data } = await authenticatedTrpcCall(
+      "mastra.projectContext",
+      { projectId },
+      { authToken, sessionId, userId }
     );
 
-    if (!response.ok) {
-      throw new Error(`Failed to get project context: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.result?.data || data;
+    return data;
   },
 });
 
@@ -548,31 +541,20 @@ export const getProjectActionsTool = createTool({
   async execute({ context, runtimeContext }) {
     const { projectId, status } = context;
     const authToken = runtimeContext?.get("authToken");
+    const sessionId = runtimeContext?.get("whatsappSession");
+    const userId = runtimeContext?.get("userId");
+
     if (!authToken) {
       throw new Error("No authentication token available");
     }
 
-    const response = await fetch(
-      `${TODO_APP_BASE_URL}/api/trpc/mastra.projectActions`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          json: { projectId, status },
-          meta: {},
-        }),
-      }
+    const { data } = await authenticatedTrpcCall(
+      "mastra.projectActions",
+      { projectId, status },
+      { authToken, sessionId, userId }
     );
 
-    if (!response.ok) {
-      throw new Error(`Failed to get project actions: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.result?.data || data;
+    return data;
   },
 });
 
@@ -606,37 +588,20 @@ export const createProjectActionTool = createTool({
   async execute({ context, runtimeContext }) {
     const { projectId, name, description, priority, dueDate } = context;
     const authToken = runtimeContext?.get("authToken");
+    const sessionId = runtimeContext?.get("whatsappSession");
+    const userId = runtimeContext?.get("userId");
+
     if (!authToken) {
       throw new Error("No authentication token available");
     }
 
-    const response = await fetch(
-      `${TODO_APP_BASE_URL}/api/trpc/mastra.createAction`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          json: {
-            projectId,
-            name,
-            description,
-            priority,
-            dueDate,
-          },
-          meta: {},
-        }),
-      }
+    const { data } = await authenticatedTrpcCall(
+      "mastra.createAction",
+      { projectId, name, description, priority, dueDate },
+      { authToken, sessionId, userId }
     );
 
-    if (!response.ok) {
-      throw new Error(`Failed to create action: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.result?.data || data;
+    return data;
   },
 });
 
@@ -682,6 +647,9 @@ export const quickCreateActionTool = createTool({
   }),
   async execute({ context, runtimeContext }) {
     const authToken = runtimeContext?.get("authToken");
+    const sessionId = runtimeContext?.get("whatsappSession");
+    const userId = runtimeContext?.get("userId");
+
     if (!authToken) {
       throw new Error("No authentication token available");
     }
@@ -690,28 +658,11 @@ export const quickCreateActionTool = createTool({
       `🎯 [quickCreateAction] Creating action from text: "${context.text}"`
     );
 
-    const response = await fetch(
-      `${TODO_APP_BASE_URL}/api/trpc/mastra.quickCreateAction`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          json: { text: context.text },
-        }),
-      }
+    const { data: result } = await authenticatedTrpcCall(
+      "mastra.quickCreateAction",
+      { text: context.text },
+      { authToken, sessionId, userId }
     );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`❌ [quickCreateAction] Failed: ${errorText}`);
-      throw new Error(`Failed to create action: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const result = data.result?.data || data;
 
     console.log(
       `✅ [quickCreateAction] Created action: ${result.action?.name} (project: ${result.action?.project?.name || "none"})`
@@ -770,38 +721,20 @@ export const updateProjectStatusTool = createTool({
       nextActionDate,
     } = context;
     const authToken = runtimeContext?.get("authToken");
+    const sessionId = runtimeContext?.get("whatsappSession");
+    const userId = runtimeContext?.get("userId");
+
     if (!authToken) {
       throw new Error("No authentication token available");
     }
 
-    const response = await fetch(
-      `${TODO_APP_BASE_URL}/api/trpc/mastra.updateProjectStatus`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          json: {
-            projectId,
-            status,
-            priority,
-            progress,
-            reviewDate,
-            nextActionDate,
-          },
-          meta: {},
-        }),
-      }
+    const { data } = await authenticatedTrpcCall(
+      "mastra.updateProjectStatus",
+      { projectId, status, priority, progress, reviewDate, nextActionDate },
+      { authToken, sessionId, userId }
     );
 
-    if (!response.ok) {
-      throw new Error(`Failed to update project: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.result?.data || data;
+    return data;
   },
 });
 
@@ -829,33 +762,21 @@ export const getProjectGoalsTool = createTool({
   async execute({ context, runtimeContext }) {
     const { projectId } = context;
     const authToken = runtimeContext?.get("authToken");
+    const sessionId = runtimeContext?.get("whatsappSession");
+    const userId = runtimeContext?.get("userId");
+
     if (!authToken) {
       throw new Error("No authentication token available");
     }
 
     // Get project context which includes goals
-    const response = await fetch(
-      `${TODO_APP_BASE_URL}/api/trpc/mastra.projectContext`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          json: { projectId },
-          meta: {},
-        }),
-      }
+    const { data: contextData } = await authenticatedTrpcCall(
+      "mastra.projectContext",
+      { projectId },
+      { authToken, sessionId, userId }
     );
 
-    if (!response.ok) {
-      throw new Error(`Failed to get project goals: ${response.statusText}`);
-    }
-
-    const data = await response.json();
     // Extract just the goals from the project context response
-    const contextData = data.result?.data || data;
     return { goals: contextData.goals || [] };
   },
 });
@@ -896,67 +817,26 @@ export const getAllGoalsTool = createTool({
     total: z.number(),
   }),
   execute: async ({ context, runtimeContext }) => {
-    console.log("🔍 [DEBUG] getAllGoalsTool execution started", {
-      timestamp: new Date().toISOString(),
-      runtimeContextExists: !!runtimeContext,
-      runtimeContextKeys: runtimeContext
-        ? Array.from(runtimeContext.keys())
-        : "none",
-      TODO_APP_BASE_URL,
-    });
+    console.log("🔍 [DEBUG] getAllGoalsTool execution started");
 
     const authToken = runtimeContext?.get("authToken");
-    console.log("🔑 [DEBUG] Auth token extraction", {
-      tokenExists: !!authToken,
-      tokenLength: authToken ? authToken.length : 0,
-      tokenPreview: authToken ? authToken.substring(0, 20) + "..." : "none",
-    });
+    const sessionId = runtimeContext?.get("whatsappSession");
+    const userId = runtimeContext?.get("userId");
 
     if (!authToken) {
-      console.error("❌ [ERROR] No auth token available", {
-        runtimeContext: !!runtimeContext,
-        keys: runtimeContext ? Array.from(runtimeContext.keys()) : [],
-      });
+      console.error("❌ [ERROR] No auth token available");
       throw new Error("No auth token available");
     }
 
-    const apiUrl = TODO_APP_BASE_URL;
-    console.log("🌐 [DEBUG] Making API call", {
-      url: `${apiUrl}/api/trpc/mastra.getAllGoals`,
-      hasToken: !!authToken,
-    });
+    const { data } = await authenticatedTrpcQuery(
+      "mastra.getAllGoals",
+      { authToken, sessionId, userId }
+    );
 
-    const response = await fetch(`${apiUrl}/api/trpc/mastra.getAllGoals`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
-    });
-
-    console.log("📡 [DEBUG] API Response", {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok,
-      headers: Object.fromEntries(response.headers.entries()),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("❌ [ERROR] API call failed", {
-        status: response.status,
-        statusText: response.statusText,
-        errorText,
-      });
-      throw new Error(`Failed to get all goals: ${response.statusText}`);
-    }
-
-    const data = await response.json();
     console.log("✅ [SUCCESS] Goals retrieved", {
-      dataKeys: Object.keys(data),
-      hasResult: !!data.result,
-      goalsCount: data.result?.data?.goals?.length || data.goals?.length || 0,
+      goalsCount: data.goals?.length || 0,
     });
-    return data.result?.data || data;
+    return data;
   },
 });
 
@@ -1003,151 +883,70 @@ export const getAllProjectsTool = createTool({
     filtered: z.boolean().describe("True if results were filtered to ACTIVE projects only"),
   }),
   async execute({ context, runtimeContext }) {
-    // CRITICAL: Add basic console log to verify if this even runs
-    console.log("🚨 CRITICAL: getAllProjectsTool EXECUTE METHOD CALLED!");
-    console.log("🚀 [TOOL START] getAllProjectsTool execution started", {
-      timestamp: new Date().toISOString(),
-      runtimeContextExists: !!runtimeContext,
-      runtimeContextKeys: runtimeContext
-        ? Array.from(runtimeContext.keys())
-        : "none",
-      TODO_APP_BASE_URL,
-      contextKeys: context ? Object.keys(context) : "no context",
-    });
+    console.log("🚀 [getAllProjectsTool] Starting execution");
 
-    try {
-      const authToken = runtimeContext?.get("authToken");
-      console.log("🔑 [DEBUG] Auth token extraction", {
-        tokenExists: !!authToken,
-        tokenLength: authToken ? authToken.length : 0,
-        tokenPreview: authToken ? authToken.substring(0, 20) + "..." : "none",
-      });
+    const authToken = runtimeContext?.get("authToken");
+    const sessionId = runtimeContext?.get("whatsappSession");
+    const userId = runtimeContext?.get("userId");
 
-      if (!authToken) {
-        console.error("❌ [ERROR] No auth token available", {
-          runtimeContext: !!runtimeContext,
-          keys: runtimeContext ? Array.from(runtimeContext.keys()) : [],
-        });
-        throw new Error("No auth token available");
-      }
-
-      const apiUrl = TODO_APP_BASE_URL;
-      console.log("🌐 [DEBUG] Making API call", {
-        url: `${apiUrl}/api/trpc/project.getAll`,
-        hasToken: !!authToken,
-      });
-
-      const response = await fetch(`${apiUrl}/api/trpc/project.getAll`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ [ERROR] API call failed", {
-          status: response.status,
-          statusText: response.statusText,
-          errorText,
-        });
-        throw new Error(`Failed to get all projects: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      console.log("✅ [SUCCESS] Projects retrieved", {
-        dataKeys: Object.keys(data),
-        hasResult: !!data.result,
-        projectsCount:
-          data.result?.data?.json?.length ||
-          data.result?.data?.length ||
-          data.length ||
-          0,
-        fullDataStructure:
-          JSON.stringify(data, null, 2).substring(0, 500) + "...",
-      });
-
-      // The API returns projects nested in result.data.json
-      const projects = Array.isArray(data)
-        ? data
-        : data.result?.data?.json ||
-          data.result?.data ||
-          data.result ||
-          data ||
-          [];
-
-      // Ensure projects is always an array
-      const projectsArray = Array.isArray(projects) ? projects : [];
-
-      // Extract includeAll from context (defaults to false)
-      const includeAll = context?.includeAll ?? false;
-
-      // Filter to ACTIVE projects unless includeAll is true
-      const filteredProjects = includeAll
-        ? projectsArray
-        : projectsArray.filter((project: any) => project.status === 'ACTIVE');
-
-      console.log("📊 [DEBUG] Projects data structure:", {
-        projectsIsArray: Array.isArray(projects),
-        totalProjects: projectsArray.length,
-        filteredProjects: filteredProjects.length,
-        includeAll,
-        filterApplied: !includeAll,
-        sampleProject: filteredProjects[0]
-          ? Object.keys(filteredProjects[0])
-          : "no projects",
-      });
-
-      const result = {
-        projects: filteredProjects.map((project: any) => ({
-          id: project.id,
-          name: project.name,
-          description: project.description,
-          status: project.status,
-          priority: project.priority,
-          createdAt: project.createdAt,
-          reviewDate: project.reviewDate,
-          nextActionDate: project.nextActionDate,
-          goals:
-            project.goals?.map((goal: any) => ({
-              id: goal.id,
-              title: goal.title,
-              description: goal.description,
-              dueDate: goal.dueDate,
-              lifeDomainId: goal.lifeDomainId,
-            })) || [],
-          outcomes:
-            project.outcomes?.map((outcome: any) => ({
-              id: outcome.id,
-              description: outcome.description,
-              type: outcome.type,
-              dueDate: outcome.dueDate,
-            })) || [],
-        })),
-        total: filteredProjects.length,
-        filtered: !includeAll,
-      };
-
-      console.log(
-        "🎉 [TOOL SUCCESS] getAllProjectsTool completed successfully",
-        {
-          projectCount: result.total,
-          firstProjectName: result.projects[0]?.name || "No projects",
-          timestamp: new Date().toISOString(),
-        }
-      );
-
-      return result;
-    } catch (error) {
-      console.error("💥 [TOOL ERROR] getAllProjectsTool failed", {
-        error: error instanceof Error ? error.message : "Unknown error",
-        stack: error instanceof Error ? error.stack : "No stack trace",
-        timestamp: new Date().toISOString(),
-        TODO_APP_BASE_URL,
-      });
-      throw error;
+    if (!authToken) {
+      console.error("❌ [getAllProjectsTool] No auth token available");
+      throw new Error("No auth token available");
     }
+
+    const { data } = await authenticatedTrpcQuery(
+      "project.getAll",
+      { authToken, sessionId, userId }
+    );
+
+    // The API returns projects nested in result.data.json
+    const projects = Array.isArray(data)
+      ? data
+      : data.json || data || [];
+
+    // Ensure projects is always an array
+    const projectsArray = Array.isArray(projects) ? projects : [];
+
+    // Extract includeAll from context (defaults to false)
+    const includeAll = context?.includeAll ?? false;
+
+    // Filter to ACTIVE projects unless includeAll is true
+    const filteredProjects = includeAll
+      ? projectsArray
+      : projectsArray.filter((project: any) => project.status === 'ACTIVE');
+
+    const result = {
+      projects: filteredProjects.map((project: any) => ({
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        status: project.status,
+        priority: project.priority,
+        createdAt: project.createdAt,
+        reviewDate: project.reviewDate,
+        nextActionDate: project.nextActionDate,
+        goals:
+          project.goals?.map((goal: any) => ({
+            id: goal.id,
+            title: goal.title,
+            description: goal.description,
+            dueDate: goal.dueDate,
+            lifeDomainId: goal.lifeDomainId,
+          })) || [],
+        outcomes:
+          project.outcomes?.map((outcome: any) => ({
+            id: outcome.id,
+            description: outcome.description,
+            type: outcome.type,
+            dueDate: outcome.dueDate,
+          })) || [],
+      })),
+      total: filteredProjects.length,
+      filtered: !includeAll,
+    };
+
+    console.log(`✅ [getAllProjectsTool] Retrieved ${result.total} projects`);
+    return result;
   },
 });
 
@@ -1435,92 +1234,35 @@ export const getMeetingTranscriptionsTool = createTool({
     const { projectId, startDate, endDate, participants, meetingType, limit, truncateTranscript, maxTranscriptLength } =
       context;
 
-    console.log("🔍 [MEETING TRANSCRIPTIONS DEBUG]", {
-      timestamp: new Date().toISOString(),
-      TODO_APP_BASE_URL,
-      context: { projectId, participants, limit, truncateTranscript, maxTranscriptLength },
-      runtimeContextKeys: runtimeContext
-        ? Array.from(runtimeContext.keys())
-        : "none",
-    });
+    console.log("🔍 [getMeetingTranscriptions] Starting execution");
 
     const authToken = runtimeContext?.get("authToken");
+    const sessionId = runtimeContext?.get("whatsappSession");
+    const userId = runtimeContext?.get("userId");
+
     if (!authToken) {
-      console.error("❌ [AUTH ERROR] No authentication token available");
+      console.error("❌ [getMeetingTranscriptions] No authentication token available");
       throw new Error("No authentication token available");
     }
 
-    console.log("🔑 [AUTH] Token available, length:", authToken.length);
+    const { data: result } = await authenticatedTrpcCall(
+      "mastra.getMeetingTranscriptions",
+      { projectId, startDate, endDate, participants, meetingType, limit },
+      { authToken, sessionId, userId }
+    );
 
-    const url = `${TODO_APP_BASE_URL}/api/trpc/mastra.getMeetingTranscriptions`;
-    console.log("🌐 [FETCH] Attempting to call:", url);
-
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          json: {
-            projectId,
-            startDate,
-            endDate,
-            participants,
-            meetingType,
-            limit,
-          },
-          meta: {},
-        }),
-      });
-
-      console.log("✅ [FETCH SUCCESS] Response received:", {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries()),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ [HTTP ERROR]", {
-          status: response.status,
-          statusText: response.statusText,
-          errorText,
-        });
-        throw new Error(
-          `Failed to get meeting transcriptions: ${response.statusText}`
-        );
-      }
-
-      const data = await response.json();
-      const result = data.result?.data || data;
-
-      // Truncate transcripts to prevent context overflow
-      if (truncateTranscript && result.transcriptions) {
-        result.transcriptions = result.transcriptions.map((t: any) => ({
-          ...t,
-          transcript: t.transcript && t.transcript.length > maxTranscriptLength
-            ? t.transcript.slice(0, maxTranscriptLength) + '...[truncated]'
-            : t.transcript,
-        }));
-      }
-
-      console.log("📊 [DATA SUCCESS] Response data:", {
-        keys: Object.keys(result),
-        transcriptionCount: result.transcriptions?.length,
-        truncated: truncateTranscript,
-      });
-      return result;
-    } catch (error) {
-      console.error("💥 [FETCH ERROR] Network/Connection error:", {
-        message: error.message,
-        name: error.name,
-        stack: error.stack?.split("\n").slice(0, 3),
-        url,
-      });
-      throw error;
+    // Truncate transcripts to prevent context overflow
+    if (truncateTranscript && result.transcriptions) {
+      result.transcriptions = result.transcriptions.map((t: any) => ({
+        ...t,
+        transcript: t.transcript && t.transcript.length > maxTranscriptLength
+          ? t.transcript.slice(0, maxTranscriptLength) + '...[truncated]'
+          : t.transcript,
+      }));
     }
+
+    console.log(`✅ [getMeetingTranscriptions] Retrieved ${result.transcriptions?.length || 0} transcriptions`);
+    return result;
   },
 });
 
@@ -1575,33 +1317,20 @@ export const queryMeetingContextTool = createTool({
   execute: async ({ context, runtimeContext }) => {
     const { query, projectId, dateRange, topK } = context;
     const authToken = runtimeContext?.get("authToken");
+    const sessionId = runtimeContext?.get("whatsappSession");
+    const userId = runtimeContext?.get("userId");
+
     if (!authToken) {
       throw new Error("No authentication token available");
     }
 
-    const response = await fetch(
-      `${TODO_APP_BASE_URL}/api/trpc/mastra.queryMeetingContext`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          json: { query, projectId, dateRange, topK },
-          meta: {},
-        }),
-      }
+    const { data } = await authenticatedTrpcCall(
+      "mastra.queryMeetingContext",
+      { query, projectId, dateRange, topK },
+      { authToken, sessionId, userId }
     );
 
-    if (!response.ok) {
-      throw new Error(
-        `Failed to query meeting context: ${response.statusText}`
-      );
-    }
-
-    const data = await response.json();
-    return data.result?.data || data;
+    return data;
   },
 });
 
@@ -1710,31 +1439,20 @@ export const getMeetingInsightsTool = createTool({
   execute: async ({ context, runtimeContext }) => {
     const { projectId, timeframe, startDate, endDate, insightTypes } = context;
     const authToken = runtimeContext?.get("authToken");
+    const sessionId = runtimeContext?.get("whatsappSession");
+    const userId = runtimeContext?.get("userId");
+
     if (!authToken) {
       throw new Error("No authentication token available");
     }
 
-    const response = await fetch(
-      `${TODO_APP_BASE_URL}/api/trpc/mastra.getMeetingInsights`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          json: { projectId, timeframe, startDate, endDate, insightTypes },
-          meta: {},
-        }),
-      }
+    const { data } = await authenticatedTrpcCall(
+      "mastra.getMeetingInsights",
+      { projectId, timeframe, startDate, endDate, insightTypes },
+      { authToken, sessionId, userId }
     );
 
-    if (!response.ok) {
-      throw new Error(`Failed to get meeting insights: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.result?.data || data;
+    return data;
   },
 });
 
@@ -1785,70 +1503,24 @@ export const getCalendarEventsTool = createTool({
   execute: async ({ context, runtimeContext }) => {
     const { timeframe, days, timeMin, timeMax } = context;
 
-    console.log("📅 [CALENDAR EVENTS DEBUG]", {
-      timestamp: new Date().toISOString(),
-      TODO_APP_BASE_URL,
-      context: { timeframe, days, timeMin, timeMax },
-      runtimeContextKeys: runtimeContext
-        ? Array.from(runtimeContext.keys())
-        : "none",
-    });
+    console.log("📅 [getCalendarEvents] Starting execution");
 
     const authToken = runtimeContext?.get("authToken");
+    const sessionId = runtimeContext?.get("whatsappSession");
+    const userId = runtimeContext?.get("userId");
+
     if (!authToken) {
-      console.error("❌ [AUTH ERROR] No authentication token available");
+      console.error("❌ [getCalendarEvents] No authentication token available");
       throw new Error("No authentication token available");
     }
 
-    console.log("🔑 [AUTH] Token available, length:", authToken.length);
+    const { data: result } = await authenticatedTrpcCall(
+      "mastra.getCalendarEvents",
+      { timeframe, days, timeMin, timeMax },
+      { authToken, sessionId, userId }
+    );
 
-    const url = `${TODO_APP_BASE_URL}/api/trpc/mastra.getCalendarEvents`;
-    console.log("🌐 [FETCH] Attempting to call:", url);
-
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({
-          json: { timeframe, days, timeMin, timeMax },
-          meta: {},
-        }),
-      });
-
-      console.log("✅ [FETCH SUCCESS] Response received:", {
-        status: response.status,
-        statusText: response.statusText,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ [HTTP ERROR]", {
-          status: response.status,
-          statusText: response.statusText,
-          errorText,
-        });
-        throw new Error(`Failed to get calendar events: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const result = data.result?.data || data;
-
-      console.log("📊 [DATA SUCCESS] Response data:", {
-        eventCount: result.events?.length,
-        calendarConnected: result.calendarConnected,
-      });
-
-      return result;
-    } catch (error: any) {
-      console.error("💥 [FETCH ERROR] Network/Connection error:", {
-        message: error.message,
-        name: error.name,
-        url,
-      });
-      throw error;
-    }
+    console.log(`✅ [getCalendarEvents] Retrieved ${result.events?.length || 0} events`);
+    return result;
   },
 });
