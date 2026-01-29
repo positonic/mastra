@@ -1,6 +1,9 @@
 import { openai } from '@ai-sdk/openai';
-// import { anthropic } from '@ai-sdk/anthropic'; // Disabled - API key issue
+import { anthropic } from '@ai-sdk/anthropic';
 import { Agent } from '@mastra/core/agent';
+
+// Export Zoe agent
+export { zoeAgent } from './zoe-agent.js';
 import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
