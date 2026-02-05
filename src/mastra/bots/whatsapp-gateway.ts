@@ -18,7 +18,7 @@ import QRCode from 'qrcode';
 import { createLogger } from '@mastra/core/logger';
 import { Boom } from '@hapi/boom';
 
-import { RuntimeContext } from '@mastra/core/di';
+import { RequestContext } from '@mastra/core/di';
 import {
   weatherAgent,
   pierreAgent,
@@ -889,9 +889,9 @@ export class WhatsAppGateway {
       let response;
       let authToken = session.lastAuthToken!;
 
-      // Helper to create runtime context with auth token
-      const createRuntimeContext = (token: string) => {
-        return new RuntimeContext([
+      // Helper to create request context with auth token
+      const createRequestContext = (token: string) => {
+        return new RequestContext([
           ['authToken', token],
           ['whatsappSession', session.id],
           ['whatsappPhone', session.phoneNumber || ''],
@@ -939,7 +939,7 @@ Example format for lists:
         // First attempt with current token
         response = await agent.generate(
           messages,
-          { runtimeContext: createRuntimeContext(authToken) }
+          { requestContext: createRequestContext(authToken) }
         );
       } catch (error) {
         // Check if this is an auth error
@@ -951,7 +951,7 @@ Example format for lists:
             // Retry with new token
             response = await agent.generate(
               messages,
-              { runtimeContext: createRuntimeContext(authToken) }
+              { requestContext: createRequestContext(authToken) }
             );
           } else {
             throw error; // Re-throw if refresh failed
