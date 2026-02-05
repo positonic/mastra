@@ -1,5 +1,5 @@
-import { openai } from '@ai-sdk/openai';
 import { anthropic } from '@ai-sdk/anthropic';
+import { wrapLanguageModel } from 'ai';
 import { Agent } from '@mastra/core/agent';
 import {
   getProjectContextTool,
@@ -154,10 +154,25 @@ You're the friend who remembers what they said they wanted and gently asks "hey,
 🔮
 `;
 
+// Wrap model to strip topP when temperature is set (Anthropic rejects both together,
+// and the Mastra playground sends both by default)
+const zoeModel = wrapLanguageModel({
+  model: anthropic('claude-sonnet-4-5-20250929'),
+  middleware: {
+    transformParams: async ({ params }) => {
+      if (params.temperature != null && params.topP != null) {
+        const { topP, ...rest } = params;
+        return rest;
+      }
+      return params;
+    },
+  },
+});
+
 export const zoeAgent = new Agent({
   name: 'Zoe',
   instructions: SOUL,
-  model: anthropic('claude-sonnet-4-5-20250929'),
+  model: zoeModel,
   defaultGenerateOptions: {
     temperature: 0.7,
   },
