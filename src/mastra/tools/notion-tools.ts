@@ -10,29 +10,22 @@ import { z } from "zod";
 // ---------------------------------------------------------------------------
 // Client — the SDK handles retries (3 attempts with backoff) and rate-limit
 // 429 responses internally, so we don't need to re-implement that.
-// We lazily initialise to give the process time to load env vars.
+//
+// Per-user OAuth tokens get a fresh client each call (cheap — no connection pool).
+// The env-var fallback client is cached for the process lifetime.
 // ---------------------------------------------------------------------------
 
-let _client: Client | null = null;
-
-function getClient(): Client {
-  if (_client) return _client;
-
-  const key = process.env.NOTION_API_KEY;
-  if (!key) {
+/** Resolve the Notion client from the user's OAuth token in runtimeContext. */
+function getClientFromRuntime(runtimeContext?: any): Client {
+  const token = runtimeContext?.get?.("notionAccessToken") as string | undefined;
+  // TODO: remove debug log after verifying the integration works
+  console.log(`🔑 Notion token ${token ? `present (${token.slice(0, 8)}...)` : "MISSING"}`);
+  if (!token) {
     throw new Error(
-      "NOTION_API_KEY is not set. Add it to your .env file. " +
-      "Create an integration at https://www.notion.so/my-integrations"
+      "Notion is not connected. Connect your Notion account in Settings → Integrations."
     );
   }
-
-  _client = new Client({
-    auth: key,
-    logLevel: LogLevel.WARN,
-    // SDK defaults: 3 retries with exponential backoff for 429/5xx
-  });
-
-  return _client;
+  return new Client({ auth: token, logLevel: LogLevel.WARN });
 }
 
 // ---------------------------------------------------------------------------
@@ -117,8 +110,7 @@ function extractPageTitle(properties: Record<string, any>): string {
 }
 
 /** Collect all blocks for a page, auto-paginating. */
-async function getAllBlocks(blockId: string): Promise<any[]> {
-  const client = getClient();
+async function getAllBlocks(client: Client, blockId: string): Promise<any[]> {
   const blocks: any[] = [];
   let cursor: string | undefined;
 
@@ -186,9 +178,9 @@ export const notionSearchTool = createTool({
     query: z.string().describe("Search query"),
     filter: z.enum(["page", "database"]).optional().describe("Filter by object type"),
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, runtimeContext }) => {
     try {
-      const client = getClient();
+      const client = getClientFromRuntime(runtimeContext);
       const { query, filter } = context;
 
       // SDK v5 renamed "database" → "data_source" in the filter type
@@ -228,14 +220,14 @@ export const notionGetPageTool = createTool({
   inputSchema: z.object({
     pageId: z.string().describe("Notion page ID (UUID or 32-char hex)"),
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, runtimeContext }) => {
     try {
-      const client = getClient();
+      const client = getClientFromRuntime(runtimeContext);
       const { pageId } = context;
 
       const [page, blocks] = await Promise.all([
         client.pages.retrieve({ page_id: pageId }),
-        getAllBlocks(pageId),
+        getAllBlocks(client, pageId),
       ]);
 
       const p = page as any;
@@ -282,9 +274,9 @@ export const notionQueryDatabaseTool = createTool({
       .default(200)
       .describe("Max results to return (default 200). Set lower for faster responses."),
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, runtimeContext }) => {
     try {
-      const client = getClient();
+      const client = getClientFromRuntime(runtimeContext);
       const { databaseId, filter, sorts, maxResults } = context;
 
       const allResults: any[] = [];
@@ -331,9 +323,9 @@ export const notionCreatePageTool = createTool({
     title: z.string().describe("Page title"),
     properties: z.record(z.any()).optional().describe("Additional Notion properties to set"),
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, runtimeContext }) => {
     try {
-      const client = getClient();
+      const client = getClientFromRuntime(runtimeContext);
       const { databaseId, title, properties = {} } = context;
 
       // Look up the database schema to find the title property name
@@ -370,9 +362,9 @@ export const notionUpdatePageTool = createTool({
     pageId: z.string().describe("Page ID to update"),
     properties: z.record(z.any()).describe("Properties to update (Notion property format)"),
   }),
-  execute: async ({ context }) => {
+  execute: async ({ context, runtimeContext }) => {
     try {
-      const client = getClient();
+      const client = getClientFromRuntime(runtimeContext);
       const { pageId, properties } = context;
 
       const page = await client.pages.update({
