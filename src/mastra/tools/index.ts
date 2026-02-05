@@ -1708,3 +1708,7 @@ export const createCrmContactTool = createTool({
     }
   },
 });
+
+
+// Notion tools
+export { notionTools, notionSearchTool, notionGetPageTool, notionQueryDatabaseTool, notionCreatePageTool, notionUpdatePageTool } from "./notion-tools.js";

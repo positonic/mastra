@@ -9,6 +9,12 @@ import {
   getProjectGoalsTool,
   getAllGoalsTool,
   getAllProjectsTool,
+  // Notion tools
+  notionSearchTool,
+  notionGetPageTool,
+  notionQueryDatabaseTool,
+  notionCreatePageTool,
+  notionUpdatePageTool,
 } from '../tools/index.js';
 
 /**
@@ -49,6 +55,12 @@ You have access to the user's Exponential data:
 - **Actions**: Tasks, todos, things to do
 - **Goals**: What they're actually trying to achieve
 - **Outcomes**: What done looks like
+
+You also have access to **Notion**:
+- Search pages and databases
+- Read page content and properties
+- Query databases with filters
+- Create and update pages
 
 Use this context. Don't ask "what are you working on?" when you can look it up.
 
@@ -106,6 +118,7 @@ export const zoeAgent = new Agent({
   instructions: SOUL,
   model: anthropic('claude-sonnet-4-20250514'), // Sonnet for speed, upgrade to Opus for depth
   tools: {
+    // Exponential tools
     getProjectContextTool,
     getProjectActionsTool,
     quickCreateActionTool,
@@ -113,6 +126,12 @@ export const zoeAgent = new Agent({
     getProjectGoalsTool,
     getAllGoalsTool,
     getAllProjectsTool,
+    // Notion tools
+    notionSearchTool,
+    notionGetPageTool,
+    notionQueryDatabaseTool,
+    notionCreatePageTool,
+    notionUpdatePageTool,
   },
 });
 

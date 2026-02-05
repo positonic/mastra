@@ -1,6 +1,6 @@
 import { Mastra } from '@mastra/core/mastra';
 import { createLogger } from '@mastra/core/logger';
-import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent } from './agents';
+import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent, zoeAgent } from './agents';
 import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js';
 import { createWhatsAppGateway, cleanupWhatsAppGateway } from './bots/whatsapp-gateway.js';
 import { initSentry, captureException, flushSentry } from './utils/sentry.js';
@@ -14,7 +14,7 @@ const logger = createLogger({
 });
 
 export const mastra = new Mastra({
-  agents: { weatherAgent, ashAgent, pierreAgent, projectManagerAgent },
+  agents: { zoeAgent, weatherAgent, ashAgent, pierreAgent, projectManagerAgent },
   logger,
   server: {
     port: parseInt(process.env.PORT || '4111', 10),
