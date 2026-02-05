@@ -113,8 +113,8 @@ export const binancePriceTool = createTool({
     price: z.number(),
     priceString: z.string(),
   }),
-  execute: async ({ context }) => {
-    return await getBinancePrice(context.symbol);
+  execute: async (inputData) => {
+    return await getBinancePrice(inputData.symbol);
   },
 });
 
@@ -217,8 +217,8 @@ export const binanceCandlestickTool = createTool({
       }),
     }),
   }),
-  execute: async ({ context }) => {
-    return await getCandlestickAnalysis(context.symbol);
+  execute: async (inputData) => {
+    return await getCandlestickAnalysis(inputData.symbol);
   },
 });
 
@@ -305,8 +305,8 @@ export const pierreTradingQueryTool = createTool({
       })
     ),
   }),
-  execute: async ({ context }) => {
-    return await queryPierreTradingSystem(context.query);
+  execute: async (inputData) => {
+    return await queryPierreTradingSystem(inputData.query);
   },
 });
 
@@ -358,8 +358,8 @@ export const weatherTool = createTool({
     conditions: z.string(),
     location: z.string(),
   }),
-  execute: async ({ context }) => {
-    return await getWeather(context.location);
+  execute: async (inputData) => {
+    return await getWeather(inputData.location);
   },
 });
 
@@ -491,11 +491,11 @@ export const getProjectContextTool = createTool({
       })
     ),
   }),
-  async execute({ context, runtimeContext }) {
-    const { projectId } = context;
-    const authToken = runtimeContext?.get("authToken");
-    const sessionId = runtimeContext?.get("whatsappSession");
-    const userId = runtimeContext?.get("userId");
+  async execute(inputData, { requestContext }) {
+    const { projectId } = inputData;
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
 
     if (!authToken) {
       throw new Error("No authentication token available");
@@ -539,11 +539,11 @@ export const getProjectActionsTool = createTool({
       })
     ),
   }),
-  async execute({ context, runtimeContext }) {
-    const { projectId, status } = context;
-    const authToken = runtimeContext?.get("authToken");
-    const sessionId = runtimeContext?.get("whatsappSession");
-    const userId = runtimeContext?.get("userId");
+  async execute(inputData, { requestContext }) {
+    const { projectId, status } = inputData;
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
 
     if (!authToken) {
       throw new Error("No authentication token available");
@@ -586,11 +586,11 @@ export const createProjectActionTool = createTool({
       projectId: z.string(),
     }),
   }),
-  async execute({ context, runtimeContext }) {
-    const { projectId, name, description, priority, dueDate } = context;
-    const authToken = runtimeContext?.get("authToken");
-    const sessionId = runtimeContext?.get("whatsappSession");
-    const userId = runtimeContext?.get("userId");
+  async execute(inputData, { requestContext }) {
+    const { projectId, name, description, priority, dueDate } = inputData;
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
 
     if (!authToken) {
       throw new Error("No authentication token available");
@@ -646,22 +646,22 @@ export const quickCreateActionTool = createTool({
       })
       .optional(),
   }),
-  async execute({ context, runtimeContext }) {
-    const authToken = runtimeContext?.get("authToken");
-    const sessionId = runtimeContext?.get("whatsappSession");
-    const userId = runtimeContext?.get("userId");
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
 
     if (!authToken) {
       throw new Error("No authentication token available");
     }
 
     console.log(
-      `🎯 [quickCreateAction] Creating action from text: "${context.text}"`
+      `🎯 [quickCreateAction] Creating action from text: "${inputData.text}"`
     );
 
     const { data: result } = await authenticatedTrpcCall(
       "mastra.quickCreateAction",
-      { text: context.text },
+      { text: inputData.text },
       { authToken, sessionId, userId }
     );
 
@@ -712,7 +712,7 @@ export const updateProjectStatusTool = createTool({
       nextActionDate: z.string().optional(),
     }),
   }),
-  async execute({ context, runtimeContext }) {
+  async execute(inputData, { requestContext }) {
     const {
       projectId,
       status,
@@ -720,10 +720,10 @@ export const updateProjectStatusTool = createTool({
       progress,
       reviewDate,
       nextActionDate,
-    } = context;
-    const authToken = runtimeContext?.get("authToken");
-    const sessionId = runtimeContext?.get("whatsappSession");
-    const userId = runtimeContext?.get("userId");
+    } = inputData;
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
 
     if (!authToken) {
       throw new Error("No authentication token available");
@@ -760,11 +760,11 @@ export const getProjectGoalsTool = createTool({
       })
     ),
   }),
-  async execute({ context, runtimeContext }) {
-    const { projectId } = context;
-    const authToken = runtimeContext?.get("authToken");
-    const sessionId = runtimeContext?.get("whatsappSession");
-    const userId = runtimeContext?.get("userId");
+  async execute(inputData, { requestContext }) {
+    const { projectId } = inputData;
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
 
     if (!authToken) {
       throw new Error("No authentication token available");
@@ -817,12 +817,12 @@ export const getAllGoalsTool = createTool({
     ),
     total: z.number(),
   }),
-  execute: async ({ context, runtimeContext }) => {
+  execute: async (inputData, { requestContext }) => {
     console.log("🔍 [DEBUG] getAllGoalsTool execution started");
 
-    const authToken = runtimeContext?.get("authToken");
-    const sessionId = runtimeContext?.get("whatsappSession");
-    const userId = runtimeContext?.get("userId");
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
 
     if (!authToken) {
       console.error("❌ [ERROR] No auth token available");
@@ -883,12 +883,12 @@ export const getAllProjectsTool = createTool({
     total: z.number(),
     filtered: z.boolean().describe("True if results were filtered to ACTIVE projects only"),
   }),
-  async execute({ context, runtimeContext }) {
+  async execute(inputData, { requestContext }) {
     console.log("🚀 [getAllProjectsTool] Starting execution");
 
-    const authToken = runtimeContext?.get("authToken");
-    const sessionId = runtimeContext?.get("whatsappSession");
-    const userId = runtimeContext?.get("userId");
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
 
     if (!authToken) {
       console.error("❌ [getAllProjectsTool] No auth token available");
@@ -908,8 +908,8 @@ export const getAllProjectsTool = createTool({
     // Ensure projects is always an array
     const projectsArray = Array.isArray(projects) ? projects : [];
 
-    // Extract includeAll from context (defaults to false)
-    const includeAll = context?.includeAll ?? false;
+    // Extract includeAll from inputData (defaults to false)
+    const includeAll = inputData?.includeAll ?? false;
 
     // Filter to ACTIVE projects unless includeAll is true
     const filteredProjects = includeAll
@@ -1055,8 +1055,8 @@ export const sendSlackMessageTool = createTool({
       })
       .optional(),
   }),
-  execute: async ({ context }) => {
-    const { channel, text, blocks } = context;
+  execute: async (inputData) => {
+    const { channel, text, blocks } = inputData;
     try {
       const result = await slackClient.chat.postMessage({
         channel,
@@ -1103,8 +1103,8 @@ export const updateSlackMessageTool = createTool({
     ts: z.string(),
     text: z.string(),
   }),
-  execute: async ({ context }) => {
-    const { channel, ts, text, blocks } = context;
+  execute: async (inputData) => {
+    const { channel, ts, text, blocks } = inputData;
     try {
       const result = await slackClient.chat.update({
         channel,
@@ -1150,8 +1150,8 @@ export const getSlackUserInfoTool = createTool({
       })
       .optional(),
   }),
-  execute: async ({ context }) => {
-    const { user } = context;
+  execute: async (inputData) => {
+    const { user } = inputData;
     try {
       const result = await slackClient.users.info({ user });
 
@@ -1231,15 +1231,15 @@ export const getMeetingTranscriptionsTool = createTool({
     ),
     total: z.number(),
   }),
-  execute: async ({ context, runtimeContext }) => {
+  execute: async (inputData, { requestContext }) => {
     const { projectId, startDate, endDate, participants, meetingType, limit, truncateTranscript, maxTranscriptLength } =
-      context;
+      inputData;
 
     console.log("🔍 [getMeetingTranscriptions] Starting execution");
 
-    const authToken = runtimeContext?.get("authToken");
-    const sessionId = runtimeContext?.get("whatsappSession");
-    const userId = runtimeContext?.get("userId");
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
 
     if (!authToken) {
       console.error("❌ [getMeetingTranscriptions] No authentication token available");
@@ -1315,11 +1315,11 @@ export const queryMeetingContextTool = createTool({
       })
     ),
   }),
-  execute: async ({ context, runtimeContext }) => {
-    const { query, projectId, dateRange, topK } = context;
-    const authToken = runtimeContext?.get("authToken");
-    const sessionId = runtimeContext?.get("whatsappSession");
-    const userId = runtimeContext?.get("userId");
+  execute: async (inputData, { requestContext }) => {
+    const { query, projectId, dateRange, topK } = inputData;
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
 
     if (!authToken) {
       throw new Error("No authentication token available");
@@ -1437,11 +1437,11 @@ export const getMeetingInsightsTool = createTool({
       activeBlockers: z.number(),
     }),
   }),
-  execute: async ({ context, runtimeContext }) => {
-    const { projectId, timeframe, startDate, endDate, insightTypes } = context;
-    const authToken = runtimeContext?.get("authToken");
-    const sessionId = runtimeContext?.get("whatsappSession");
-    const userId = runtimeContext?.get("userId");
+  execute: async (inputData, { requestContext }) => {
+    const { projectId, timeframe, startDate, endDate, insightTypes } = inputData;
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
 
     if (!authToken) {
       throw new Error("No authentication token available");
@@ -1501,14 +1501,14 @@ export const getCalendarEventsTool = createTool({
     calendarConnected: z.boolean(),
     error: z.string().optional(),
   }),
-  execute: async ({ context, runtimeContext }) => {
-    const { timeframe, days, timeMin, timeMax } = context;
+  execute: async (inputData, { requestContext }) => {
+    const { timeframe, days, timeMin, timeMax } = inputData;
 
     console.log("📅 [getCalendarEvents] Starting execution");
 
-    const authToken = runtimeContext?.get("authToken");
-    const sessionId = runtimeContext?.get("whatsappSession");
-    const userId = runtimeContext?.get("userId");
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
 
     if (!authToken) {
       console.error("❌ [getCalendarEvents] No authentication token available");
@@ -1545,14 +1545,14 @@ export const lookupContactByEmailTool = createTool({
       })
       .optional(),
   }),
-  execute: async ({ context, runtimeContext }) => {
-    const { email } = context;
+  execute: async (inputData, { requestContext }) => {
+    const { email } = inputData;
 
     console.log(`🔍 [lookupContactByEmail] Looking up contact for: ${email}`);
 
-    const authToken = runtimeContext?.get("authToken");
-    const sessionId = runtimeContext?.get("whatsappSession");
-    const userId = runtimeContext?.get("userId");
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
 
     if (!authToken) {
       console.error("❌ [lookupContactByEmail] No authentication token available");
@@ -1605,9 +1605,9 @@ export const getWhatsAppContextTool = createTool({
       .optional(),
     error: z.string().optional(),
   }),
-  execute: async ({ context, runtimeContext }) => {
-    const { phoneNumber, contactName, limit } = context;
-    const sessionId = runtimeContext?.get("whatsappSession");
+  execute: async (inputData, { requestContext }) => {
+    const { phoneNumber, contactName, limit } = inputData;
+    const sessionId = requestContext?.get("whatsappSession");
 
     console.log(
       `📱 [getWhatsAppContext] Fetching messages with ${contactName} (${phoneNumber})`
@@ -1663,14 +1663,14 @@ export const createCrmContactTool = createTool({
     contactId: z.string().optional(),
     error: z.string().optional(),
   }),
-  execute: async ({ context, runtimeContext }) => {
-    const { email, phone, firstName, lastName } = context;
+  execute: async (inputData, { requestContext }) => {
+    const { email, phone, firstName, lastName } = inputData;
 
     console.log(`💾 [createCrmContact] Saving contact: ${firstName} ${lastName} (${email}, ${phone})`);
 
-    const authToken = runtimeContext?.get("authToken");
-    const sessionId = runtimeContext?.get("whatsappSession");
-    const userId = runtimeContext?.get("userId");
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
 
     if (!authToken) {
       console.error("❌ [createCrmContact] No authentication token available");

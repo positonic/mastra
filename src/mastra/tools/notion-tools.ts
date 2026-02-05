@@ -15,9 +15,9 @@ import { z } from "zod";
 // The env-var fallback client is cached for the process lifetime.
 // ---------------------------------------------------------------------------
 
-/** Resolve the Notion client from the user's OAuth token in runtimeContext. */
-function getClientFromRuntime(runtimeContext?: any): Client {
-  const token = runtimeContext?.get?.("notionAccessToken") as string | undefined;
+/** Resolve the Notion client from the user's OAuth token in requestContext. */
+function getClientFromRuntime(requestContext?: any): Client {
+  const token = requestContext?.get?.("notionAccessToken") as string | undefined;
   // TODO: remove debug log after verifying the integration works
   console.log(`🔑 Notion token ${token ? `present (${token.slice(0, 8)}...)` : "MISSING"}`);
   if (!token) {
@@ -178,10 +178,10 @@ export const notionSearchTool = createTool({
     query: z.string().describe("Search query"),
     filter: z.enum(["page", "database"]).optional().describe("Filter by object type"),
   }),
-  execute: async ({ context, runtimeContext }) => {
+  execute: async (inputData, { requestContext }) => {
     try {
-      const client = getClientFromRuntime(runtimeContext);
-      const { query, filter } = context;
+      const client = getClientFromRuntime(requestContext);
+      const { query, filter } = inputData;
 
       // SDK v5 renamed "database" → "data_source" in the filter type
       const body: Parameters<typeof client.search>[0] = { query };
@@ -220,10 +220,10 @@ export const notionGetPageTool = createTool({
   inputSchema: z.object({
     pageId: z.string().describe("Notion page ID (UUID or 32-char hex)"),
   }),
-  execute: async ({ context, runtimeContext }) => {
+  execute: async (inputData, { requestContext }) => {
     try {
-      const client = getClientFromRuntime(runtimeContext);
-      const { pageId } = context;
+      const client = getClientFromRuntime(requestContext);
+      const { pageId } = inputData;
 
       const [page, blocks] = await Promise.all([
         client.pages.retrieve({ page_id: pageId }),
@@ -274,10 +274,10 @@ export const notionQueryDatabaseTool = createTool({
       .default(200)
       .describe("Max results to return (default 200). Set lower for faster responses."),
   }),
-  execute: async ({ context, runtimeContext }) => {
+  execute: async (inputData, { requestContext }) => {
     try {
-      const client = getClientFromRuntime(runtimeContext);
-      const { databaseId, filter, sorts, maxResults } = context;
+      const client = getClientFromRuntime(requestContext);
+      const { databaseId, filter, sorts, maxResults = 200 } = inputData;
 
       const allResults: any[] = [];
       let cursor: string | undefined;
@@ -323,10 +323,10 @@ export const notionCreatePageTool = createTool({
     title: z.string().describe("Page title"),
     properties: z.record(z.any()).optional().describe("Additional Notion properties to set"),
   }),
-  execute: async ({ context, runtimeContext }) => {
+  execute: async (inputData, { requestContext }) => {
     try {
-      const client = getClientFromRuntime(runtimeContext);
-      const { databaseId, title, properties = {} } = context;
+      const client = getClientFromRuntime(requestContext);
+      const { databaseId, title, properties = {} } = inputData;
 
       // Look up the database schema to find the title property name
       const db = await client.databases.retrieve({ database_id: databaseId });
@@ -362,10 +362,10 @@ export const notionUpdatePageTool = createTool({
     pageId: z.string().describe("Page ID to update"),
     properties: z.record(z.any()).describe("Properties to update (Notion property format)"),
   }),
-  execute: async ({ context, runtimeContext }) => {
+  execute: async (inputData, { requestContext }) => {
     try {
-      const client = getClientFromRuntime(runtimeContext);
-      const { pageId, properties } = context;
+      const client = getClientFromRuntime(requestContext);
+      const { pageId, properties } = inputData;
 
       const page = await client.pages.update({
         page_id: pageId,

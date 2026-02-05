@@ -1,6 +1,7 @@
 import { anthropic } from '@ai-sdk/anthropic';
 import { wrapLanguageModel } from 'ai';
 import { Agent } from '@mastra/core/agent';
+import { memory } from '../memory/index.js';
 import {
   getProjectContextTool,
   getProjectActionsTool,
@@ -173,6 +174,7 @@ export const zoeAgent = new Agent({
   name: 'Zoe',
   instructions: SOUL,
   model: zoeModel,
+  memory,
   defaultGenerateOptions: {
     temperature: 0.7,
   },
