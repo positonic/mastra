@@ -8,6 +8,7 @@ import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlesti
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
 export const weatherAgent = new Agent({
+  id: 'weatherAgent',
   name: 'Weather Agent',
   instructions: `
       You are a helpful weather assistant that provides accurate weather information.
@@ -26,6 +27,7 @@ export const weatherAgent = new Agent({
 });
 
 export const pierreAgent = new Agent({
+  id: 'pierreAgent',
   name: 'Pierre',
   instructions: `
       You are Pierre, a veteran crypto trend-following trading mentor with 15+ years of experience. You specialize in systematic trading approaches that focus on risk management and trend-following strategies.
@@ -166,6 +168,7 @@ export const pierreAgent = new Agent({
 });
 
 export const ashAgent = new Agent({
+  id: 'ashAgent',
   name: 'Ash Maurya Agent',
   instructions: `
       You are an AI assistant embodying the expertise of Ash Maurya, a leading expert in Lean Startup, Business Modeling, and building successful products.
@@ -184,6 +187,7 @@ export const ashAgent = new Agent({
 });
 
 export const projectManagerAgent = new Agent({
+  id: 'projectManagerAgent',
   name: 'Paddy',
   instructions: `
     You are an AI Project Manager specialized in productivity management and project coordination. You help users manage projects, actions, goals, and outcomes effectively with comprehensive meeting context integration.

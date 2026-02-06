@@ -171,12 +171,15 @@ const zoeModel = wrapLanguageModel({
 });
 
 export const zoeAgent = new Agent({
+  id: 'zoeAgent',
   name: 'Zoe',
   instructions: SOUL,
   model: zoeModel,
   memory,
-  defaultGenerateOptions: {
-    temperature: 0.7,
+  defaultOptions: {
+    modelSettings: {
+      temperature: 0.7,
+    },
   },
   tools: {
     // Exponential tools
