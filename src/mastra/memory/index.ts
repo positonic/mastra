@@ -9,11 +9,12 @@ export const memory = new Memory({
   options: {
     observationalMemory: {
       scope: 'resource',
+      model: 'openai/gpt-4o-mini',
       observation: {
-        messageTokens: 1_000, // Low threshold for testing (default: 30_000)
+        messageTokens: 30_000,
       },
       reflection: {
-        observationTokens: 2_000, // Low threshold for testing (default: 40_000)
+        observationTokens: 40_000,
       },
     },
   },
