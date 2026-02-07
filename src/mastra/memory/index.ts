@@ -5,6 +5,7 @@ export const memory = new Memory({
   storage: new PostgresStore({
     id: 'memory',
     connectionString: process.env.DATABASE_URL!,
+    schemaName: 'mastra',
   }),
   options: {
     observationalMemory: {
