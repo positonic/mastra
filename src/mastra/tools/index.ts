@@ -889,14 +889,21 @@ export const getAllProjectsTool = createTool({
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
+    const workspaceId = requestContext?.get("workspaceId");
 
     if (!authToken) {
       console.error("❌ [getAllProjectsTool] No auth token available");
       throw new Error("No auth token available");
     }
 
+    // Pass workspaceId to filter projects to current workspace
+    const queryInput = workspaceId ? { json: { workspaceId } } : undefined;
+    const endpoint = queryInput
+      ? `project.getAll?input=${encodeURIComponent(JSON.stringify(queryInput))}`
+      : "project.getAll";
+
     const { data } = await authenticatedTrpcQuery(
-      "project.getAll",
+      endpoint,
       { authToken, sessionId, userId }
     );
 
