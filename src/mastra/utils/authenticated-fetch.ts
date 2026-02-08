@@ -158,7 +158,11 @@ export async function authenticatedTrpcCall<T>(
   });
 
   // tRPC responses can have different structures
-  const data = result.data.result?.data || result.data.json || (result.data as T);
+  const rawData = result.data.result?.data || result.data.json || result.data;
+  // Unwrap superjson { json, meta } wrapper if present
+  const data = (rawData && typeof rawData === 'object' && 'json' in rawData && (rawData as any).json !== undefined)
+    ? (rawData as any).json as T
+    : rawData as T;
 
   return {
     data,
@@ -186,7 +190,11 @@ export async function authenticatedTrpcQuery<T>(
   });
 
   // tRPC responses can have different structures
-  const data = result.data.result?.data || result.data.json || (result.data as T);
+  const rawData = result.data.result?.data || result.data.json || result.data;
+  // Unwrap superjson { json, meta } wrapper if present
+  const data = (rawData && typeof rawData === 'object' && 'json' in rawData && (rawData as any).json !== undefined)
+    ? (rawData as any).json as T
+    : rawData as T;
 
   return {
     data,

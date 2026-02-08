@@ -1566,15 +1566,11 @@ export const getTodayCalendarEventsTool = createTool({
       throw new Error("No authentication token available");
     }
 
-    const { data, error } = await authenticatedTrpcCall(
+    const { data } = await authenticatedTrpcCall(
       "mastra.getTodayCalendarEvents",
       {},
       { authToken, sessionId, userId }
     );
-
-    if (error) {
-      throw new Error(`Failed to fetch today's events: ${error}`);
-    }
 
     return { events: data.events, date: data.date };
   },
@@ -1612,15 +1608,11 @@ export const getUpcomingCalendarEventsTool = createTool({
       throw new Error("No authentication token available");
     }
 
-    const { data, error } = await authenticatedTrpcCall(
+    const { data } = await authenticatedTrpcCall(
       "mastra.getUpcomingCalendarEvents",
       { days: inputData.days },
       { authToken, sessionId, userId }
     );
-
-    if (error) {
-      throw new Error(`Failed to fetch upcoming events: ${error}`);
-    }
 
     return { events: data.events, days: data.days };
   },
@@ -1663,7 +1655,7 @@ export const getCalendarEventsInRangeTool = createTool({
       throw new Error("No authentication token available");
     }
 
-    const { data, error } = await authenticatedTrpcCall(
+    const { data } = await authenticatedTrpcCall(
       "mastra.getCalendarEventsInRange",
       {
         timeMin: inputData.timeMin,
@@ -1672,10 +1664,6 @@ export const getCalendarEventsInRangeTool = createTool({
       },
       { authToken, sessionId, userId }
     );
-
-    if (error) {
-      throw new Error(`Failed to fetch calendar events: ${error}`);
-    }
 
     return { events: data.events };
   },
@@ -1719,7 +1707,7 @@ export const findAvailableTimeSlotsTool = createTool({
     const endOfDay = new Date(dateObj);
     endOfDay.setHours(inputData.endHour, 0, 0, 0);
 
-    const { data, error } = await authenticatedTrpcCall(
+    const { data } = await authenticatedTrpcCall(
       "mastra.getCalendarEventsInRange",
       {
         timeMin: startOfDay.toISOString(),
@@ -1727,10 +1715,6 @@ export const findAvailableTimeSlotsTool = createTool({
       },
       { authToken, sessionId, userId }
     );
-
-    if (error) {
-      throw new Error(`Failed to fetch calendar events: ${error}`);
-    }
 
     // Sort events by start time
     const events = data.events
@@ -1812,7 +1796,7 @@ export const createCalendarEventTool = createTool({
       throw new Error("No authentication token available");
     }
 
-    const { data, error } = await authenticatedTrpcCall(
+    const { data } = await authenticatedTrpcCall(
       "mastra.createCalendarEvent",
       {
         summary: inputData.summary,
@@ -1829,10 +1813,6 @@ export const createCalendarEventTool = createTool({
       },
       { authToken, sessionId, userId }
     );
-
-    if (error) {
-      throw new Error(`Failed to create calendar event: ${error}`);
-    }
 
     return { event: data.event, provider: data.provider };
   },
@@ -1862,15 +1842,11 @@ export const checkCalendarConnectionTool = createTool({
       throw new Error("No authentication token available");
     }
 
-    const { data, error } = await authenticatedTrpcCall(
+    const { data } = await authenticatedTrpcCall(
       "mastra.getAllCalendarConnectionStatus",
       {},
       { authToken, sessionId, userId }
     );
-
-    if (error) {
-      throw new Error(`Failed to check calendar connection: ${error}`);
-    }
 
     return data;
   },
