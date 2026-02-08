@@ -1533,6 +1533,349 @@ export const getCalendarEventsTool = createTool({
   },
 });
 
+// ==================== ENHANCED CALENDAR TOOLS ====================
+
+export const getTodayCalendarEventsTool = createTool({
+  id: "get-today-calendar-events",
+  description: "Get all calendar events for today from all connected providers (Google + Microsoft). Quick way to see today's schedule.",
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    events: z.array(z.object({
+      id: z.string(),
+      summary: z.string(),
+      start: z.object({
+        dateTime: z.string().optional(),
+        date: z.string().optional(),
+      }),
+      end: z.object({
+        dateTime: z.string().optional(),
+        date: z.string().optional(),
+      }),
+      location: z.string().optional(),
+      attendees: z.array(z.any()).optional(),
+      provider: z.enum(['google', 'microsoft']).optional(),
+    })),
+    date: z.string(),
+  }),
+  execute: async (_inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
+
+    if (!authToken) {
+      throw new Error("No authentication token available");
+    }
+
+    const { data, error } = await authenticatedTrpcCall(
+      "mastra.getTodayCalendarEvents",
+      {},
+      { authToken, sessionId, userId }
+    );
+
+    if (error) {
+      throw new Error(`Failed to fetch today's events: ${error}`);
+    }
+
+    return { events: data.events, date: data.date };
+  },
+});
+
+export const getUpcomingCalendarEventsTool = createTool({
+  id: "get-upcoming-calendar-events",
+  description: "Get upcoming calendar events for the next N days (default 7) from all connected providers. Useful for weekly planning.",
+  inputSchema: z.object({
+    days: z.number().min(1).max(30).default(7).describe("Number of days to look ahead (1-30)"),
+  }),
+  outputSchema: z.object({
+    events: z.array(z.object({
+      id: z.string(),
+      summary: z.string(),
+      start: z.object({
+        dateTime: z.string().optional(),
+        date: z.string().optional(),
+      }),
+      end: z.object({
+        dateTime: z.string().optional(),
+        date: z.string().optional(),
+      }),
+      location: z.string().optional(),
+      provider: z.enum(['google', 'microsoft']).optional(),
+    })),
+    days: z.number(),
+  }),
+  execute: async (inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
+
+    if (!authToken) {
+      throw new Error("No authentication token available");
+    }
+
+    const { data, error } = await authenticatedTrpcCall(
+      "mastra.getUpcomingCalendarEvents",
+      { days: inputData.days },
+      { authToken, sessionId, userId }
+    );
+
+    if (error) {
+      throw new Error(`Failed to fetch upcoming events: ${error}`);
+    }
+
+    return { events: data.events, days: data.days };
+  },
+});
+
+export const getCalendarEventsInRangeTool = createTool({
+  id: "get-calendar-events-in-range",
+  description: "Get calendar events within a specific date range from all connected providers (Google + Microsoft). Use this to see what's scheduled in a custom time period.",
+  inputSchema: z.object({
+    timeMin: z.string().describe("Start date/time in ISO 8601 format (e.g., '2024-02-12T00:00:00Z')"),
+    timeMax: z.string().describe("End date/time in ISO 8601 format (e.g., '2024-02-12T23:59:59Z')"),
+    provider: z.enum(['google', 'microsoft']).optional().describe("Optional: filter to specific provider"),
+  }),
+  outputSchema: z.object({
+    events: z.array(z.object({
+      id: z.string(),
+      summary: z.string(),
+      description: z.string().optional(),
+      start: z.object({
+        dateTime: z.string().optional(),
+        date: z.string().optional(),
+      }),
+      end: z.object({
+        dateTime: z.string().optional(),
+        date: z.string().optional(),
+      }),
+      location: z.string().optional(),
+      attendees: z.array(z.any()).optional(),
+      calendarId: z.string().optional(),
+      calendarName: z.string().optional(),
+      provider: z.enum(['google', 'microsoft']).optional(),
+    })),
+  }),
+  execute: async (inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
+
+    if (!authToken) {
+      throw new Error("No authentication token available");
+    }
+
+    const { data, error } = await authenticatedTrpcCall(
+      "mastra.getCalendarEventsInRange",
+      {
+        timeMin: inputData.timeMin,
+        timeMax: inputData.timeMax,
+        provider: inputData.provider,
+      },
+      { authToken, sessionId, userId }
+    );
+
+    if (error) {
+      throw new Error(`Failed to fetch calendar events: ${error}`);
+    }
+
+    return { events: data.events };
+  },
+});
+
+export const findAvailableTimeSlotsTool = createTool({
+  id: "find-available-time-slots",
+  description: "Find available time slots in the user's calendar. Useful for scheduling new events. Specify date and work hours, returns free slots.",
+  inputSchema: z.object({
+    date: z.string().describe("Date to check in YYYY-MM-DD format"),
+    startHour: z.number().min(0).max(23).default(9).describe("Start of work day (hour, 0-23)"),
+    endHour: z.number().min(0).max(23).default(17).describe("End of work day (hour, 0-23)"),
+    slotDurationMinutes: z.number().default(30).describe("Desired slot duration in minutes"),
+  }),
+  outputSchema: z.object({
+    availableSlots: z.array(z.object({
+      start: z.string(),
+      end: z.string(),
+      durationMinutes: z.number(),
+    })),
+    busySlots: z.array(z.object({
+      start: z.string(),
+      end: z.string(),
+      summary: z.string(),
+    })),
+  }),
+  execute: async (inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
+
+    if (!authToken) {
+      throw new Error("No authentication token available");
+    }
+
+    // Get events for the specified date
+    const dateObj = new Date(inputData.date);
+    const startOfDay = new Date(dateObj);
+    startOfDay.setHours(inputData.startHour, 0, 0, 0);
+
+    const endOfDay = new Date(dateObj);
+    endOfDay.setHours(inputData.endHour, 0, 0, 0);
+
+    const { data, error } = await authenticatedTrpcCall(
+      "mastra.getCalendarEventsInRange",
+      {
+        timeMin: startOfDay.toISOString(),
+        timeMax: endOfDay.toISOString(),
+      },
+      { authToken, sessionId, userId }
+    );
+
+    if (error) {
+      throw new Error(`Failed to fetch calendar events: ${error}`);
+    }
+
+    // Sort events by start time
+    const events = data.events
+      .filter((e: any) => e.start?.dateTime) // Only time-based events
+      .sort((a: any, b: any) =>
+        new Date(a.start.dateTime).getTime() - new Date(b.start.dateTime).getTime()
+      );
+
+    // Find gaps between events
+    const availableSlots = [];
+    const busySlots = events.map((e: any) => ({
+      start: e.start.dateTime,
+      end: e.end.dateTime,
+      summary: e.summary,
+    }));
+
+    let currentTime = startOfDay;
+
+    for (const event of events) {
+      const eventStart = new Date(event.start.dateTime);
+      const eventEnd = new Date(event.end.dateTime);
+
+      // Check gap before this event
+      const gapMinutes = (eventStart.getTime() - currentTime.getTime()) / 60000;
+      if (gapMinutes >= inputData.slotDurationMinutes) {
+        availableSlots.push({
+          start: currentTime.toISOString(),
+          end: eventStart.toISOString(),
+          durationMinutes: Math.floor(gapMinutes),
+        });
+      }
+
+      currentTime = eventEnd > currentTime ? eventEnd : currentTime;
+    }
+
+    // Check gap after last event
+    const finalGapMinutes = (endOfDay.getTime() - currentTime.getTime()) / 60000;
+    if (finalGapMinutes >= inputData.slotDurationMinutes) {
+      availableSlots.push({
+        start: currentTime.toISOString(),
+        end: endOfDay.toISOString(),
+        durationMinutes: Math.floor(finalGapMinutes),
+      });
+    }
+
+    return { availableSlots, busySlots };
+  },
+});
+
+export const createCalendarEventTool = createTool({
+  id: "create-calendar-event",
+  description: "Create a new calendar event. CRITICAL: ALWAYS require explicit user confirmation before calling this tool. Never create events autonomously.",
+  inputSchema: z.object({
+    summary: z.string().describe("Event title/summary"),
+    description: z.string().optional().describe("Event description"),
+    startDateTime: z.string().describe("Start date/time in ISO 8601 format"),
+    endDateTime: z.string().describe("End date/time in ISO 8601 format"),
+    location: z.string().optional().describe("Event location"),
+    attendees: z.array(z.object({
+      email: z.string().email(),
+      displayName: z.string().optional(),
+    })).optional().describe("List of attendees"),
+    provider: z.enum(['google', 'microsoft']).default('google').describe("Calendar provider to use"),
+  }),
+  outputSchema: z.object({
+    event: z.object({
+      id: z.string(),
+      summary: z.string(),
+      htmlLink: z.string(),
+    }),
+    provider: z.string(),
+  }),
+  execute: async (inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
+
+    if (!authToken) {
+      throw new Error("No authentication token available");
+    }
+
+    const { data, error } = await authenticatedTrpcCall(
+      "mastra.createCalendarEvent",
+      {
+        summary: inputData.summary,
+        description: inputData.description,
+        start: {
+          dateTime: inputData.startDateTime,
+        },
+        end: {
+          dateTime: inputData.endDateTime,
+        },
+        location: inputData.location,
+        attendees: inputData.attendees,
+        provider: inputData.provider,
+      },
+      { authToken, sessionId, userId }
+    );
+
+    if (error) {
+      throw new Error(`Failed to create calendar event: ${error}`);
+    }
+
+    return { event: data.event, provider: data.provider };
+  },
+});
+
+export const checkCalendarConnectionTool = createTool({
+  id: "check-calendar-connection",
+  description: "Check if the user has connected their calendar (Google Calendar and/or Microsoft Calendar). Use this to verify calendar access before attempting to fetch events.",
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    google: z.object({
+      isConnected: z.boolean(),
+      hasCalendarScope: z.boolean(),
+    }),
+    microsoft: z.object({
+      isConnected: z.boolean(),
+      hasCalendarScope: z.boolean(),
+    }),
+    hasAnyConnected: z.boolean(),
+  }),
+  execute: async (_inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
+
+    if (!authToken) {
+      throw new Error("No authentication token available");
+    }
+
+    const { data, error } = await authenticatedTrpcCall(
+      "mastra.getAllCalendarConnectionStatus",
+      {},
+      { authToken, sessionId, userId }
+    );
+
+    if (error) {
+      throw new Error(`Failed to check calendar connection: ${error}`);
+    }
+
+    return data;
+  },
+});
+
 export const lookupContactByEmailTool = createTool({
   id: "lookup-contact-by-email",
   description:

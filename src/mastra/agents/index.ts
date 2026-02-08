@@ -4,7 +4,7 @@ import { Agent } from '@mastra/core/agent';
 
 // Export Zoe agent
 export { zoeAgent } from './zoe-agent.js';
-import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool } from '../tools';
+import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
 export const weatherAgent = new Agent({
@@ -246,14 +246,25 @@ export const projectManagerAgent = new Agent({
     **IMPORTANT**: For ANY question about specific meetings, calls, meeting/call content, or participants, ALWAYS use the meeting transcription tools first before responding. "Calls" and "meetings" refer to the same transcription data from Fireflies.
 
     ### Calendar and Schedule Queries:
-    For questions about upcoming meetings, today's schedule, or calendar events:
-    - "What's on my calendar today?" → Use 'get-calendar-events' with timeframe='today'
-    - "What meetings do I have today?" → Use 'get-calendar-events' with timeframe='today'
-    - "What's my schedule this week?" → Use 'get-calendar-events' with timeframe='upcoming' and days=7
-    - "Do I have any meetings tomorrow?" → Use 'get-calendar-events' with timeframe='upcoming' and days=2
-    - "Show my upcoming meetings" → Use 'get-calendar-events' with timeframe='upcoming'
+    For questions about calendar events and scheduling:
+    - "What's on my calendar today?" → Use 'get-today-calendar-events'
+    - "What meetings do I have today?" → Use 'get-today-calendar-events'
+    - "What's my schedule this week?" → Use 'get-upcoming-calendar-events' with days=7
+    - "Do I have any meetings tomorrow?" → Use 'get-calendar-events-in-range' with tomorrow's date range
+    - "Show my upcoming meetings" → Use 'get-upcoming-calendar-events'
+    - "When am I free on [day]?" → Use 'get-calendar-events-in-range' + 'find-available-time-slots'
+    - "Schedule [event]" → MUST ask for confirmation before calling 'create-calendar-event'
 
-    **IMPORTANT**: Calendar queries are about FUTURE scheduled events from Google Calendar. Meeting transcription queries are about PAST meetings that have already happened. If the user's Google Calendar is not connected, inform them they need to connect it in Settings.
+    **CRITICAL: Event Creation Policy**
+    - NEVER create calendar events autonomously
+    - Always present the proposed event details to the user first
+    - Only call 'create-calendar-event' after explicit user approval (yes, sure, go ahead, create it, etc.)
+    - If user says no or wants changes, adjust the details and ask again
+
+    **Calendar vs Transcriptions:**
+    - Calendar queries = FUTURE scheduled events from Google/Microsoft Calendar
+    - Meeting transcription queries = PAST meetings that already happened (from Fireflies)
+    - If user's calendar not connected, inform them to connect via Settings
 
     ### WhatsApp Context for Calendar Events:
     When the user asks about a calendar event's context or agenda and you don't have enough information:
@@ -468,6 +479,12 @@ export const projectManagerAgent = new Agent({
     updateSlackMessageTool,
     getSlackUserInfoTool,
     getCalendarEventsTool,
+    getTodayCalendarEventsTool,
+    getUpcomingCalendarEventsTool,
+    getCalendarEventsInRangeTool,
+    findAvailableTimeSlotsTool,
+    createCalendarEventTool,
+    checkCalendarConnectionTool,
     lookupContactByEmailTool,
     getWhatsAppContextTool,
     createCrmContactTool,

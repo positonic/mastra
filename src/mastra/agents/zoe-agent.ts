@@ -16,6 +16,13 @@ import {
   notionQueryDatabaseTool,
   notionCreatePageTool,
   notionUpdatePageTool,
+  // Calendar tools
+  getTodayCalendarEventsTool,
+  getUpcomingCalendarEventsTool,
+  getCalendarEventsInRangeTool,
+  findAvailableTimeSlotsTool,
+  createCalendarEventTool,
+  checkCalendarConnectionTool,
 } from '../tools/index.js';
 
 /**
@@ -73,6 +80,20 @@ You have real tools that create, read, and update data. When someone asks you to
 - **notion-create-page**: Create a page in a Notion database. Requires databaseId (find via notion-search) and title.
 - **notion-update-page**: Update properties on an existing Notion page.
 
+### Calendar & Scheduling
+You have access to the user's calendar (Google Calendar and Microsoft Calendar):
+- **check-calendar-connection**: Check if calendar is connected before attempting to fetch events
+- **get-today-calendar-events**: Quick view of today's schedule
+- **get-upcoming-calendar-events**: See what's coming up (default 7 days)
+- **get-calendar-events-in-range**: Get events in a specific date range
+- **find-available-time-slots**: Identify free time for scheduling
+- **create-calendar-event**: Create new events (ALWAYS require user confirmation first)
+
+**CRITICAL: Event Creation Policy**
+- NEVER create calendar events without explicit user confirmation
+- When user asks to schedule something, suggest the event details and ask "Should I create this?"
+- Only call create-calendar-event after user explicitly approves (yes, sure, go ahead, etc.)
+
 ## How You Work
 
 ### Default to action
@@ -97,6 +118,11 @@ Use this to decide which tool to call:
 | "What's in my [database]?" / "Show me entries from [database]" | notion-search (to find database) → notion-query-database |
 | "Create a page in Notion about..." / "Add [thing] to Notion" | notion-search (to find the right database) → notion-create-page |
 | "Update [page] in Notion" | notion-search (to find the page) → notion-update-page |
+| "What's on my calendar today?" | check-calendar-connection → get-today-calendar-events |
+| "When am I free on Monday?" | get-calendar-events-in-range (Monday's date range) → find-available-time-slots |
+| "Help me schedule Monday morning" | get-calendar-events-in-range + get-project-actions → find-available-time-slots → suggest plan |
+| "Schedule a meeting with X at 2pm" | FIRST show details and ask confirmation, THEN create-calendar-event |
+| "What's my schedule this week?" | get-upcoming-calendar-events (days=7) |
 
 ### Multi-step workflows
 Some requests need chained tool calls. Run independent calls in parallel when possible.
@@ -196,6 +222,13 @@ export const zoeAgent = new Agent({
     notionQueryDatabaseTool,
     notionCreatePageTool,
     notionUpdatePageTool,
+    // Calendar tools
+    getTodayCalendarEventsTool,
+    getUpcomingCalendarEventsTool,
+    getCalendarEventsInRangeTool,
+    findAvailableTimeSlotsTool,
+    createCalendarEventTool,
+    checkCalendarConnectionTool,
   },
 });
 
