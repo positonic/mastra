@@ -940,9 +940,14 @@ Example format for lists:
 
       try {
         // First attempt with current token
+        const memoryScope = {
+          resource: session.userId,
+          thread: `wa-${session.userId}-${jid}`,
+        };
+
         response = await agent.generate(
           messages,
-          { requestContext: createRequestContext(authToken) }
+          { requestContext: createRequestContext(authToken), memory: memoryScope }
         );
       } catch (error) {
         // Check if this is an auth error
@@ -954,7 +959,7 @@ Example format for lists:
             // Retry with new token
             response = await agent.generate(
               messages,
-              { requestContext: createRequestContext(authToken) }
+              { requestContext: createRequestContext(authToken), memory: memoryScope }
             );
           } else {
             throw error; // Re-throw if refresh failed
