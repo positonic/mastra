@@ -650,18 +650,19 @@ export const quickCreateActionTool = createTool({
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
+    const projectId = requestContext?.get("projectId");
 
     if (!authToken) {
       throw new Error("No authentication token available");
     }
 
     console.log(
-      `🎯 [quickCreateAction] Creating action from text: "${inputData.text}"`
+      `🎯 [quickCreateAction] Creating action from text: "${inputData.text}" (contextProject: ${projectId || "none"})`
     );
 
     const { data: result } = await authenticatedTrpcCall(
       "mastra.quickCreateAction",
-      { text: inputData.text },
+      { text: inputData.text, projectId: projectId || undefined },
       { authToken, sessionId, userId }
     );
 
