@@ -24,6 +24,14 @@ import {
   findAvailableTimeSlotsTool,
   createCalendarEventTool,
   checkCalendarConnectionTool,
+  // CRM tools
+  searchCrmContactsTool,
+  getCrmContactTool,
+  createFullCrmContactTool,
+  updateCrmContactTool,
+  addCrmInteractionTool,
+  searchCrmOrganizationsTool,
+  createCrmOrganizationTool,
 } from '../tools/index.js';
 
 /**
@@ -95,6 +103,21 @@ You have access to the user's calendar (Google Calendar and Microsoft Calendar):
 - When user asks to schedule something, suggest the event details and ask "Should I create this?"
 - Only call create-calendar-event after user explicitly approves (yes, sure, go ahead, etc.)
 
+### CRM (Contacts & Organizations)
+You have access to the user's CRM for relationship management:
+- **search-crm-contacts**: Search contacts by name, tags, or organization
+- **get-crm-contact**: Get full contact details (social handles, skills, interaction history)
+- **create-full-crm-contact**: Create a new contact with all fields (confirm with user first)
+- **update-crm-contact**: Update contact fields (tags, about, social handles, etc.)
+- **add-crm-interaction**: Log an interaction (call, email, meeting, note) with a contact
+- **search-crm-organizations**: Search organizations by name or industry
+- **create-crm-organization**: Create a new organization (confirm with user first)
+
+**CRM Policies:**
+- ALWAYS confirm before creating contacts or organizations
+- When logging interactions, include meaningful subject and notes
+- When searching, try name search first; if no results, broaden the search
+
 ## How You Work
 
 ### Default to action
@@ -124,6 +147,14 @@ Use this to decide which tool to call:
 | "Help me schedule Monday morning" | get-calendar-events-in-range + get-project-actions → find-available-time-slots → suggest plan |
 | "Schedule a meeting with X at 2pm" | FIRST show details and ask confirmation, THEN create-calendar-event |
 | "What's my schedule this week?" | get-upcoming-calendar-events (days=7) |
+| "Who do I know at [company]?" / "Find [name] in my contacts" | search-crm-contacts (by name or org) |
+| "Show me [contact]'s details" / "What's [name]'s email?" | search-crm-contacts → get-crm-contact |
+| "Add a contact for [name]..." | FIRST confirm details, THEN create-full-crm-contact |
+| "Update [contact]'s email/tags/etc." | search-crm-contacts → update-crm-contact |
+| "Log a call/meeting/note with [name]" | search-crm-contacts → add-crm-interaction |
+| "Show me my contacts" / "List contacts tagged [tag]" | search-crm-contacts |
+| "What organizations do I have?" / "Find [company]" | search-crm-organizations |
+| "Create an org for [company]" | FIRST confirm, THEN create-crm-organization |
 
 ### Multi-step workflows
 Some requests need chained tool calls. Run independent calls in parallel when possible.
@@ -133,6 +164,7 @@ Some requests need chained tool calls. Run independent calls in parallel when po
 - **Notion research**: notion-search → notion-get-page or notion-query-database → summarize findings
 - **Breaking down a vague intention**: get-all-projects (find the right project) → quick-create-action or create-project-action to make it concrete
 - **Cross-system view**: get-project-context + notion-search (parallel) → connect Exponential project data with Notion docs
+- **Relationship review**: search-crm-contacts (by tag or all) → get-crm-contact for key people → surface stale relationships (no recent interactions)
 
 ### Formatting
 When listing projects, use a table sorted by priority (HIGH > MEDIUM > LOW > NONE):
@@ -231,6 +263,14 @@ export const zoeAgent = new Agent({
     findAvailableTimeSlotsTool,
     createCalendarEventTool,
     checkCalendarConnectionTool,
+    // CRM tools
+    searchCrmContactsTool,
+    getCrmContactTool,
+    createFullCrmContactTool,
+    updateCrmContactTool,
+    addCrmInteractionTool,
+    searchCrmOrganizationsTool,
+    createCrmOrganizationTool,
   },
 });
 

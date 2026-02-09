@@ -2058,5 +2058,377 @@ export const createCrmContactTool = createTool({
 });
 
 
+// ==================== CRM TOOLS ====================
+
+export const searchCrmContactsTool = createTool({
+  id: "search-crm-contacts",
+  description:
+    "Search contacts in the CRM by name, tags, or organization. Returns a list of matching contacts with basic info. Use this to find contacts before getting full details or logging interactions.",
+  inputSchema: z.object({
+    search: z.string().optional().describe("Search by first or last name"),
+    tags: z.array(z.string()).optional().describe("Filter by tags (e.g., ['investor', 'advisor'])"),
+    organizationId: z.string().optional().describe("Filter by organization ID"),
+    limit: z.number().default(20).describe("Max results to return (default: 20)"),
+  }),
+  outputSchema: z.object({
+    contacts: z.array(z.object({
+      id: z.string(),
+      firstName: z.string().nullable(),
+      lastName: z.string().nullable(),
+      email: z.string().nullable(),
+      phone: z.string().nullable(),
+      tags: z.array(z.string()),
+      organizationName: z.string().nullable(),
+      organizationId: z.string().nullable(),
+      connectionScore: z.number().nullable(),
+      lastInteractionAt: z.string().nullable(),
+      lastInteractionType: z.string().nullable(),
+    })),
+    nextCursor: z.string().optional(),
+  }),
+  execute: async (inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
+
+    console.log(`🔍 [searchCrmContacts] Searching: ${inputData.search || "(all)"}, tags: ${inputData.tags?.join(", ") || "none"}`);
+
+    if (!authToken) {
+      throw new Error("No authentication token available");
+    }
+
+    const { data } = await authenticatedTrpcCall<{
+      contacts: Array<{
+        id: string;
+        firstName: string | null;
+        lastName: string | null;
+        email: string | null;
+        phone: string | null;
+        tags: string[];
+        organizationName: string | null;
+        organizationId: string | null;
+        connectionScore: number | null;
+        lastInteractionAt: string | null;
+        lastInteractionType: string | null;
+      }>;
+      nextCursor?: string;
+    }>(
+      "mastra.searchCrmContacts",
+      inputData,
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [searchCrmContacts] Found ${data.contacts.length} contacts`);
+    return data;
+  },
+});
+
+export const getCrmContactTool = createTool({
+  id: "get-crm-contact",
+  description:
+    "Get full details for a specific CRM contact including social handles, about, skills, and recent interactions. Use after searching to get complete info.",
+  inputSchema: z.object({
+    contactId: z.string().describe("The contact ID to look up"),
+    includeInteractions: z.boolean().default(true).describe("Include recent interactions (default: true)"),
+  }),
+  outputSchema: z.object({
+    id: z.string(),
+    firstName: z.string().nullable(),
+    lastName: z.string().nullable(),
+    email: z.string().nullable(),
+    phone: z.string().nullable(),
+    linkedIn: z.string().nullable(),
+    telegram: z.string().nullable(),
+    twitter: z.string().nullable(),
+    github: z.string().nullable(),
+    about: z.string().nullable(),
+    skills: z.array(z.string()),
+    tags: z.array(z.string()),
+    organization: z.object({
+      id: z.string(),
+      name: z.string(),
+      industry: z.string().nullable(),
+    }).nullable(),
+    connectionScore: z.number().nullable(),
+    lastInteractionAt: z.string().nullable(),
+    lastInteractionType: z.string().nullable(),
+    interactions: z.array(z.object({
+      id: z.string(),
+      type: z.string(),
+      direction: z.string(),
+      subject: z.string().nullable(),
+      notes: z.string().nullable(),
+      createdAt: z.string(),
+    })),
+  }),
+  execute: async (inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
+
+    console.log(`📇 [getCrmContact] Getting contact: ${inputData.contactId}`);
+
+    if (!authToken) {
+      throw new Error("No authentication token available");
+    }
+
+    const { data } = await authenticatedTrpcCall<any>(
+      "mastra.getCrmContact",
+      inputData,
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [getCrmContact] Got: ${data.firstName} ${data.lastName}`);
+    return data;
+  },
+});
+
+export const createFullCrmContactTool = createTool({
+  id: "create-full-crm-contact",
+  description:
+    "Create a new contact in the CRM with full details including social handles, skills, tags, and organization. Always confirm with the user before creating.",
+  inputSchema: z.object({
+    firstName: z.string().optional().describe("Contact's first name"),
+    lastName: z.string().optional().describe("Contact's last name"),
+    email: z.string().email().optional().describe("Contact's email address"),
+    phone: z.string().optional().describe("Phone number in international format"),
+    linkedIn: z.string().optional().describe("LinkedIn profile URL"),
+    telegram: z.string().optional().describe("Telegram username"),
+    twitter: z.string().optional().describe("Twitter/X handle"),
+    github: z.string().optional().describe("GitHub username"),
+    about: z.string().optional().describe("Notes about this contact"),
+    skills: z.array(z.string()).optional().describe("Contact's skills"),
+    tags: z.array(z.string()).optional().describe("Tags for categorization"),
+    organizationId: z.string().optional().describe("Organization to link this contact to"),
+  }),
+  outputSchema: z.object({
+    id: z.string(),
+    firstName: z.string().nullable(),
+    lastName: z.string().nullable(),
+    email: z.string().nullable(),
+  }),
+  execute: async (inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
+
+    console.log(`➕ [createFullCrmContact] Creating: ${inputData.firstName} ${inputData.lastName}`);
+
+    if (!authToken) {
+      throw new Error("No authentication token available");
+    }
+
+    const { data } = await authenticatedTrpcCall<{
+      id: string;
+      firstName: string | null;
+      lastName: string | null;
+      email: string | null;
+    }>(
+      "mastra.createFullCrmContact",
+      inputData,
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [createFullCrmContact] Created contact: ${data.id}`);
+    return data;
+  },
+});
+
+export const updateCrmContactTool = createTool({
+  id: "update-crm-contact",
+  description:
+    "Update fields on an existing CRM contact. Only include fields you want to change. Set a field to null to clear it.",
+  inputSchema: z.object({
+    contactId: z.string().describe("The contact ID to update"),
+    firstName: z.string().optional().describe("Updated first name"),
+    lastName: z.string().optional().describe("Updated last name"),
+    email: z.string().email().optional().nullable().describe("Updated email (null to clear)"),
+    phone: z.string().optional().nullable().describe("Updated phone (null to clear)"),
+    linkedIn: z.string().optional().nullable().describe("Updated LinkedIn URL"),
+    telegram: z.string().optional().nullable().describe("Updated Telegram username"),
+    twitter: z.string().optional().nullable().describe("Updated Twitter handle"),
+    github: z.string().optional().nullable().describe("Updated GitHub username"),
+    about: z.string().optional().describe("Updated notes"),
+    skills: z.array(z.string()).optional().describe("Updated skills list (replaces existing)"),
+    tags: z.array(z.string()).optional().describe("Updated tags list (replaces existing)"),
+    organizationId: z.string().optional().nullable().describe("Organization ID (null to unlink)"),
+  }),
+  outputSchema: z.object({
+    id: z.string(),
+    firstName: z.string().nullable(),
+    lastName: z.string().nullable(),
+    email: z.string().nullable(),
+    updated: z.boolean(),
+  }),
+  execute: async (inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
+
+    console.log(`✏️ [updateCrmContact] Updating contact: ${inputData.contactId}`);
+
+    if (!authToken) {
+      throw new Error("No authentication token available");
+    }
+
+    const { data } = await authenticatedTrpcCall<{
+      id: string;
+      firstName: string | null;
+      lastName: string | null;
+      email: string | null;
+      updated: boolean;
+    }>(
+      "mastra.updateCrmContact",
+      inputData,
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [updateCrmContact] Updated: ${data.id}`);
+    return data;
+  },
+});
+
+export const addCrmInteractionTool = createTool({
+  id: "add-crm-interaction",
+  description:
+    "Log an interaction with a CRM contact (email, call, meeting, note, etc.). This updates the contact's last interaction timestamp and creates an audit trail.",
+  inputSchema: z.object({
+    contactId: z.string().describe("The contact ID to log interaction for"),
+    type: z.enum(["EMAIL", "PHONE_CALL", "MEETING", "NOTE", "LINKEDIN", "TELEGRAM", "OTHER"]).describe("Type of interaction"),
+    direction: z.enum(["INBOUND", "OUTBOUND"]).describe("Direction: INBOUND (they reached out) or OUTBOUND (you reached out)"),
+    subject: z.string().optional().describe("Brief subject line for the interaction"),
+    notes: z.string().optional().describe("Detailed notes about the interaction"),
+  }),
+  outputSchema: z.object({
+    id: z.string(),
+    type: z.string(),
+    direction: z.string(),
+    subject: z.string().nullable(),
+    createdAt: z.string(),
+  }),
+  execute: async (inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
+
+    console.log(`📝 [addCrmInteraction] Logging ${inputData.type} for contact: ${inputData.contactId}`);
+
+    if (!authToken) {
+      throw new Error("No authentication token available");
+    }
+
+    const { data } = await authenticatedTrpcCall<{
+      id: string;
+      type: string;
+      direction: string;
+      subject: string | null;
+      createdAt: string;
+    }>(
+      "mastra.addCrmInteraction",
+      inputData,
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [addCrmInteraction] Logged interaction: ${data.id}`);
+    return data;
+  },
+});
+
+export const searchCrmOrganizationsTool = createTool({
+  id: "search-crm-organizations",
+  description:
+    "Search organizations in the CRM by name or industry. Returns matching organizations with contact counts.",
+  inputSchema: z.object({
+    search: z.string().optional().describe("Search by organization name or description"),
+    industry: z.string().optional().describe("Filter by industry"),
+    limit: z.number().default(20).describe("Max results (default: 20)"),
+  }),
+  outputSchema: z.object({
+    organizations: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string().nullable(),
+      industry: z.string().nullable(),
+      size: z.string().nullable(),
+      websiteUrl: z.string().nullable(),
+      contactCount: z.number(),
+    })),
+    nextCursor: z.string().optional(),
+  }),
+  execute: async (inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
+
+    console.log(`🏢 [searchCrmOrganizations] Searching: ${inputData.search || "(all)"}, industry: ${inputData.industry || "any"}`);
+
+    if (!authToken) {
+      throw new Error("No authentication token available");
+    }
+
+    const { data } = await authenticatedTrpcCall<{
+      organizations: Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        industry: string | null;
+        size: string | null;
+        websiteUrl: string | null;
+        contactCount: number;
+      }>;
+      nextCursor?: string;
+    }>(
+      "mastra.searchCrmOrganizations",
+      inputData,
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [searchCrmOrganizations] Found ${data.organizations.length} organizations`);
+    return data;
+  },
+});
+
+export const createCrmOrganizationTool = createTool({
+  id: "create-crm-organization",
+  description:
+    "Create a new organization in the CRM. Confirm with the user before creating.",
+  inputSchema: z.object({
+    name: z.string().describe("Organization name"),
+    description: z.string().optional().describe("Description of the organization"),
+    websiteUrl: z.string().optional().describe("Website URL"),
+    industry: z.string().optional().describe("Industry (e.g., 'Technology', 'Finance', 'Healthcare')"),
+    size: z.enum(["1-10", "11-50", "51-200", "201-500", "501-1000", "1000+"]).optional().describe("Company size range"),
+  }),
+  outputSchema: z.object({
+    id: z.string(),
+    name: z.string(),
+    industry: z.string().nullable(),
+  }),
+  execute: async (inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
+
+    console.log(`🏢 [createCrmOrganization] Creating: ${inputData.name}`);
+
+    if (!authToken) {
+      throw new Error("No authentication token available");
+    }
+
+    const { data } = await authenticatedTrpcCall<{
+      id: string;
+      name: string;
+      industry: string | null;
+    }>(
+      "mastra.createCrmOrganization",
+      inputData,
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [createCrmOrganization] Created: ${data.id} (${data.name})`);
+    return data;
+  },
+});
+
 // Notion tools
 export { notionTools, notionSearchTool, notionGetPageTool, notionQueryDatabaseTool, notionCreatePageTool, notionUpdatePageTool } from "./notion-tools.js";
