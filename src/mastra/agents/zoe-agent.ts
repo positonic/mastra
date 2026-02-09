@@ -5,6 +5,7 @@ import { memory } from '../memory/index.js';
 import {
   getProjectContextTool,
   getProjectActionsTool,
+  createProjectActionTool,
   quickCreateActionTool,
   updateProjectStatusTool,
   getProjectGoalsTool,
@@ -211,6 +212,7 @@ export const zoeAgent = new Agent({
     // Exponential tools
     getProjectContextTool,
     getProjectActionsTool,
+    createProjectActionTool,
     quickCreateActionTool,
     updateProjectStatusTool,
     getProjectGoalsTool,
