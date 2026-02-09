@@ -23,7 +23,8 @@ import {
   weatherAgent,
   pierreAgent,
   ashAgent,
-  projectManagerAgent
+  projectManagerAgent,
+  zoeAgent,
 } from '../agents/index.js';
 import { captureException, captureAuthFailure } from '../utils/sentry.js';
 
@@ -221,9 +222,9 @@ async function ensureDir(dir: string): Promise<void> {
 }
 
 // Agent routing types and functions
-type AgentIdentifier = 'weather' | 'pierre' | 'ash' | 'paddy';
+type AgentIdentifier = 'weather' | 'pierre' | 'ash' | 'paddy' | 'zoe';
 
-const DEFAULT_AGENT: AgentIdentifier = 'paddy';
+const DEFAULT_AGENT: AgentIdentifier = 'zoe';
 
 interface ParsedMessage {
   text: string;
@@ -251,6 +252,7 @@ const AGENT_ALIASES: Record<string, AgentIdentifier> = {
   'pierre': 'pierre',
   'ash': 'ash',
   'paddy': 'paddy',
+  'zoe': 'zoe',
 };
 
 function parseMessageForMention(text: string): ParsedMessage {
@@ -272,6 +274,7 @@ function getAgentByIdentifier(identifier: AgentIdentifier) {
     'pierre': pierreAgent,
     'ash': ashAgent,
     'paddy': projectManagerAgent,
+    'zoe': zoeAgent,
   };
   return agents[identifier];
 }
