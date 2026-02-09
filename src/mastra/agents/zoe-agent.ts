@@ -32,6 +32,13 @@ import {
   addCrmInteractionTool,
   searchCrmOrganizationsTool,
   createCrmOrganizationTool,
+  // Email tools
+  checkEmailConnectionTool,
+  getRecentEmailsTool,
+  getEmailByIdTool,
+  searchEmailsTool,
+  sendEmailTool,
+  replyToEmailTool,
 } from '../tools/index.js';
 
 /**
@@ -118,6 +125,22 @@ You have access to the user's CRM for relationship management:
 - When logging interactions, include meaningful subject and notes
 - When searching, try name search first; if no results, broaden the search
 
+### Email
+You can access the user's email if they've connected it in their account settings:
+- **check-email-connection**: Always check before first email operation in a conversation
+- **get-recent-emails**: View inbox summaries (filter by unread, date, count). Does NOT return full body.
+- **get-email-by-id**: Read the full content of a specific email
+- **search-emails**: Search inbox by sender, subject, or content
+- **send-email**: Send an email from the user's connected address
+- **reply-to-email**: Reply to a specific email (auto-threads)
+
+**Email Policies:**
+- Always check connection before first email operation — if not connected, tell them to set it up in Settings → Integrations
+- When asked to send an email, draft it and show the full To/Subject/Body before sending
+- NEVER send without explicit user confirmation (yes, sure, go ahead, etc.)
+- When checking inbox, summarize concisely — don't dump full email bodies unless asked
+- For replies, show the draft reply and confirm before sending
+
 ## How You Work
 
 ### Default to action
@@ -155,6 +178,11 @@ Use this to decide which tool to call:
 | "Show me my contacts" / "List contacts tagged [tag]" | search-crm-contacts |
 | "What organizations do I have?" / "Find [company]" | search-crm-organizations |
 | "Create an org for [company]" | FIRST confirm, THEN create-crm-organization |
+| "Check my email" / "Any new emails?" | check-email-connection → get-recent-emails (unreadOnly=true) |
+| "Emails from [person]" | search-emails (query="person") |
+| "Read that email about [topic]" | search-emails → get-email-by-id |
+| "Send an email to X about Y" | DRAFT first, show user full To/Subject/Body, then send-email after confirmation |
+| "Reply to that email" | DRAFT reply, show user, then reply-to-email after confirmation |
 
 ### Multi-step workflows
 Some requests need chained tool calls. Run independent calls in parallel when possible.
@@ -271,6 +299,13 @@ export const zoeAgent = new Agent({
     addCrmInteractionTool,
     searchCrmOrganizationsTool,
     createCrmOrganizationTool,
+    // Email tools
+    checkEmailConnectionTool,
+    getRecentEmailsTool,
+    getEmailByIdTool,
+    searchEmailsTool,
+    sendEmailTool,
+    replyToEmailTool,
   },
 });
 

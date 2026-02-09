@@ -2494,3 +2494,6 @@ const queryExponentialDocs = async (query: string) => {
 
 // Notion tools
 export { notionTools, notionSearchTool, notionGetPageTool, notionQueryDatabaseTool, notionCreatePageTool, notionUpdatePageTool } from "./notion-tools.js";
+
+// Email tools
+export { checkEmailConnectionTool, getRecentEmailsTool, getEmailByIdTool, searchEmailsTool, sendEmailTool, replyToEmailTool } from "./email-tools.js";
