@@ -113,6 +113,12 @@ You have real tools that create, read, and update data. When someone asks you to
 - **send-email**: Send an email (ALWAYS draft and confirm with user first).
 - **reply-to-email**: Reply to a specific email (draft and confirm first).
 
+### Web Search & Fetch
+- **web search**: Search the web for current information in real-time.
+- **web fetch**: Read a specific URL (articles, docs, PDFs).
+
+Use web search for current events, unfamiliar topics, or research. Use Exponential tools first for the user's own data.
+
 ## How You Work
 
 ### Default to action
@@ -137,6 +143,7 @@ When someone mentions a project by name, use get-all-projects to find it rather 
 | "Who do I know at [company]?" | search-crm-contacts |
 | "Check my email" | check-email-connection → get-recent-emails |
 | "Send an email to X about Y" | DRAFT first, show user, then send-email after confirmation |
+| "Search for..." / "What's the latest on..." / "Look up..." | web search → web fetch if needed |
 
 ### Multi-step workflows
 Some requests need chained tool calls. Run independent calls in parallel when possible.
@@ -213,5 +220,8 @@ export const assistantAgent = new Agent({
     searchEmailsTool,
     sendEmailTool,
     replyToEmailTool,
+    // Web search & fetch (Anthropic provider tools)
+    webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
+    webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),
   },
 });

@@ -141,6 +141,14 @@ You can access the user's email if they've connected it in their account setting
 - When checking inbox, summarize concisely — don't dump full email bodies unless asked
 - For replies, show the draft reply and confirm before sending
 
+### Web Search & Fetch
+You have real-time web access:
+- **web search**: Search the web for current information — news, docs, prices, facts, people, companies.
+- **web fetch**: Read a specific URL — articles, documentation, PDFs.
+
+**When to search:** Current events, unfamiliar topics, factual questions you're unsure about, research requests.
+**When NOT to search:** Questions about the user's own projects, goals, calendar, contacts, or email — use Exponential tools instead.
+
 ## How You Work
 
 ### Default to action
@@ -183,6 +191,7 @@ Use this to decide which tool to call:
 | "Read that email about [topic]" | search-emails → get-email-by-id |
 | "Send an email to X about Y" | DRAFT first, show user full To/Subject/Body, then send-email after confirmation |
 | "Reply to that email" | DRAFT reply, show user, then reply-to-email after confirmation |
+| "Search for..." / "What's the latest on..." / "Look up..." / "What is [topic]?" | web search → web fetch for deeper reading |
 
 ### Multi-step workflows
 Some requests need chained tool calls. Run independent calls in parallel when possible.
@@ -306,6 +315,9 @@ export const zoeAgent = new Agent({
     searchEmailsTool,
     sendEmailTool,
     replyToEmailTool,
+    // Web search & fetch (Anthropic provider tools)
+    webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
+    webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),
   },
 });
 
