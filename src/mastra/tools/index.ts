@@ -2430,5 +2430,67 @@ export const createCrmOrganizationTool = createTool({
   },
 });
 
+// Exponential knowledge base RAG tool
+export const queryExponentialDocsTool = createTool({
+  id: "query-exponential-docs",
+  description:
+    "Query the Exponential application knowledge base for information about its architecture, features, data model, integrations, and development patterns. Use this for any question about how the Exponential app works.",
+  inputSchema: z.object({
+    query: z
+      .string()
+      .describe("Question about the Exponential application"),
+  }),
+  outputSchema: z.object({
+    results: z.array(
+      z.object({
+        content: z.string(),
+        section: z.string(),
+        source: z.string(),
+        type: z.string(),
+        relevance: z.number(),
+      })
+    ),
+  }),
+  execute: async (inputData) => {
+    return await queryExponentialDocs(inputData.query);
+  },
+});
+
+const queryExponentialDocs = async (query: string) => {
+  const vectorStore = new PgVector({
+    id: "exponential-docs",
+    connectionString: process.env.DATABASE_URL!,
+    schemaName: "exponential_docs",
+  });
+
+  try {
+    const { embedding } = await embed({
+      model: openai.embedding("text-embedding-3-small"),
+      value: query,
+    });
+
+    const results = await vectorStore.query({
+      vectors: [embedding],
+      topK: 5,
+      indexName: "exponential_knowledge",
+    });
+
+    return {
+      results: results.map((result) => ({
+        content: result.metadata?.content || "",
+        section: result.metadata?.section || "Unknown",
+        source: result.metadata?.source || "Unknown",
+        type: result.metadata?.type || "docs",
+        relevance: result.score || 0,
+      })),
+    };
+  } catch (error) {
+    console.error("Error querying Exponential docs:", error);
+    throw new Error(
+      `Failed to query Exponential docs: ${error instanceof Error ? error.message : "Unknown error"}`
+    );
+  }
+};
+
 // Notion tools
 export { notionTools, notionSearchTool, notionGetPageTool, notionQueryDatabaseTool, notionCreatePageTool, notionUpdatePageTool } from "./notion-tools.js";

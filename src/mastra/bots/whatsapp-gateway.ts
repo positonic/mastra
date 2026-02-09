@@ -281,8 +281,17 @@ function getAgentByIdentifier(identifier: AgentIdentifier) {
 
 // Conversation management helpers
 function isSelfChat(session: WhatsAppSession, jid: string): boolean {
-  const sessionPhone = session.phoneNumber?.replace(/\D/g, '');
   const chatPhone = jid.replace(/@.*/, '').replace(/\D/g, '');
+
+  // Primary: check socket user ID directly (most reliable when connected)
+  const sockUserId = session.sock?.user?.id;
+  if (sockUserId) {
+    const sockPhone = sockUserId.replace(/:.*/, '').replace(/@.*/, '').replace(/\D/g, '');
+    if (sockPhone === chatPhone) return true;
+  }
+
+  // Fallback: check persisted phone number
+  const sessionPhone = session.phoneNumber?.replace(/\D/g, '');
   return !!sessionPhone && sessionPhone === chatPhone;
 }
 
@@ -725,6 +734,7 @@ export class WhatsAppGateway {
 
         // Determine if we should process this message
         const selfChat = isSelfChat(session, remoteJid);
+        logger.debug(`🔍 [${INSTANCE_ID}] Self-chat check: ${selfChat}, jid=${remoteJid}, phone=${session.phoneNumber}, sockUser=${session.sock?.user?.id}`);
         const replyToAgent = isReplyToAgent(msg, session, remoteJid);
         const activeConversation = getActiveConversation(session, remoteJid);
 
@@ -732,7 +742,7 @@ export class WhatsAppGateway {
         let shouldProcess = false;
 
         if (selfChat) {
-          // Self-chat: always process, use mention or default to Paddy
+          // Self-chat: always process, use mention or default to Zoe
           shouldProcess = true;
           agentId = parsed.agent || DEFAULT_AGENT;
         } else if (parsed.agent) {
