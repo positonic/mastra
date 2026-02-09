@@ -444,34 +444,34 @@ export const getProjectContextTool = createTool({
     project: z.object({
       id: z.string(),
       name: z.string(),
-      description: z.string().optional(),
+      description: z.string().optional().nullable(),
       status: z.string(),
       priority: z.string(),
       progress: z.number(),
       createdAt: z.string(),
-      reviewDate: z.string().optional(),
-      nextActionDate: z.string().optional(),
+      reviewDate: z.string().optional().nullable(),
+      nextActionDate: z.string().optional().nullable(),
     }),
     actions: z.array(
       z.object({
         id: z.string(),
         name: z.string(),
-        description: z.string().optional(),
+        description: z.string().optional().nullable(),
         status: z.string(),
         priority: z.string(),
-        dueDate: z.string().optional(),
+        dueDate: z.string().optional().nullable(),
       })
     ),
     goals: z.array(
       z.object({
         id: z.number(),
         title: z.string(),
-        description: z.string().optional(),
-        dueDate: z.string().optional(),
+        description: z.string().optional().nullable(),
+        dueDate: z.string().optional().nullable(),
         lifeDomain: z.object({
           title: z.string(),
-          description: z.string().optional(),
-        }),
+          description: z.string().optional().nullable(),
+        }).optional().nullable(),
       })
     ),
     outcomes: z.array(
@@ -479,15 +479,15 @@ export const getProjectContextTool = createTool({
         id: z.string(),
         description: z.string(),
         type: z.string(),
-        dueDate: z.string().optional(),
+        dueDate: z.string().optional().nullable(),
       })
     ),
     teamMembers: z.array(
       z.object({
         id: z.string(),
-        name: z.string(),
-        role: z.string(),
-        responsibilities: z.array(z.string()),
+        name: z.string().optional().nullable(),
+        role: z.string().optional().nullable(),
+        responsibilities: z.array(z.string()).optional().nullable(),
       })
     ),
   }),
@@ -497,17 +497,26 @@ export const getProjectContextTool = createTool({
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
 
+    console.log(`📋 [getProjectContext] INPUT: projectId=${projectId}`);
+    console.log(`📋 [getProjectContext] CONTEXT: authToken=${authToken ? "present" : "MISSING"}, userId=${userId || "none"}`);
+
     if (!authToken) {
       throw new Error("No authentication token available");
     }
 
-    const { data } = await authenticatedTrpcCall(
-      "mastra.projectContext",
-      { projectId },
-      { authToken, sessionId, userId }
-    );
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "mastra.projectContext",
+        { projectId },
+        { authToken, sessionId, userId }
+      );
 
-    return data;
+      console.log(`✅ [getProjectContext] SUCCESS: project="${(data as any)?.project?.name}", actions=${(data as any)?.actions?.length}, goals=${(data as any)?.goals?.length}`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [getProjectContext] FAILED:`, error);
+      throw error;
+    }
   },
 });
 
@@ -571,8 +580,8 @@ export const createProjectActionTool = createTool({
       .optional()
       .describe("Detailed description of the action"),
     priority: z
-      .enum(["Quick", "Short", "Long", "Research"])
-      .describe("Estimated effort/time: Quick (<5min), Short (<30min), Long (>30min), Research (needs investigation first)"),
+      .enum(["Quick", "Scheduled", "1st Priority", "2nd Priority", "3rd Priority", "4th Priority", "5th Priority", "Errand", "Remember", "Watch", "Someday Maybe"])
+      .describe("Action priority. Use 'Quick' for small tasks, 'Scheduled' for time-bound items, '1st Priority' through '5th Priority' for ranked importance, 'Errand' for errands, 'Remember' for things to keep in mind, 'Watch' for items to monitor, 'Someday Maybe' for future ideas"),
     dueDate: z.string().optional().describe("Due date in ISO format"),
   }),
   outputSchema: z.object({
@@ -591,18 +600,28 @@ export const createProjectActionTool = createTool({
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
+    const contextProjectId = requestContext?.get("projectId");
+
+    console.log(`🔧 [createProjectAction] INPUT: projectId=${projectId}, name="${name}", priority=${priority}, dueDate=${dueDate || "none"}`);
+    console.log(`🔧 [createProjectAction] CONTEXT: authToken=${authToken ? "present" : "MISSING"}, userId=${userId || "none"}, contextProjectId=${contextProjectId || "none"}`);
 
     if (!authToken) {
       throw new Error("No authentication token available");
     }
 
-    const { data } = await authenticatedTrpcCall(
-      "mastra.createAction",
-      { projectId, name, description, priority, dueDate },
-      { authToken, sessionId, userId }
-    );
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "mastra.createAction",
+        { projectId, name, description, priority, dueDate },
+        { authToken, sessionId, userId }
+      );
 
-    return data;
+      console.log(`✅ [createProjectAction] SUCCESS:`, JSON.stringify(data));
+      return data;
+    } catch (error) {
+      console.error(`❌ [createProjectAction] FAILED:`, error);
+      throw error;
+    }
   },
 });
 
@@ -652,25 +671,27 @@ export const quickCreateActionTool = createTool({
     const userId = requestContext?.get("userId");
     const projectId = requestContext?.get("projectId");
 
+    console.log(`🎯 [quickCreateAction] INPUT: text="${inputData.text}"`);
+    console.log(`🎯 [quickCreateAction] CONTEXT: authToken=${authToken ? "present" : "MISSING"}, userId=${userId || "none"}, projectId=${projectId || "none"}`);
+    console.log(`🎯 [quickCreateAction] SENDING TO TRPC: { text: "${inputData.text}", projectId: ${projectId ? `"${projectId}"` : "undefined"} }`);
+
     if (!authToken) {
       throw new Error("No authentication token available");
     }
 
-    console.log(
-      `🎯 [quickCreateAction] Creating action from text: "${inputData.text}" (contextProject: ${projectId || "none"})`
-    );
+    try {
+      const { data: result } = await authenticatedTrpcCall(
+        "mastra.quickCreateAction",
+        { text: inputData.text, projectId: projectId || undefined },
+        { authToken, sessionId, userId }
+      );
 
-    const { data: result } = await authenticatedTrpcCall(
-      "mastra.quickCreateAction",
-      { text: inputData.text, projectId: projectId || undefined },
-      { authToken, sessionId, userId }
-    );
-
-    console.log(
-      `✅ [quickCreateAction] Created action: ${result.action?.name} (project: ${result.action?.project?.name || "none"})`
-    );
-
-    return result;
+      console.log(`✅ [quickCreateAction] SUCCESS:`, JSON.stringify(result));
+      return result;
+    } catch (error) {
+      console.error(`❌ [quickCreateAction] FAILED:`, error);
+      throw error;
+    }
   },
 });
 
