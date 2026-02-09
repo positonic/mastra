@@ -33,8 +33,11 @@ All agents are defined in [src/mastra/agents/index.ts](src/mastra/agents/index.t
 | `ashAgent` | Ash Maurya Agent | GPT-4o | Lean Startup business modeling advisor |
 | `pierreAgent` | Pierre | GPT-4o-mini | Crypto trend-following trading mentor with RAG |
 | `projectManagerAgent` | Paddy | GPT-4o-mini | Project/task management with Slack and meeting integrations |
+| `expoAgent` | Expo | GPT-4o | Exponential app knowledge expert with RAG (docs + Prisma schema) |
 
 The `curationAgent` (Lin) is defined separately in [src/mastra/agents/ostrom-agent.ts](src/mastra/agents/ostrom-agent.ts) for Curation Platform analysis via MCP server (currently disabled).
+
+The `expoAgent` (Expo) is defined in [src/mastra/agents/expo-agent.ts](src/mastra/agents/expo-agent.ts) with knowledge indexed from the Exponential app's docs and Prisma schema. Re-index with `npx tsx src/mastra/rag/exponential-setup.ts`.
 
 ### Tools
 
@@ -46,6 +49,7 @@ Defined in [src/mastra/tools/index.ts](src/mastra/tools/index.ts). All tools use
 
 **RAG Tools:**
 - `pierreTradingQueryTool` - Vector search against Pierre's trading knowledge base (PostgreSQL + pgvector)
+- `queryExponentialDocsTool` - Vector search against Exponential app docs + Prisma schema (839 chunks)
 
 **Project Management Tools** (require `authToken` in runtimeContext):
 - `getProjectContextTool`, `getProjectActionsTool`, `createProjectActionTool`, `updateProjectStatusTool`
