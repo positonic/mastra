@@ -536,10 +536,10 @@ export const getProjectActionsTool = createTool({
       z.object({
         id: z.string(),
         name: z.string(),
-        description: z.string().optional(),
+        description: z.string().optional().nullable(),
         status: z.string(),
         priority: z.string(),
-        dueDate: z.string().optional(),
+        dueDate: z.string().optional().nullable(),
         project: z.object({
           id: z.string(),
           name: z.string(),
