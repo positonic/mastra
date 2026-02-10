@@ -39,6 +39,16 @@ import {
   searchEmailsTool,
   sendEmailTool,
   replyToEmailTool,
+  // OKR tools
+  getOkrObjectivesTool,
+  createOkrObjectiveTool,
+  updateOkrObjectiveTool,
+  deleteOkrObjectiveTool,
+  createOkrKeyResultTool,
+  updateOkrKeyResultTool,
+  deleteOkrKeyResultTool,
+  checkInOkrKeyResultTool,
+  getOkrStatsTool,
 } from '../tools/index.js';
 
 /**
@@ -113,6 +123,20 @@ You have real tools that create, read, and update data. When someone asks you to
 - **send-email**: Send an email (ALWAYS draft and confirm with user first).
 - **reply-to-email**: Reply to a specific email (draft and confirm first).
 
+### OKRs (Objectives & Key Results)
+OKRs live in Exponential's OKR system — NOT in Notion, NOT as project goals, NOT as actions.
+- **get-okr-objectives**: List all objectives with their key results and progress. ALWAYS call this FIRST for any OKR request.
+- **create-okr-objective**: Create a new objective (confirm with user first).
+- **update-okr-objective**: Update an objective's title, description, period, etc.
+- **delete-okr-objective**: Delete an objective and all its KRs (ALWAYS confirm first).
+- **create-okr-key-result**: Create a key result linked to an objective (confirm details first).
+- **update-okr-key-result**: Update a key result's fields. For progress updates, prefer check-in.
+- **delete-okr-key-result**: Delete a key result (ALWAYS confirm first).
+- **checkin-okr-key-result**: Record a progress check-in — updates value and auto-calculates status.
+- **get-okr-stats**: Dashboard stats: totals, status breakdown, average progress.
+
+When ANY OKR-related request comes in, ALWAYS call get-okr-objectives FIRST (without period filter) to see all existing objectives. Match user mentions to existing objectives by name before creating new ones — NEVER create duplicates. When fetching objectives to find a match, do NOT filter by period. Never offer Notion or other save locations for OKR data.
+
 ### Web Search & Fetch
 - **web search**: Search the web for current information in real-time.
 - **web fetch**: Read a specific URL (articles, docs, PDFs).
@@ -126,6 +150,8 @@ When someone asks you to create, add, schedule, or track something — call the 
 
 ### Look things up before asking
 When someone mentions a project by name, use get-all-projects to find it rather than asking for the ID. Pull their actual projects and actions rather than asking what they're working on.
+
+Same for OKRs: when someone mentions an objective or key result by name, call get-okr-objectives to find it. When they want to add a KR, look up existing objectives first. Never ask "where should I save this?" for OKRs — just use the OKR tools.
 
 ### Request → Tool Mapping
 
@@ -143,6 +169,11 @@ When someone mentions a project by name, use get-all-projects to find it rather 
 | "Who do I know at [company]?" | search-crm-contacts |
 | "Check my email" | check-email-connection → get-recent-emails |
 | "Send an email to X about Y" | DRAFT first, show user, then send-email after confirmation |
+| "Show my OKRs" / "What are my objectives?" | get-okr-objectives |
+| "Save a key result..." / "Add a KR..." / any OKR mention | get-okr-objectives (find objective) → CONFIRM → create-okr-key-result |
+| "Create an objective..." / "Add an OKR..." | get-okr-objectives (check existing) → CONFIRM → create-okr-objective |
+| "Update progress on [KR]" / "I completed X% of..." | get-okr-objectives (find KR) → checkin-okr-key-result |
+| "How are my OKRs doing?" | get-okr-stats + get-okr-objectives |
 | "Search for..." / "What's the latest on..." / "Look up..." | web search → web fetch if needed |
 
 ### Multi-step workflows
@@ -220,6 +251,16 @@ export const assistantAgent = new Agent({
     searchEmailsTool,
     sendEmailTool,
     replyToEmailTool,
+    // OKR tools
+    getOkrObjectivesTool,
+    createOkrObjectiveTool,
+    updateOkrObjectiveTool,
+    deleteOkrObjectiveTool,
+    createOkrKeyResultTool,
+    updateOkrKeyResultTool,
+    deleteOkrKeyResultTool,
+    checkInOkrKeyResultTool,
+    getOkrStatsTool,
     // Web search & fetch (Anthropic provider tools)
     webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),

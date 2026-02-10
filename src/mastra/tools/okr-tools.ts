@@ -9,10 +9,10 @@ import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
 export const getOkrObjectivesTool = createTool({
   id: "get-okr-objectives",
   description:
-    "Get all OKR objectives (goals) with their key results and progress for the current workspace. Use this to show the user their OKRs, check progress, or find objectives to add key results to.",
+    "Get all OKR objectives (goals) with their key results and progress for the current workspace. Use this to show the user their OKRs, check progress, or find objectives to add key results to. IMPORTANT: When looking up an objective by name (to add a KR or modify it), do NOT filter by period — fetch all objectives so you can match by name. Only use the period filter when the user explicitly asks to see a specific period's OKRs.",
   inputSchema: z.object({
     period: z.string().optional().describe(
-      "Filter by OKR period (e.g., 'Q1-2026', 'H1-2026', 'Annual-2026'). If not specified, returns all periods."
+      "Filter by OKR period (e.g., 'Q1-2026', 'H1-2026', 'Annual-2026'). IMPORTANT: Do NOT use this filter when searching for an objective by name — leave it empty to return all objectives. Only filter by period when the user explicitly asks for a specific period's view."
     ),
   }),
   outputSchema: z.object({
