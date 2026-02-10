@@ -8,7 +8,7 @@ export { zoeAgent } from './zoe-agent.js';
 export { expoAgent } from './expo-agent.js';
 // Export Assistant agent (blank canvas for user-customized personalities)
 export { assistantAgent } from './assistant-agent.js';
-import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool } from '../tools';
+import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateActionTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
 export const weatherAgent = new Agent({
@@ -199,18 +199,20 @@ export const projectManagerAgent = new Agent({
     ## CORE CAPABILITIES:
     
     ### Project Management
-    - Track project status, priority, and progress  
+    - Track project status, priority, and progress
     - **List all projects**: Use 'getAllProjectsTool' when asked about "What projects am I working on?" or similar project listing questions
+    - **Create new projects**: Use 'createProjectTool' when asked to create, set up, or start a new project. **IMPORTANT: Before creating any project, ALWAYS call 'getAllProjectsTool' first to check if a project with the same or very similar name already exists.** If a match is found, inform the user and ask whether they want to use the existing project or create a new one. Never create duplicate projects.
     - Manage project timelines and deadlines
     - Coordinate actions across different projects
     - Monitor goal alignment and outcome achievement
     - Analyze project evolution through meeting history
-    
+
     ### Action & Task Management
     - Prioritize actions using the system's priority levels: ${PRIORITY_VALUES.join(', ')}
     - Track action status: ACTIVE, COMPLETED, CANCELLED
     - Manage due dates and scheduling
     - Connect actions to specific projects
+    - **Move actions between projects**: Use 'updateActionTool' to reassign an action to a different project by changing its projectId. Also use it to update action name, priority, status, or due date.
     - Extract action items from meeting discussions
     
     ### Strategic Alignment
@@ -472,6 +474,8 @@ export const projectManagerAgent = new Agent({
     getProjectContextTool,
     getProjectActionsTool,
     quickCreateActionTool,
+    createProjectTool,
+    updateActionTool,
     updateProjectStatusTool,
     getProjectGoalsTool,
     getAllGoalsTool,

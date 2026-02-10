@@ -2500,3 +2500,6 @@ export { checkEmailConnectionTool, getRecentEmailsTool, getEmailByIdTool, search
 
 // OKR tools
 export { getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool } from "./okr-tools.js";
+
+// Project & Action management tools
+export { createProjectTool, updateActionTool } from "./project-tools.js";

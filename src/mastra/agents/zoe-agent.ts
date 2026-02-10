@@ -49,6 +49,9 @@ import {
   deleteOkrKeyResultTool,
   checkInOkrKeyResultTool,
   getOkrStatsTool,
+  // Project & Action management tools
+  createProjectTool,
+  updateActionTool,
 } from '../tools/index.js';
 
 /**
@@ -90,11 +93,13 @@ You have real tools that create, read, and update data. When someone asks you to
 - **quick-create-action**: Create actions from natural language. Parses dates ("tomorrow", "next Monday", "Friday") and matches project names from the text automatically. This is your default for creating tasks — just pass the user's request as-is.
   Example input: "Review the Operating Agreement for Commons Lab Exec tomorrow"
 - **create-project-action**: Create actions with explicit projectId, name, priority (Quick/Short/Long/Research), and optional description/dueDate. Use when you already have the project ID and want precise control over priority or description.
+- **update-action**: Update an existing action's fields — rename it, change priority/status, set due dates, or move it to a different project by setting a new projectId. Set projectId to null to unassign from any project.
 
 ### Project Intelligence
 - **get-all-projects**: List projects (ACTIVE by default, pass includeAll=true for all statuses). Use this to orient yourself — find project IDs, see what's active, get the lay of the land.
 - **get-project-context**: Deep dive into one project — its actions, goals, outcomes, and team. Use for "how's X going?" questions.
 - **get-project-actions**: Get actions for a project. Filter by status: ACTIVE, COMPLETED, or CANCELLED.
+- **create-project**: Create a new project. **IMPORTANT: Before creating any project, ALWAYS call 'get-all-projects' first to check if a project with the same or very similar name already exists.** If a match is found, inform the user and ask whether they want to use the existing project or create a new one. Never create duplicate projects.
 - **update-project-status**: Change a project's status (ACTIVE/ON_HOLD/COMPLETED/CANCELLED), priority (HIGH/MEDIUM/LOW/NONE), progress (0-100), or review/action dates.
 - **get-project-goals**: Goals linked to a specific project, with life domain info.
 - **get-all-goals**: All goals across every project and life domain — with outcomes and due dates. For big-picture questions.
@@ -326,6 +331,8 @@ export const zoeAgent = new Agent({
     getProjectActionsTool,
     createProjectActionTool,
     quickCreateActionTool,
+    createProjectTool,
+    updateActionTool,
     updateProjectStatusTool,
     getProjectGoalsTool,
     getAllGoalsTool,

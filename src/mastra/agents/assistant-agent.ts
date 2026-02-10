@@ -49,6 +49,9 @@ import {
   deleteOkrKeyResultTool,
   checkInOkrKeyResultTool,
   getOkrStatsTool,
+  // Project & Action management tools
+  createProjectTool,
+  updateActionTool,
 } from '../tools/index.js';
 
 /**
@@ -78,11 +81,13 @@ You have real tools that create, read, and update data. When someone asks you to
 ### Action & Task Management
 - **quick-create-action**: Create actions from natural language. Parses dates ("tomorrow", "next Monday", "Friday") and matches project names automatically. This is your default for creating tasks.
 - **create-project-action**: Create actions with explicit projectId, name, priority (Quick/Short/Long/Research), and optional description/dueDate.
+- **update-action**: Update an existing action's fields — rename it, change priority/status, set due dates, or move it to a different project by setting a new projectId. Set projectId to null to unassign from any project.
 
 ### Project Intelligence
 - **get-all-projects**: List projects (ACTIVE by default, pass includeAll=true for all statuses).
 - **get-project-context**: Deep dive into one project — actions, goals, outcomes, and team.
 - **get-project-actions**: Get actions for a project. Filter by status: ACTIVE, COMPLETED, or CANCELLED.
+- **create-project**: Create a new project. **IMPORTANT: Before creating any project, ALWAYS call 'get-all-projects' first to check if a project with the same or very similar name already exists.** If a match is found, inform the user and ask whether they want to use the existing project or create a new one. Never create duplicate projects.
 - **update-project-status**: Change a project's status, priority, progress, or review/action dates.
 - **get-project-goals**: Goals linked to a specific project.
 - **get-all-goals**: All goals across every project and life domain.
@@ -219,6 +224,8 @@ export const assistantAgent = new Agent({
     getProjectActionsTool,
     createProjectActionTool,
     quickCreateActionTool,
+    createProjectTool,
+    updateActionTool,
     updateProjectStatusTool,
     getProjectGoalsTool,
     getAllGoalsTool,
