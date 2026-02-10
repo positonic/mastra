@@ -14,6 +14,8 @@ const logger = createLogger({
   level: 'info',
 });
 
+const isDev = process.env.NODE_ENV !== 'production';
+
 export const mastra = new Mastra({
   agents: { zoeAgent, weatherAgent, ashAgent, pierreAgent, projectManagerAgent, expoAgent, assistantAgent },
   memory,
@@ -21,6 +23,45 @@ export const mastra = new Mastra({
   server: {
     port: parseInt(process.env.PORT || '4111', 10),
     host: '0.0.0.0', // Required for Railway deployment
+    middleware: [
+      {
+        handler: async (c: any, next: any) => {
+          const requestContext = c.get('requestContext');
+
+          // Use auth header if present; in dev only, fall back to TODO_APP_API_KEY
+          const authHeader = c.req.header('Authorization');
+          const token = authHeader?.replace('Bearer ', '')
+            || (isDev ? process.env.TODO_APP_API_KEY : undefined);
+
+          if (token) {
+            requestContext.set('authToken', token);
+
+            // Decode JWT payload to extract userId (no verification needed,
+            // the Exponential API verifies the token on its end)
+            try {
+              const payload = JSON.parse(atob(token.split('.')[1]));
+              if (payload.userId || payload.sub) {
+                requestContext.set('userId', payload.userId || payload.sub);
+              }
+            } catch {
+              // Token decode failed - authToken is still set, tools can try using it
+            }
+          }
+
+          // In dev, inject page context that Exponential normally sends
+          if (isDev) {
+            if (process.env.DEV_WORKSPACE_ID && !requestContext.get('workspaceId')) {
+              requestContext.set('workspaceId', process.env.DEV_WORKSPACE_ID);
+            }
+            if (process.env.DEV_PROJECT_ID && !requestContext.get('projectId')) {
+              requestContext.set('projectId', process.env.DEV_PROJECT_ID);
+            }
+          }
+
+          await next();
+        },
+      },
+    ],
   },
 });
 

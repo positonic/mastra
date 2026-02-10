@@ -2,6 +2,7 @@ import { anthropic } from '@ai-sdk/anthropic';
 import { wrapLanguageModel } from 'ai';
 import { Agent } from '@mastra/core/agent';
 import { memory } from '../memory/index.js';
+import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
 import {
   getProjectContextTool,
   getProjectActionsTool,
@@ -67,6 +68,8 @@ import {
 
 const INSTRUCTIONS = `
 You are a personal AI assistant integrated into Exponential — a life management system.
+
+${EXPONENTIAL_CONTEXT}
 
 ## Identity
 
