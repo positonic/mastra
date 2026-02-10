@@ -2497,3 +2497,6 @@ export { notionTools, notionSearchTool, notionGetPageTool, notionQueryDatabaseTo
 
 // Email tools
 export { checkEmailConnectionTool, getRecentEmailsTool, getEmailByIdTool, searchEmailsTool, sendEmailTool, replyToEmailTool } from "./email-tools.js";
+
+// OKR tools
+export { getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool } from "./okr-tools.js";

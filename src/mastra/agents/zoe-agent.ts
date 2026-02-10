@@ -39,6 +39,16 @@ import {
   searchEmailsTool,
   sendEmailTool,
   replyToEmailTool,
+  // OKR tools
+  getOkrObjectivesTool,
+  createOkrObjectiveTool,
+  updateOkrObjectiveTool,
+  deleteOkrObjectiveTool,
+  createOkrKeyResultTool,
+  updateOkrKeyResultTool,
+  deleteOkrKeyResultTool,
+  checkInOkrKeyResultTool,
+  getOkrStatsTool,
 } from '../tools/index.js';
 
 /**
@@ -125,6 +135,24 @@ You have access to the user's CRM for relationship management:
 - When logging interactions, include meaningful subject and notes
 - When searching, try name search first; if no results, broaden the search
 
+### OKRs (Objectives & Key Results)
+You can manage the user's OKR system — objectives are qualitative goals, key results are measurable outcomes:
+- **get-okr-objectives**: List all objectives with their key results and progress. Filter by period.
+- **create-okr-objective**: Create a new objective (confirm with user first)
+- **update-okr-objective**: Update an objective's title, description, period, etc.
+- **delete-okr-objective**: Delete an objective and all its KRs (ALWAYS confirm first — irreversible)
+- **create-okr-key-result**: Create a key result linked to an objective (confirm details first)
+- **update-okr-key-result**: Update a key result's fields. For progress updates, prefer check-in.
+- **delete-okr-key-result**: Delete a key result (ALWAYS confirm first)
+- **checkin-okr-key-result**: Record a progress check-in — updates value and auto-calculates status
+- **get-okr-stats**: Dashboard stats: totals, status breakdown, average progress
+
+**OKR Policies:**
+- ALWAYS confirm before creating, updating, or deleting objectives and key results
+- When creating KRs, ensure they're measurable with clear target values
+- Use check-in tool (not update) when the user reports progress on a KR
+- When showing OKRs, format clearly with progress indicators
+
 ### Email
 You can access the user's email if they've connected it in their account settings:
 - **check-email-connection**: Always check before first email operation in a conversation
@@ -191,6 +219,12 @@ Use this to decide which tool to call:
 | "Read that email about [topic]" | search-emails → get-email-by-id |
 | "Send an email to X about Y" | DRAFT first, show user full To/Subject/Body, then send-email after confirmation |
 | "Reply to that email" | DRAFT reply, show user, then reply-to-email after confirmation |
+| "Show my OKRs" / "What are my objectives?" / "OKR progress?" | get-okr-objectives (optionally filter by period) |
+| "Create an objective for..." / "Add an OKR..." | FIRST confirm title/period, THEN create-okr-objective |
+| "Add a key result to [objective]..." | get-okr-objectives (find objective) → CONFIRM details → create-okr-key-result |
+| "I completed 30% of [KR]" / "Update progress on [KR]" | get-okr-objectives (find KR) → checkin-okr-key-result |
+| "How are my OKRs doing?" / "OKR dashboard" | get-okr-stats |
+| "Delete [objective/KR]" | ALWAYS confirm first → delete-okr-objective or delete-okr-key-result |
 | "Search for..." / "What's the latest on..." / "Look up..." / "What is [topic]?" | web search → web fetch for deeper reading |
 
 ### Multi-step workflows
@@ -315,6 +349,16 @@ export const zoeAgent = new Agent({
     searchEmailsTool,
     sendEmailTool,
     replyToEmailTool,
+    // OKR tools
+    getOkrObjectivesTool,
+    createOkrObjectiveTool,
+    updateOkrObjectiveTool,
+    deleteOkrObjectiveTool,
+    createOkrKeyResultTool,
+    updateOkrKeyResultTool,
+    deleteOkrKeyResultTool,
+    checkInOkrKeyResultTool,
+    getOkrStatsTool,
     // Web search & fetch (Anthropic provider tools)
     webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),
