@@ -28,10 +28,10 @@ export const mastra = new Mastra({
         handler: async (c: any, next: any) => {
           const requestContext = c.get('requestContext');
 
-          // Use auth header if present; in dev only, fall back to TODO_APP_API_KEY
+          // Use auth header if present; in dev only, fall back to test JWT
           const authHeader = c.req.header('Authorization');
           const token = authHeader?.replace('Bearer ', '')
-            || (isDev ? process.env.TODO_APP_API_KEY : undefined);
+            || (isDev ? process.env.EXPONENTIAL_TEST_JWT : undefined);
 
           if (token) {
             requestContext.set('authToken', token);
@@ -50,11 +50,11 @@ export const mastra = new Mastra({
 
           // In dev, inject page context that Exponential normally sends
           if (isDev) {
-            if (process.env.DEV_WORKSPACE_ID && !requestContext.get('workspaceId')) {
-              requestContext.set('workspaceId', process.env.DEV_WORKSPACE_ID);
+            if (process.env.EXPONENTIAL_TEST_WORKSPACE_ID && !requestContext.get('workspaceId')) {
+              requestContext.set('workspaceId', process.env.EXPONENTIAL_TEST_WORKSPACE_ID);
             }
-            if (process.env.DEV_PROJECT_ID && !requestContext.get('projectId')) {
-              requestContext.set('projectId', process.env.DEV_PROJECT_ID);
+            if (process.env.EXPONENTIAL_TEST_PROJECT_ID && !requestContext.get('projectId')) {
+              requestContext.set('projectId', process.env.EXPONENTIAL_TEST_PROJECT_ID);
             }
           }
 
