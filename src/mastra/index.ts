@@ -24,8 +24,7 @@ export const mastra = new Mastra({
     port: parseInt(process.env.PORT || '4111', 10),
     host: '0.0.0.0', // Required for Railway deployment
     middleware: [
-      {
-        handler: async (c: any, next: any) => {
+      async (c: any, next: any) => {
           const requestContext = c.get('requestContext');
 
           // Use auth header if present; in dev only, fall back to test JWT
@@ -59,7 +58,6 @@ export const mastra = new Mastra({
           }
 
           await next();
-        },
       },
     ],
   },
