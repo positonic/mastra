@@ -17,7 +17,7 @@ Run `bun run dev:log` to capture logs to `mastra.log` for troubleshooting. The l
 
 ## Architecture Overview
 
-This is a Mastra-based multi-agent application with external integrations (WhatsApp, Telegram, Slack, Binance, external APIs).
+This is a Mastra-based multi-agent application with external integrations (WhatsApp, Telegram, Slack, Binance, external APIs). The primary client is the **Exponential app** — see [docs/exponential-app.md](docs/exponential-app.md) for its route structure, data model, workflows, and how it calls Mastra agents.
 
 ### Entry Point and Initialization
 
