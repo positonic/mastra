@@ -70,6 +70,7 @@ interface TelegramUserMapping {
   encryptedAuthToken: string;
   agentId: string;
   assistantId?: string;
+  assistantName?: string;
   workspaceId?: string;
   pairedAt: string;
   lastActive: string | null;
@@ -84,6 +85,7 @@ interface PendingPairing {
   authToken: string;
   agentId: string;
   assistantId?: string;
+  assistantName?: string;
   workspaceId?: string;
   createdAt: number;
 }
@@ -155,9 +157,17 @@ export class TelegramGateway {
   async initialize(): Promise<void> {
     await ensureDir(SESSIONS_DIR);
     await this.loadMappings();
-    await this.startBot();
+
+    // Start HTTP server FIRST so the health check endpoint is always reachable,
+    // even if the Telegram bot fails to start (e.g. polling conflict, bad token).
     this.startHttpServer();
     this.startPairingCleanup();
+
+    try {
+      await this.startBot();
+    } catch (error) {
+      logger.error(`❌ [${INSTANCE_ID}] Telegram bot failed to start, HTTP server still running:`, error);
+    }
 
     logger.info(`✅ [${INSTANCE_ID}] Telegram Gateway initialized with ${this.mappings.size} paired user(s)`);
   }
@@ -272,7 +282,7 @@ export class TelegramGateway {
     if (!mapping) {
       await this.bot?.sendMessage(
         chatId,
-        "You haven't connected your Exponential account yet.\n\nTo get started:\n1. Open the Exponential app\n2. Go to Settings > Integrations > Telegram\n3. Click \"Connect Telegram\" to get a pairing code\n4. Send /start CODE here"
+        "You haven't connected your Exponential account yet.\n\nConnect here: https://www.exponential.im/settings/assistant\n\nOnce you have a pairing code, send /start CODE here"
       );
       return;
     }
@@ -322,7 +332,7 @@ export class TelegramGateway {
         if (!code) {
           await this.bot?.sendMessage(
             chatId,
-            "Welcome! To connect your Exponential account:\n\n1. Open the Exponential app\n2. Go to Settings > Integrations > Telegram\n3. Click \"Connect Telegram\" to get a pairing code\n4. Send /start CODE here\n\nExample: /start A3F1B2"
+            "Welcome! To connect your Exponential account:\n\n1. Go to https://www.exponential.im/settings/assistant\n2. Click \"Connect Telegram\" to get a pairing code\n3. Send /start CODE here\n\nExample: /start A3F1B2"
           );
           return;
         }
@@ -403,6 +413,7 @@ export class TelegramGateway {
     authToken: string,
     agentId: string = 'assistant',
     assistantId?: string,
+    assistantName?: string,
     workspaceId?: string,
   ): string {
     // Check if user already has a pairing — remove old one
@@ -418,6 +429,7 @@ export class TelegramGateway {
       authToken,
       agentId,
       assistantId,
+      assistantName,
       workspaceId,
       createdAt: Date.now(),
     });
@@ -431,6 +443,12 @@ export class TelegramGateway {
     const pairing = this.pendingPairings.get(code);
 
     if (!pairing) {
+      // Check if already connected (duplicate /start from deep link)
+      const existingMapping = this.mappings.get(chatId);
+      if (existingMapping) {
+        // Already paired — silently ignore the duplicate
+        return;
+      }
       await this.bot?.sendMessage(
         chatId,
         "Invalid or expired pairing code. Please generate a new one from the Exponential app."
@@ -470,6 +488,7 @@ export class TelegramGateway {
       encryptedAuthToken: encryptToken(pairing.authToken, secret),
       agentId: pairing.agentId,
       assistantId: pairing.assistantId,
+      assistantName: pairing.assistantName,
       workspaceId: pairing.workspaceId,
       pairedAt: new Date().toISOString(),
       lastActive: null,
@@ -480,12 +499,14 @@ export class TelegramGateway {
     this.pendingPairings.delete(code);
     await this.saveMappings();
 
-    const agentLabel = mapping.agentId === 'assistant' ? 'your assistant' : `@${mapping.agentId}`;
-    await this.bot?.sendMessage(
-      chatId,
-      `Connected! You're now linked to your Exponential account.\n\nYour default agent is *${agentLabel}*. Just type a message to get started.\n\nUse /help to see all commands.`,
-      { parse_mode: 'Markdown' }
-    );
+    let welcomeMsg: string;
+    if (mapping.agentId === 'assistant' && mapping.assistantName) {
+      welcomeMsg = `Connected! I'm *${mapping.assistantName}* — your AI assistant here in Exponential.\n\nJust type a message to get started.\n\nUse /help to see all commands.`;
+    } else {
+      const agentLabel = mapping.agentId === 'assistant' ? 'your assistant' : `*${mapping.agentId}*`;
+      welcomeMsg = `Connected! Your default agent is ${agentLabel}.\n\nJust type a message to get started.\n\nUse /help to see all commands.`;
+    }
+    await this.bot?.sendMessage(chatId, welcomeMsg, { parse_mode: 'Markdown' });
 
     logger.info(`🔗 [${INSTANCE_ID}] Paired user ${pairing.userId} to Telegram chat ${chatId} (@${msg.from?.username})`);
   }
@@ -999,13 +1020,14 @@ export class TelegramGateway {
   ): Promise<void> {
     try {
       const body = await readBody(req);
-      const { agentId, assistantId, workspaceId } = body ? JSON.parse(body) : {};
+      const { agentId, assistantId, assistantName, workspaceId } = body ? JSON.parse(body) : {};
 
       const code = this.generatePairingCode(
         userId,
         authToken,
         agentId || 'assistant',
         assistantId,
+        assistantName,
         workspaceId,
       );
 
