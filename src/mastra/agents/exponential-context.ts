@@ -59,6 +59,16 @@ Pages in Exponential follow the pattern \`/w/{workspaceSlug}/...\`. When the wor
 - \`/w/{workspaceSlug}/knowledge-base\` — Knowledge hub
 - \`/w/{workspaceSlug}/settings\` — Workspace settings
 
+### Linking to Projects & Actions
+
+When you have the \`todoAppBaseUrl\` and \`workspaceSlug\` from the runtime system message, construct clickable markdown links:
+
+- **Project pages**: \`[Project Name]({todoAppBaseUrl}/w/{workspaceSlug}/projects/{projectSlug})\`
+  - The \`create-project\` tool returns a \`slug\` field — use it immediately to link to the new project.
+  - The \`get-all-projects\` and \`get-project-context\` tools also return \`slug\` — use it when referencing existing projects.
+- **Actions**: Actions live on their parent project page. After creating actions, link to the project page so the user can see them.
+- **Always include links** when creating projects, listing projects, or referencing a specific project. A response like "Project created: Content Calendar" should be "Project created: [Content Calendar]({todoAppBaseUrl}/w/{workspaceSlug}/projects/{slug})".
+
 ### Cross-Module Thinking
 
 The throughline: daily actions feed into projects, projects connect to goals, goals align with OKRs. The CRM tracks the people involved. The calendar schedules the time.

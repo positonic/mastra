@@ -444,6 +444,7 @@ export const getProjectContextTool = createTool({
     project: z.object({
       id: z.string(),
       name: z.string(),
+      slug: z.string().optional().describe("Project slug for URL construction"),
       description: z.string().optional().nullable(),
       status: z.string(),
       priority: z.string(),
@@ -877,6 +878,7 @@ export const getAllProjectsTool = createTool({
       z.object({
         id: z.string(),
         name: z.string(),
+        slug: z.string().optional().describe("Project slug for URL construction"),
         description: z.string().nullable(),
         status: z.string(),
         priority: z.string(),
@@ -949,6 +951,7 @@ export const getAllProjectsTool = createTool({
       projects: filteredProjects.map((project: any) => ({
         id: project.id,
         name: project.name,
+        slug: project.slug,
         description: project.description,
         status: project.status,
         priority: project.priority,
