@@ -62,9 +62,38 @@ Defined in [src/mastra/tools/index.ts](src/mastra/tools/index.ts). All tools use
 **Weather:**
 - `weatherTool` - Open-Meteo API for weather data
 
-### Telegram Bot
+### Telegram Bot (Curation)
 
-[src/mastra/bots/ostrom-telegram.ts](src/mastra/bots/ostrom-telegram.ts) - Polls Telegram for messages and routes them to `curationAgent`. Features retry logic with exponential backoff for 409 conflicts, message chunking for long responses (4096 char limit), and graceful shutdown.
+[src/mastra/bots/ostrom-telegram.ts](src/mastra/bots/ostrom-telegram.ts) - Single-tenant bot that polls Telegram and routes messages to `curationAgent`. Features retry logic with exponential backoff for 409 conflicts, message chunking (4096 char limit), and graceful shutdown. Gated behind `ENABLE_TELEGRAM_BOT=true`.
+
+### Telegram Gateway (Multi-Tenant)
+
+[src/mastra/bots/telegram-gateway.ts](src/mastra/bots/telegram-gateway.ts) - Multi-tenant Telegram gateway for Exponential app users. A single shared bot allows any user to pair their Telegram account and converse with their `assistantAgent`. Gated behind `ENABLE_TELEGRAM_GATEWAY=true`.
+
+**API Endpoints (port 4113):**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/pair` | Generate pairing code. Body: `{ agentId?, assistantId?, workspaceId? }`. Returns `{ pairingCode, botUsername }` |
+| `DELETE` | `/pair` | Unpair user's Telegram account |
+| `GET` | `/status` | Returns `{ paired, telegramUsername?, agentId?, lastActive? }` |
+| `PUT` | `/settings` | Update agent/assistant selection. Body: `{ agentId?, assistantId? }` |
+
+All endpoints require `Authorization: Bearer {JWT}` header (same JWT format as WhatsApp gateway).
+
+**Pairing Flow:**
+1. Exponential app calls `POST /pair` with authToken → gets `{ pairingCode, botUsername }`
+2. User opens Telegram, finds the bot, sends `/start CODE`
+3. Bot validates code, links Telegram chat to Exponential user, stores encrypted auth token
+4. User can now message the bot to interact with their assistant agent
+
+**Bot Commands:**
+- `/start CODE` — Complete account pairing
+- `/disconnect` — Unlink Telegram account
+- `/agent NAME` — Switch default agent (assistant, zoe, paddy, pierre, ash, weather)
+- `/help` — Show available commands
+- `@mention` inline — Route message to a specific agent (e.g., `@paddy what are my tasks?`)
+
+**Session Storage:** `~/.mastra/telegram-sessions/telegram-mappings.json` maps Telegram chat IDs to Exponential users with encrypted auth tokens.
 
 ### WhatsApp Gateway (Multi-Tenant)
 
@@ -108,15 +137,19 @@ Key variables (see documentation in `/docs` for setup details):
 - `DATABASE_URL` - PostgreSQL with pgvector
 - `TODO_APP_BASE_URL` - Project management API endpoint
 - `SLACK_BOT_TOKEN` - Slack integration
-- `CURATION_TELEGRAM_BOT_TOKEN` - Telegram bot token
+- `CURATION_TELEGRAM_BOT_TOKEN` - Telegram bot token (curation bot)
 - `CURATION_CLIENT_TOKEN` - Curation Platform MCP auth
+- `TELEGRAM_BOT_TOKEN` - Shared Telegram bot token (multi-tenant gateway)
+- `TELEGRAM_GATEWAY_PORT` - Telegram gateway HTTP API port (default: 4113)
+- `ENABLE_TELEGRAM_GATEWAY` - Enable multi-tenant Telegram gateway (default: false)
 - `WHATSAPP_GATEWAY_PORT` - WhatsApp gateway port (default: 4112)
 - `WHATSAPP_MAX_SESSIONS` - Max concurrent WhatsApp sessions (default: 10)
-- `AUTH_SECRET` - JWT signing secret (must match client app's secret for WhatsApp gateway auth)
+- `AUTH_SECRET` - JWT signing secret (must match client app's secret for gateway auth)
+- `GATEWAY_SECRET` - Shared secret for token refresh (falls back to `WHATSAPP_GATEWAY_SECRET`)
 
 ### Server Configuration
 
-Mastra runs on port 4111 by default (or `PORT` env var), bound to `0.0.0.0` for Railway deployment. API endpoints follow pattern: `/api/agents/{agentName}/text`. WhatsApp gateway runs on port 4112.
+Mastra runs on port 4111 by default (or `PORT` env var), bound to `0.0.0.0` for Railway deployment. API endpoints follow pattern: `/api/agents/{agentName}/text`. WhatsApp gateway runs on port 4112. Telegram gateway runs on port 4113.
 
 ### Key Patterns
 

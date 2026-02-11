@@ -27,6 +27,14 @@ import {
   zoeAgent,
 } from '../agents/index.js';
 import { captureException, captureAuthFailure } from '../utils/sentry.js';
+import {
+  GatewayError,
+  type GatewayErrorCode,
+  type JWTPayload,
+  verifyAndExtractUserId,
+  encryptToken,
+  decryptToken,
+} from '../utils/gateway-shared.js';
 
 const logger = createLogger({
   name: 'WhatsAppGateway',
@@ -54,106 +62,7 @@ const WHATSAPP_GATEWAY_SECRET = process.env.WHATSAPP_GATEWAY_SECRET;
 // Uses zero-width characters that are invisible to users but detectable by code
 const BOT_SIGNATURE = '\u200B\u200C\u200B'; // Zero-width space + zero-width non-joiner + zero-width space
 
-// JWT Types
-interface JWTPayload {
-  userId: string;
-  sub: string;
-  email?: string | null;
-  name?: string | null;
-  tokenType: string;
-  aud: string;
-  iss: string;
-}
-
-// Error codes for stable error identification
-type GatewayErrorCode =
-  | 'AUTH_SECRET_NOT_CONFIGURED'
-  | 'TOKEN_EXPIRED'
-  | 'TOKEN_INVALID'
-  | 'TOKEN_MISSING_USERID'
-  | 'MAX_SESSIONS_REACHED';
-
-// Custom error class with stable code property
-class GatewayError extends Error {
-  code: GatewayErrorCode;
-
-  constructor(code: GatewayErrorCode, message: string) {
-    super(message);
-    this.code = code;
-    this.name = 'GatewayError';
-  }
-}
-
-// JWT Verification
-function verifyAndExtractUserId(token: string): string {
-  const secret = process.env.AUTH_SECRET;
-  if (!secret) {
-    throw new GatewayError('AUTH_SECRET_NOT_CONFIGURED', 'AUTH_SECRET not configured');
-  }
-
-  try {
-    const payload = jwt.verify(token, secret, {
-      audience: 'mastra-agents',
-      issuer: 'todo-app',
-    }) as JWTPayload;
-
-    const userId = payload.userId || payload.sub;
-    if (!userId) {
-      throw new GatewayError('TOKEN_MISSING_USERID', 'Token missing userId');
-    }
-    return userId;
-  } catch (error: any) {
-    if (error instanceof GatewayError) {
-      throw error;
-    }
-    if (error.name === 'TokenExpiredError') {
-      throw new GatewayError('TOKEN_EXPIRED', 'Token expired');
-    } else if (error.name === 'JsonWebTokenError') {
-      throw new GatewayError('TOKEN_INVALID', 'Invalid token');
-    }
-    throw error;
-  }
-}
-
-// Token encryption for secure storage at rest
-// Format: salt:iv:authTag:ciphertext (all hex encoded)
-const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
-
-function encryptToken(token: string, secret: string): string {
-  const salt = crypto.randomBytes(16);
-  const key = crypto.scryptSync(secret, salt, 32);
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(ENCRYPTION_ALGORITHM, key, iv);
-
-  let encrypted = cipher.update(token, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  const authTag = cipher.getAuthTag();
-
-  return `${salt.toString('hex')}:${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
-}
-
-function decryptToken(encrypted: string, secret: string): string | null {
-  try {
-    const parts = encrypted.split(':');
-    if (parts.length !== 4) return null;
-
-    const [saltHex, ivHex, authTagHex, data] = parts;
-    const salt = Buffer.from(saltHex, 'hex');
-    const key = crypto.scryptSync(secret, salt, 32);
-    const iv = Buffer.from(ivHex, 'hex');
-    const authTag = Buffer.from(authTagHex, 'hex');
-
-    const decipher = crypto.createDecipheriv(ENCRYPTION_ALGORITHM, key, iv);
-    decipher.setAuthTag(authTag);
-
-    let decrypted = decipher.update(data, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
-  } catch (error) {
-    logger.warn(`⚠️ Failed to decrypt token: ${error}`);
-    return null;
-  }
-}
+// JWT types, error classes, encryption, and verification are imported from gateway-shared.ts
 
 // Types
 interface SessionMetadata {

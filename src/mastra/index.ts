@@ -3,6 +3,7 @@ import { createLogger } from '@mastra/core/logger';
 import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent, zoeAgent, expoAgent, assistantAgent } from './agents';
 import { memory } from './memory/index.js';
 import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js';
+import { createTelegramGateway, cleanupTelegramGateway } from './bots/telegram-gateway.js';
 import { createWhatsAppGateway, cleanupWhatsAppGateway } from './bots/whatsapp-gateway.js';
 import { initSentry, captureException, flushSentry } from './utils/sentry.js';
 
@@ -70,6 +71,13 @@ if (!enableTelegram) {
   logger.info('📵 [MAIN] Telegram bot disabled (set ENABLE_TELEGRAM_BOT=true to enable)');
 }
 
+// Initialize Telegram gateway (multi-tenant, for Exponential app users)
+const enableTelegramGateway = process.env.ENABLE_TELEGRAM_GATEWAY === 'true';
+export const telegramGateway = enableTelegramGateway ? createTelegramGateway() : null;
+if (!enableTelegramGateway) {
+  logger.info('📵 [MAIN] Telegram gateway disabled (set ENABLE_TELEGRAM_GATEWAY=true to enable)');
+}
+
 // Initialize WhatsApp gateway
 export const whatsAppGateway = createWhatsAppGateway();
 
@@ -86,6 +94,9 @@ const shutdown = async (signal: string, error?: Error) => {
     // Cleanup bots and gateways
     if (enableTelegram) {
       await cleanupTelegramBot();
+    }
+    if (enableTelegramGateway) {
+      await cleanupTelegramGateway();
     }
     await cleanupWhatsAppGateway();
 
