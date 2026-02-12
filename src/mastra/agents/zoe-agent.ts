@@ -53,6 +53,10 @@ import {
   // Project & Action management tools
   createProjectTool,
   updateActionTool,
+  // WhatsApp search tools
+  listWhatsAppChatsTool,
+  getWhatsAppChatHistoryTool,
+  searchWhatsAppChatsTool,
 } from '../tools/index.js';
 
 /**
@@ -181,6 +185,17 @@ You can access the user's email if they've connected it in their account setting
 - NEVER send without explicit user confirmation (yes, sure, go ahead, etc.)
 - When checking inbox, summarize concisely — don't dump full email bodies unless asked
 - For replies, show the draft reply and confirm before sending
+
+### WhatsApp Chat Search & Browsing
+You can search and browse the user's WhatsApp messages:
+- **list-whatsapp-chats**: List all WhatsApp conversations with contact info and message counts
+- **get-whatsapp-chat-history**: Read full paginated message history for a specific chat
+- **search-whatsapp-chats**: Search across all messages — keyword, semantic (AI-powered), or hybrid (both)
+
+**Usage patterns:**
+- "What did I discuss with John on WhatsApp?" → list chats to find John, then get history or search
+- "Search my WhatsApp for mentions of the contract" → search with query "contract"
+- "Show my recent WhatsApp conversations" → list chats
 
 ### Web Search & Fetch
 You have real-time web access:
@@ -368,6 +383,10 @@ export const zoeAgent = new Agent({
     searchEmailsTool,
     sendEmailTool,
     replyToEmailTool,
+    // WhatsApp search tools
+    listWhatsAppChatsTool,
+    getWhatsAppChatHistoryTool,
+    searchWhatsAppChatsTool,
     // OKR tools
     getOkrObjectivesTool,
     createOkrObjectiveTool,

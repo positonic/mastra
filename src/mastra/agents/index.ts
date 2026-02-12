@@ -9,7 +9,7 @@ export { zoeAgent } from './zoe-agent.js';
 export { expoAgent } from './expo-agent.js';
 // Export Assistant agent (blank canvas for user-customized personalities)
 export { assistantAgent } from './assistant-agent.js';
-import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateActionTool } from '../tools';
+import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateActionTool, listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
 export const weatherAgent = new Agent({
@@ -237,6 +237,16 @@ export const projectManagerAgent = new Agent({
     - Update existing Slack messages with progress reports
     - Notify team members about task assignments and deadlines
     - Share project status summaries in designated channels
+
+    ### WhatsApp Chat Search & Browsing
+    - **list-whatsapp-chats**: List all WhatsApp conversations with contact info and message counts
+    - **get-whatsapp-chat-history**: Read full paginated message history for a specific chat
+    - **search-whatsapp-chats**: Search across all messages (keyword, semantic, or hybrid)
+
+    For questions like:
+    - "What did I discuss with John on WhatsApp?" → list-whatsapp-chats (find John) → get-whatsapp-chat-history or search-whatsapp-chats
+    - "Search my WhatsApp for mentions of the contract" → search-whatsapp-chats with query "contract"
+    - "Show my recent WhatsApp conversations" → list-whatsapp-chats
 
     ### OKR Management
     - Manage Objectives and Key Results for strategic goal tracking
@@ -526,6 +536,9 @@ export const projectManagerAgent = new Agent({
     checkCalendarConnectionTool,
     lookupContactByEmailTool,
     getWhatsAppContextTool,
+    listWhatsAppChatsTool,
+    getWhatsAppChatHistoryTool,
+    searchWhatsAppChatsTool,
     createCrmContactTool,
     getOkrObjectivesTool,
     createOkrObjectiveTool,

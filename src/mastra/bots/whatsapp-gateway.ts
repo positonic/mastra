@@ -35,6 +35,7 @@ import {
   encryptToken,
   decryptToken,
 } from '../utils/gateway-shared.js';
+import { WhatsAppMessageStore, getWhatsAppMessageStore } from './whatsapp-store.js';
 
 const logger = createLogger({
   name: 'WhatsAppGateway',
@@ -244,6 +245,7 @@ export class WhatsAppGateway {
   private sessions: Map<string, WhatsAppSession> = new Map();
   private httpServer: Server | null = null;
   private sessionsMetadata: SessionsFile = {};
+  private messageStore: WhatsAppMessageStore | null = null;
 
   constructor() {
     logger.info(`🚀 [${INSTANCE_ID}] WhatsApp Gateway initializing...`);
@@ -255,6 +257,16 @@ export class WhatsAppGateway {
 
     // Load existing sessions metadata
     await this.loadSessionsMetadata();
+
+    // Initialize message persistence store
+    try {
+      this.messageStore = getWhatsAppMessageStore();
+      await this.messageStore.initialize();
+      logger.info(`📦 [${INSTANCE_ID}] WhatsApp message store initialized`);
+    } catch (error) {
+      logger.error(`❌ [${INSTANCE_ID}] Failed to initialize message store (non-fatal):`, error);
+      this.messageStore = null;
+    }
 
     // Reconnect existing sessions
     await this.reconnectExistingSessions();
@@ -484,7 +496,7 @@ export class WhatsAppGateway {
         logger: baileysLogger as any,
         printQRInTerminal: false,
         browser: ['Mastra', 'Chrome', '1.0.0'],
-        syncFullHistory: false,
+        syncFullHistory: true,
         markOnlineOnConnect: false,
       });
 
@@ -499,6 +511,20 @@ export class WhatsAppGateway {
       // Handle incoming messages
       session.sock.ev.on('messages.upsert', (upsert) => {
         this.handleMessagesUpsert(session, upsert);
+      });
+
+      // Handle history sync for persistent message storage
+      session.sock.ev.on('messaging-history.set', (history) => {
+        this.handleHistorySync(session, history).catch(err => {
+          logger.error(`❌ [${INSTANCE_ID}] Error in history sync handler:`, err);
+        });
+      });
+
+      // Handle contact metadata updates
+      session.sock.ev.on('contacts.upsert', (contacts) => {
+        this.handleContactsUpsert(session, contacts).catch(err => {
+          logger.error(`❌ [${INSTANCE_ID}] Error in contacts upsert handler:`, err);
+        });
       });
 
     } catch (error) {
@@ -595,6 +621,20 @@ export class WhatsAppGateway {
             text: textForCache,
             messageId: msg.key.id,
           });
+
+          // Persist message to database (non-blocking)
+          if (this.messageStore) {
+            this.messageStore.storeMessage(session.userId, {
+              jid: remoteJid,
+              messageId: msg.key.id,
+              fromMe: msg.key.fromMe ?? false,
+              text: textForCache,
+              timestamp: new Date(msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now()),
+              senderName: msg.pushName || undefined,
+            }).catch(err => {
+              logger.error(`❌ [${INSTANCE_ID}] Error persisting message:`, err);
+            });
+          }
         }
 
         // We want to process messages FROM the session owner (fromMe = true)
@@ -1235,6 +1275,84 @@ Example format for lists:
     res.end(JSON.stringify({ success: true }));
   }
 
+  // History sync and contact handlers for persistent message storage
+
+  private async handleHistorySync(
+    session: WhatsAppSession,
+    history: BaileysEventMap['messaging-history.set'],
+  ): Promise<void> {
+    if (!this.messageStore) return;
+
+    const { chats, contacts, messages, progress, syncType } = history;
+    logger.info(
+      `📜 [${INSTANCE_ID}] History sync: ${messages.length} msgs, ${chats.length} chats, ` +
+      `${contacts.length} contacts (progress: ${progress}, type: ${syncType})`,
+    );
+
+    // Upsert contacts as chat metadata
+    for (const contact of contacts) {
+      if (!contact.id) continue;
+      try {
+        await this.messageStore.ensureChat(session.userId, contact.id, {
+          contactName: contact.name || contact.notify || (contact as any).verifiedName,
+          pushName: contact.notify,
+          phoneNumber: jidToE164(contact.id),
+          isGroup: contact.id.endsWith('@g.us'),
+        });
+      } catch (error) {
+        logger.error(`❌ [${INSTANCE_ID}] Error storing contact ${contact.id}:`, error);
+      }
+    }
+
+    // Bulk store messages (embeddings are deferred)
+    const storedMessages = messages
+      .filter(msg => {
+        const text = extractText(msg.message);
+        return text && msg.key.remoteJid && msg.key.id;
+      })
+      .map(msg => ({
+        jid: msg.key.remoteJid!,
+        messageId: msg.key.id!,
+        fromMe: msg.key.fromMe ?? false,
+        text: extractText(msg.message)!,
+        timestamp: new Date(
+          msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now(),
+        ),
+        senderName: msg.pushName || undefined,
+      }));
+
+    if (storedMessages.length > 0) {
+      try {
+        await this.messageStore.storeBatch(session.userId, storedMessages);
+      } catch (error) {
+        logger.error(`❌ [${INSTANCE_ID}] Error storing history batch:`, error);
+      }
+    }
+  }
+
+  private async handleContactsUpsert(
+    session: WhatsAppSession,
+    contacts: any[],
+  ): Promise<void> {
+    if (!this.messageStore) return;
+    for (const contact of contacts) {
+      if (!contact.id) continue;
+      try {
+        await this.messageStore.ensureChat(session.userId, contact.id, {
+          contactName: contact.name || contact.verifiedName,
+          pushName: contact.notify,
+          phoneNumber: jidToE164(contact.id),
+        });
+      } catch (error) {
+        logger.error(`❌ [${INSTANCE_ID}] Error storing contact ${contact.id}:`, error);
+      }
+    }
+  }
+
+  getMessageStore(): WhatsAppMessageStore | null {
+    return this.messageStore;
+  }
+
   // Message caching for context retrieval
   private static readonly MAX_CACHED_MESSAGES_PER_CONTACT = 50;
 
@@ -1342,6 +1460,11 @@ Example format for lists:
       } catch (error) {
         logger.error(`❌ [${INSTANCE_ID}] Error closing session ${sessionId}:`, error);
       }
+    }
+
+    // Shutdown message store
+    if (this.messageStore) {
+      await this.messageStore.shutdown();
     }
 
     // Close HTTP server

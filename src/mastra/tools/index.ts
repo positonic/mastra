@@ -1959,11 +1959,38 @@ export const getWhatsAppContextTool = createTool({
   execute: async (inputData, { requestContext }) => {
     const { phoneNumber, contactName, limit } = inputData;
     const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
 
     console.log(
       `📱 [getWhatsAppContext] Fetching messages with ${contactName} (${phoneNumber})`
     );
 
+    // Try persistent store first (has historical messages)
+    const gateway = getWhatsAppGateway();
+    const store = gateway?.getMessageStore();
+    if (store && userId) {
+      try {
+        const jid = phoneNumber.replace(/[^\d]/g, '') + '@s.whatsapp.net';
+        const history = await store.getChatHistory(userId, jid, { limit });
+        if (history.messages.length > 0) {
+          console.log(
+            `✅ [getWhatsAppContext] Found ${history.messages.length} messages from persistent store`
+          );
+          return {
+            found: true,
+            messages: history.messages.map(m => ({
+              timestamp: m.timestamp,
+              fromMe: m.fromMe,
+              text: m.text,
+            })),
+          };
+        }
+      } catch (error) {
+        console.error(`⚠️ [getWhatsAppContext] Store query failed, falling back to cache:`, error);
+      }
+    }
+
+    // Fallback to in-memory cache
     if (!sessionId) {
       console.error("❌ [getWhatsAppContext] No WhatsApp session ID available");
       return {
@@ -1972,7 +1999,6 @@ export const getWhatsAppContextTool = createTool({
       };
     }
 
-    const gateway = getWhatsAppGateway();
     if (!gateway) {
       console.error("❌ [getWhatsAppContext] WhatsApp gateway not available");
       return {
@@ -2506,3 +2532,6 @@ export { getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, d
 
 // Project & Action management tools
 export { createProjectTool, updateActionTool } from "./project-tools.js";
+
+// WhatsApp search tools
+export { listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool } from "./whatsapp-tools.js";
