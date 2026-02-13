@@ -6,7 +6,7 @@ import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js
 import { createTelegramGateway, cleanupTelegramGateway } from './bots/telegram-gateway.js';
 import { createWhatsAppGateway, cleanupWhatsAppGateway } from './bots/whatsapp-gateway.js';
 import { initSentry, captureException, flushSentry } from './utils/sentry.js';
-import { startScheduler, stopScheduler } from './proactive/index.js';
+import { startScheduler, stopScheduler, triggerCheck } from './proactive/index.js';
 
 // Initialize Sentry first (before anything else)
 initSentry();
@@ -25,6 +25,28 @@ export const mastra = new Mastra({
   server: {
     port: parseInt(process.env.PORT || '4111', 10),
     host: '0.0.0.0', // Required for Railway deployment
+    apiRoutes: [
+      {
+        path: '/api/proactive/trigger',
+        method: 'POST',
+        createHandler: async () => async (c: any) => {
+          const secret = c.req.header('X-Trigger-Secret');
+          const expectedSecret = process.env.PROACTIVE_TRIGGER_SECRET || 'proactive-trigger-secret';
+          
+          if (secret !== expectedSecret) {
+            return c.json({ error: 'Unauthorized' }, 401);
+          }
+          
+          try {
+            await triggerCheck('evening');
+            return c.json({ success: true, message: 'Proactive check completed' });
+          } catch (error) {
+            console.error('Proactive trigger failed:', error);
+            return c.json({ error: 'Check failed' }, 500);
+          }
+        },
+      },
+    ],
     middleware: [
       async (c: any, next: any) => {
           const requestContext = c.get('requestContext');
