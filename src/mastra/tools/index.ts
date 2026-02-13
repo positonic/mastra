@@ -2535,3 +2535,6 @@ export { createProjectTool, updateActionTool } from "./project-tools.js";
 
 // WhatsApp search tools
 export { listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool } from "./whatsapp-tools.js";
+
+// PM Agent tools (sprint analytics, GitHub activity, risk signals)
+export { getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from "./pm-tools.js";

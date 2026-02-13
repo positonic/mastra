@@ -9,7 +9,7 @@ export { zoeAgent } from './zoe-agent.js';
 export { expoAgent } from './expo-agent.js';
 // Export Assistant agent (blank canvas for user-customized personalities)
 export { assistantAgent } from './assistant-agent.js';
-import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateActionTool, listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool } from '../tools';
+import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateActionTool, listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool, getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
 export const weatherAgent = new Agent({
@@ -466,6 +466,13 @@ export const projectManagerAgent = new Agent({
     15. 'get-whatsapp-context' - Fetch recent WhatsApp messages with a contact (ONLY after user confirms)
     16. 'create-crm-contact' - Save a new contact to the CRM (ONLY after user confirms they want to save it)
 
+    **Sprint Analytics & Development Tracking:**
+    17. 'get-active-sprint' - Find active sprint for workspace (start here for any sprint query)
+    18. 'get-sprint-metrics' - Velocity, kanban counts, completion rate, scope creep stats
+    19. 'get-risk-signals' - Detect stale items, overdue actions, blocked work, velocity drops
+    20. 'get-github-activity' - Commits, PRs, reviews since a date (use yesterday for standups, sprint start for reviews)
+    21. 'capture-daily-snapshot' - Record sprint state for burndown tracking (evening wrapup)
+
     ## KEY RESPONSIBILITIES:
     - Monitor project health across all data sources
     - Identify and resolve bottlenecks from projects and meetings
@@ -508,6 +515,43 @@ export const projectManagerAgent = new Agent({
 
     **CRITICAL:** You MUST call the tools to gather this data. NEVER ask the user for their projects, tasks, or outcomes - you have full access to all of this information through your tools.
 
+    ### Sprint Analytics & PM Cadences
+    You have access to sprint analytics tools that let you track development progress, detect risks, and compose structured standup/wrapup messages.
+
+    **Sprint Tools:**
+    - 'get-active-sprint': Find the active sprint for a workspace (start here)
+    - 'get-sprint-metrics': Velocity, kanban counts, completion rate, scope creep
+    - 'get-risk-signals': Detect stale items, overdue actions, blocked work, velocity drops
+    - 'get-github-activity': Commits, PRs opened/merged, reviews since a date
+    - 'capture-daily-snapshot': Record sprint state for burndown tracking (use during evening wrapup)
+
+    **Sprint Queries:**
+    - "What's the sprint status?" / "Sprint update" → get-active-sprint → get-sprint-metrics → get-risk-signals
+    - "Morning standup" / "Give me a standup" → Compose using: get-active-sprint → get-sprint-metrics + get-github-activity (since yesterday) + get-risk-signals
+    - "Evening wrapup" / "End of day summary" → Same as standup + capture-daily-snapshot
+    - "Sprint review" / "How did the sprint go?" → get-sprint-metrics + get-github-activity (since sprint start) + get-risk-signals
+    - "Any risks?" / "What's at risk?" → get-risk-signals (flag high/critical severity immediately)
+
+    **Morning Standup Format:**
+    When composing a morning standup, structure it as:
+    1. **Sprint Health** — completion rate, velocity, days remaining
+    2. **Yesterday's Progress** — GitHub activity (commits, PRs merged), actions completed
+    3. **Risk Alerts** — any high/critical risk signals (stale items, overdue, blocked)
+    4. **Today's Focus** — top priority actions still in progress or upcoming
+
+    **Evening Wrapup Format:**
+    1. **Today's Accomplishments** — actions completed, PRs merged, commits pushed
+    2. **Sprint Progress** — updated completion rate, burndown trend
+    3. **Slippage/Blockers** — anything that slipped or is now at risk
+    4. **Tomorrow's Focus** — what should be tackled next
+    5. Capture a daily snapshot for burndown tracking
+
+    **Risk Escalation:**
+    When risk signals include high or critical severity:
+    - Flag them prominently at the top of any standup/wrapup
+    - Recommend specific actions to mitigate (e.g. "Action X has been in progress for 5 days — consider breaking it down or reassigning")
+    - For scope creep, note how many actions were added after sprint start
+
     Always provide actionable insights with specific next steps, deadlines, and clear ownership, enriched with meeting context and team intelligence.
 `,
   model: openai('gpt-4o'),
@@ -549,6 +593,12 @@ export const projectManagerAgent = new Agent({
     deleteOkrKeyResultTool,
     checkInOkrKeyResultTool,
     getOkrStatsTool,
+    // PM Agent tools (sprint analytics, GitHub activity, risk signals)
+    getActiveSprintTool,
+    getSprintMetricsTool,
+    getRiskSignalsTool,
+    getGitHubActivityTool,
+    captureDailySnapshotTool,
   },
 });
 
