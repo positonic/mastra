@@ -2,6 +2,36 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Mandatory Workflow: Plan First with Beads
+
+**This is the most important rule in this repository.** Never jump straight into coding. Every task follows this workflow:
+
+1. **Plan first** — Break the work into beads issues (`bd create`) before writing any code. Structure the plan as a dependency graph so tasks can be worked sequentially.
+2. **Execute sequentially** — Work through beads one at a time: `bd ready` to find the next unblocked issue, `bd update <id> --status in_progress` to claim it, do the work, then `bd close <id>`.
+3. **Never skip planning** — Even for "small" tasks, create at least one bead. The plan is the source of truth for what we're doing and why.
+
+**Quick reference:**
+```bash
+# Planning phase
+bd create --title="Step 1: ..." --type=task --priority=2
+bd create --title="Step 2: ..." --type=task --priority=2
+bd dep add <step2-id> <step1-id>   # step2 depends on step1
+
+# Execution phase
+bd ready                            # what's next?
+bd update <id> --status in_progress # claim it
+# ... do the work ...
+bd close <id>                       # done
+bd ready                            # next?
+
+# Session end
+bd sync && git push
+```
+
+**Do NOT use TodoWrite for task tracking.** All task tracking goes through beads (`bd`).
+
+See [AGENTS.md](AGENTS.md) for session completion protocol and full beads reference.
+
 ## Development Commands
 
 - `bun run dev` - Start development server using Mastra CLI (port 4111)
