@@ -62,7 +62,7 @@ All agents are defined in [src/mastra/agents/index.ts](src/mastra/agents/index.t
 | `weatherAgent` | Weather Agent | GPT-4o | Weather information with location recommendations |
 | `ashAgent` | Ash Maurya Agent | GPT-4o | Lean Startup business modeling advisor |
 | `pierreAgent` | Pierre | GPT-4o-mini | Crypto trend-following trading mentor with RAG |
-| `projectManagerAgent` | Paddy | GPT-4o-mini | Project/task management with Slack and meeting integrations |
+| `projectManagerAgent` | Paddy | GPT-4o-mini | Project/task management with Slack, meetings, sprint analytics, and risk detection |
 | `expoAgent` | Expo | GPT-4o | Exponential app knowledge expert with RAG (docs + Prisma schema) |
 
 The `curationAgent` (Lin) is defined separately in [src/mastra/agents/ostrom-agent.ts](src/mastra/agents/ostrom-agent.ts) for Curation Platform analysis via MCP server (currently disabled).
@@ -85,6 +85,12 @@ Defined in [src/mastra/tools/index.ts](src/mastra/tools/index.ts). All tools use
 - `getProjectContextTool`, `getProjectActionsTool`, `createProjectActionTool`, `updateProjectStatusTool`
 - `getProjectGoalsTool`, `getAllGoalsTool`, `getAllProjectsTool`
 - `getMeetingTranscriptionsTool`, `queryMeetingContextTool`, `getMeetingInsightsTool`
+
+**Sprint Analytics Tools** (require `authToken` in runtimeContext):
+- `getActiveSprintTool`, `getSprintMetricsTool`, `getRiskSignalsTool`, `getGitHubActivityTool`, `captureDailySnapshotTool`
+- Defined in [src/mastra/tools/pm-tools.ts](src/mastra/tools/pm-tools.ts)
+- Call Exponential's `sprintAnalytics.*` tRPC endpoints via `authenticatedTrpcCall`
+- See [docs/pm-agent-tools.md](docs/pm-agent-tools.md) for full reference
 
 **Slack Tools:**
 - `sendSlackMessageTool`, `updateSlackMessageTool`, `getSlackUserInfoTool`
