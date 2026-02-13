@@ -9,6 +9,7 @@ import cron from 'node-cron';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
+import http from 'http';
 import { createLogger } from '@mastra/core/logger';
 import { checkUser } from './checker.js';
 import { initNotifier, notifyUser, formatDailyDigest } from './notifier.js';
@@ -31,6 +32,11 @@ const EVENING_SCHEDULE = process.env.PROACTIVE_EVENING_CRON || '0 18 * * 1-5'; /
 // Track scheduled tasks for cleanup
 let morningTask: cron.ScheduledTask | null = null;
 let eveningTask: cron.ScheduledTask | null = null;
+let httpServer: http.Server | null = null;
+
+// HTTP trigger port
+const TRIGGER_PORT = parseInt(process.env.PROACTIVE_TRIGGER_PORT || '4114', 10);
+const TRIGGER_SECRET = process.env.PROACTIVE_TRIGGER_SECRET || 'proactive-trigger-secret';
 
 /**
  * Decrypt auth token (must match gateway encryption)
@@ -152,6 +158,40 @@ export function startScheduler(): void {
     timezone: process.env.TZ || 'Europe/Berlin',
   });
 
+  // Start HTTP server for manual triggers
+  httpServer = http.createServer(async (req, res) => {
+    // Check authorization
+    const authHeader = req.headers['x-trigger-secret'];
+    if (authHeader !== TRIGGER_SECRET) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/trigger') {
+      try {
+        logger.info('🔔 [ProactiveScheduler] Manual trigger received');
+        await runProactiveChecks('evening');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: 'Check completed' }));
+      } catch (error) {
+        logger.error('❌ [ProactiveScheduler] Manual trigger failed:', error);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Check failed' }));
+      }
+    } else if (req.method === 'GET' && req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok' }));
+    } else {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not found' }));
+    }
+  });
+
+  httpServer.listen(TRIGGER_PORT, '0.0.0.0', () => {
+    logger.info(`🌐 [ProactiveScheduler] HTTP trigger server running on port ${TRIGGER_PORT}`);
+  });
+
   logger.info(
     `🕐 [ProactiveScheduler] Started with schedules: ` +
     `morning="${MORNING_SCHEDULE}", evening="${EVENING_SCHEDULE}"`
@@ -169,6 +209,10 @@ export function stopScheduler(): void {
   if (eveningTask) {
     eveningTask.stop();
     eveningTask = null;
+  }
+  if (httpServer) {
+    httpServer.close();
+    httpServer = null;
   }
   logger.info('🛑 [ProactiveScheduler] Stopped');
 }
