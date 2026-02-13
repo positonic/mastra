@@ -8,7 +8,6 @@ import {
   authenticatedTrpcCall,
   authenticatedTrpcQuery,
 } from "../utils/authenticated-fetch.js";
-import { getWhatsAppGateway } from "../bots/whatsapp-gateway.js";
 
 interface GeocodingResponse {
   results: {
@@ -1966,6 +1965,7 @@ export const getWhatsAppContextTool = createTool({
     );
 
     // Try persistent store first (has historical messages)
+    const { getWhatsAppGateway } = await import("../bots/whatsapp-gateway.js");
     const gateway = getWhatsAppGateway();
     const store = gateway?.getMessageStore();
     if (store && userId) {

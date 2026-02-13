@@ -6,6 +6,7 @@ import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js
 import { createTelegramGateway, cleanupTelegramGateway } from './bots/telegram-gateway.js';
 import { createWhatsAppGateway, cleanupWhatsAppGateway } from './bots/whatsapp-gateway.js';
 import { initSentry, captureException, flushSentry } from './utils/sentry.js';
+import { startScheduler, stopScheduler } from './proactive/index.js';
 
 // Initialize Sentry first (before anything else)
 initSentry();
@@ -81,6 +82,14 @@ if (!enableTelegramGateway) {
 // Initialize WhatsApp gateway
 export const whatsAppGateway = createWhatsAppGateway();
 
+// Start proactive scheduler (checks projects and notifies users)
+const enableProactive = process.env.ENABLE_PROACTIVE_SCHEDULER !== 'false';
+if (enableProactive) {
+  startScheduler();
+} else {
+  logger.info('📵 [MAIN] Proactive scheduler disabled (set ENABLE_PROACTIVE_SCHEDULER=true to enable)');
+}
+
 // Add graceful shutdown handling
 const shutdown = async (signal: string, error?: Error) => {
   logger.info(`🛑 [MAIN] Received ${signal}, starting graceful shutdown...`);
@@ -99,6 +108,9 @@ const shutdown = async (signal: string, error?: Error) => {
       await cleanupTelegramGateway();
     }
     await cleanupWhatsAppGateway();
+    
+    // Stop proactive scheduler
+    stopScheduler();
 
     // Flush Sentry events before exit
     await flushSentry();

@@ -1,7 +1,5 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
-import { getWhatsAppGateway } from "../bots/whatsapp-gateway.js";
-
 /**
  * Normalizes a phone number or JID string to a WhatsApp JID.
  * If the input already contains '@', it's returned as-is.
@@ -12,7 +10,8 @@ function normalizeToJid(input: string): string {
   return input.replace(/[^\d]/g, '') + '@s.whatsapp.net';
 }
 
-function getStoreOrThrow() {
+async function getStoreOrThrow() {
+  const { getWhatsAppGateway } = await import("../bots/whatsapp-gateway.js");
   const gateway = getWhatsAppGateway();
   const store = gateway?.getMessageStore();
   if (!store) {
@@ -54,7 +53,7 @@ export const listWhatsAppChatsTool = createTool({
     const userId = requestContext?.get("userId");
     if (!userId) throw new Error("No userId available");
 
-    const store = getStoreOrThrow();
+    const store = await getStoreOrThrow();
 
     console.log(`📋 [listWhatsAppChats] Listing chats for user ${userId} (limit: ${inputData.limit}, offset: ${inputData.offset})`);
 
@@ -110,7 +109,7 @@ export const getWhatsAppChatHistoryTool = createTool({
     const userId = requestContext?.get("userId");
     if (!userId) throw new Error("No userId available");
 
-    const store = getStoreOrThrow();
+    const store = await getStoreOrThrow();
 
     const jid = normalizeToJid(inputData.jid);
 
@@ -172,7 +171,7 @@ export const searchWhatsAppChatsTool = createTool({
     const userId = requestContext?.get("userId");
     if (!userId) throw new Error("No userId available");
 
-    const store = getStoreOrThrow();
+    const store = await getStoreOrThrow();
 
     const jid = inputData.jid ? normalizeToJid(inputData.jid) : undefined;
 
