@@ -12,6 +12,7 @@ import os from 'os';
 import { createLogger } from '@mastra/core/logger';
 import { checkUser } from './checker.js';
 import { initNotifier, notifyUser, formatDailyDigest } from './notifier.js';
+import { decryptToken } from '../utils/gateway-shared.js';
 import type { UserContext } from './types.js';
 
 const logger = createLogger({
@@ -22,7 +23,7 @@ const logger = createLogger({
 // Configuration
 const SESSIONS_DIR = process.env.TELEGRAM_SESSIONS_DIR || path.join(os.homedir(), '.mastra', 'telegram-sessions');
 const MAPPINGS_FILE = path.join(SESSIONS_DIR, 'telegram-mappings.json');
-const ENCRYPTION_KEY = process.env.GATEWAY_ENCRYPTION_KEY || process.env.SESSION_ENCRYPTION_KEY || 'default-dev-key-change-me';
+const AUTH_SECRET = process.env.AUTH_SECRET;
 
 // Cron schedules (configurable via env)
 const MORNING_SCHEDULE = process.env.PROACTIVE_MORNING_CRON || '0 9 * * 1-5';  // 9am weekdays
@@ -33,24 +34,14 @@ let morningTask: cron.ScheduledTask | null = null;
 let eveningTask: cron.ScheduledTask | null = null;
 
 /**
- * Decrypt auth token (must match gateway encryption)
- */
-function decryptToken(encrypted: string): string {
-  // Simple XOR decryption (matches gateway implementation)
-  // In production, use proper encryption like AES-256
-  const key = ENCRYPTION_KEY;
-  const data = Buffer.from(encrypted, 'base64');
-  const result = Buffer.alloc(data.length);
-  for (let i = 0; i < data.length; i++) {
-    result[i] = data[i] ^ key.charCodeAt(i % key.length);
-  }
-  return result.toString('utf8');
-}
-
-/**
  * Load all paired users from Telegram mappings
  */
 async function loadPairedUsers(): Promise<UserContext[]> {
+  if (!AUTH_SECRET) {
+    logger.warn('⚠️ AUTH_SECRET not configured - cannot decrypt tokens');
+    return [];
+  }
+
   try {
     const data = await fs.readFile(MAPPINGS_FILE, 'utf8');
     const mappings = JSON.parse(data) as Record<string, any>;
@@ -59,7 +50,7 @@ async function loadPairedUsers(): Promise<UserContext[]> {
     for (const [chatId, mapping] of Object.entries(mappings)) {
       if (mapping.encryptedAuthToken && mapping.workspaceId) {
         try {
-          const authToken = decryptToken(mapping.encryptedAuthToken);
+          const authToken = decryptToken(mapping.encryptedAuthToken, AUTH_SECRET);
           users.push({
             userId: mapping.userId,
             authToken,
@@ -68,7 +59,7 @@ async function loadPairedUsers(): Promise<UserContext[]> {
             telegramUsername: mapping.telegramUsername,
           });
         } catch (decryptError) {
-          logger.warn(`⚠️ Failed to decrypt token for chat ${chatId}`);
+          logger.warn(`⚠️ Failed to decrypt token for chat ${chatId}:`, decryptError);
         }
       }
     }
