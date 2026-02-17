@@ -18,6 +18,7 @@ import {
   splitMessage,
   sendJsonResponse,
   handleGatewayError,
+  setCorsHeaders,
 } from '../utils/gateway-shared.js';
 import {
   weatherAgent,
@@ -732,16 +733,7 @@ export class TelegramGateway {
   private startHttpServer(): void {
     this.httpServer = createServer(async (req, res) => {
       // CORS — restrict to known origins; JWT auth provides primary protection
-      const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS?.split(',') || [];
-      const origin = req.headers.origin;
-      if (origin && allowedOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-      } else if (allowedOrigins.length === 0) {
-        // Fallback: no origins configured — allow all (dev convenience)
-        res.setHeader('Access-Control-Allow-Origin', '*');
-      }
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      setCorsHeaders(req, res);
 
       if (req.method === 'OPTIONS') {
         res.writeHead(204);

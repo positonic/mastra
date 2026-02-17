@@ -34,6 +34,7 @@ import {
   verifyAndExtractUserId,
   encryptToken,
   decryptToken,
+  setCorsHeaders,
 } from '../utils/gateway-shared.js';
 import { WhatsAppMessageStore, getWhatsAppMessageStore } from './whatsapp-store.js';
 
@@ -368,7 +369,7 @@ export class WhatsAppGateway {
   // Session lifecycle methods
   async createSession(authToken: string): Promise<string> {
     // Verify JWT and extract userId
-    const userId = verifyAndExtractUserId(authToken);
+    const userId = verifyAndExtractUserId(authToken, { audience: 'whatsapp-gateway' });
 
     if (this.sessions.size >= MAX_SESSIONS) {
       throw new GatewayError('MAX_SESSIONS_REACHED', `Maximum sessions (${MAX_SESSIONS}) reached`);
@@ -429,7 +430,7 @@ export class WhatsAppGateway {
     if (!session) return null;
 
     // Verify JWT and extract userId
-    const userId = verifyAndExtractUserId(authToken);
+    const userId = verifyAndExtractUserId(authToken, { audience: 'whatsapp-gateway' });
     if (session.userId !== userId) {
       return null; // Not authorized to access this session
     }
@@ -1070,16 +1071,7 @@ Example format for lists:
   private startHttpServer(): void {
     this.httpServer = createServer(async (req, res) => {
       // CORS — restrict to known origins; JWT auth provides primary protection
-      const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS?.split(',') || [];
-      const origin = req.headers.origin;
-      if (origin && allowedOrigins.includes(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-      } else if (allowedOrigins.length === 0) {
-        // Fallback: no origins configured — allow all (dev convenience)
-        res.setHeader('Access-Control-Allow-Origin', '*');
-      }
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      setCorsHeaders(req, res, 'GET, POST, DELETE, OPTIONS');
 
       if (req.method === 'OPTIONS') {
         res.writeHead(204);
@@ -1239,7 +1231,7 @@ Example format for lists:
     // Verify JWT and extract userId
     let userId: string;
     try {
-      userId = verifyAndExtractUserId(authToken);
+      userId = verifyAndExtractUserId(authToken, { audience: 'whatsapp-gateway' });
     } catch (error: any) {
       res.writeHead(401, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: error.message }));

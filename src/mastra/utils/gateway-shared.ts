@@ -38,16 +38,22 @@ export interface JWTPayload {
   iss: string;
 }
 
-export function verifyAndExtractUserId(token: string): string {
+export function verifyAndExtractUserId(
+  token: string,
+  options?: { audience?: string; issuer?: string },
+): string {
   const secret = process.env.AUTH_SECRET;
   if (!secret) {
     throw new GatewayError('AUTH_SECRET_NOT_CONFIGURED', 'AUTH_SECRET not configured');
   }
 
+  const audience = options?.audience ?? process.env.JWT_AUDIENCE ?? 'mastra-agents';
+  const issuer = options?.issuer ?? process.env.JWT_ISSUER ?? 'todo-app';
+
   try {
     const payload = jwt.verify(token, secret, {
-      audience: 'mastra-agents',
-      issuer: 'todo-app',
+      audience,
+      issuer,
     }) as JWTPayload;
 
     const userId = payload.userId || payload.sub;
@@ -174,6 +180,47 @@ export function splitMessage(message: string, maxLength: number): string[] {
   }
 
   return chunks;
+}
+
+// ─── CORS helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Parse CORS_ALLOWED_ORIGINS env var into a clean array.
+ * Splits on comma, trims whitespace, and filters out empty strings so that
+ * CORS_ALLOWED_ORIGINS="" correctly falls through to the wildcard fallback.
+ */
+function parseCorsOrigins(): string[] {
+  return (process.env.CORS_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Set CORS headers on a gateway HTTP response.
+ * When CORS_ALLOWED_ORIGINS is configured, only matching origins are reflected
+ * and Vary: Origin is set so caching proxies serve the right response.
+ * When unconfigured (empty), falls back to wildcard '*' for dev convenience.
+ */
+export function setCorsHeaders(req: any, res: any, methods = 'GET, POST, PUT, DELETE, OPTIONS'): void {
+  const allowedOrigins = parseCorsOrigins();
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.length > 0) {
+    if (origin && allowedOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+    // Always add Vary: Origin when origin-based decisions are possible
+    const existing = res.getHeader?.('Vary');
+    const vary = existing ? `${existing}, Origin` : 'Origin';
+    res.setHeader('Vary', vary);
+  } else {
+    // Fallback: no origins configured — allow all (dev convenience)
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', methods);
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
 // ─── HTTP helpers ───────────────────────────────────────────────────────────

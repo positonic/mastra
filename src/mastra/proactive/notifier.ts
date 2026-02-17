@@ -37,9 +37,14 @@ export function initNotifier(telegramToken: string): void {
  * and interpolated into a static template. This eliminates the risk of
  * prompt injection via crafted project/action names in this autonomous pipeline.
  */
+/** Escape Telegram Markdown V1 special characters in user-controlled strings. */
+function escapeMd(text: string): string {
+  return text.replace(/([*_`\[\]])/g, '\\$1');
+}
+
 function composeMessage(result: ProactiveCheckResult): string {
   const safe = (text: string, maxLen = 80) =>
-    sanitizeForPrompt(text, { maxLength: maxLen, flagSuspicious: false });
+    escapeMd(sanitizeForPrompt(text, { maxLength: maxLen, flagSuspicious: false }));
 
   const sections: string[] = [];
 
@@ -67,6 +72,8 @@ function composeMessage(result: ProactiveCheckResult): string {
     sections.push(`⚠️ *${result.atRiskGoals.length} at-risk goal(s):* ${names}`);
   }
 
+  // Notification includes high+critical risks (intentionally broader than
+  // formatDailyDigest which only counts critical) to prompt user action.
   const criticalRisks = result.riskSignals.filter(
     r => r.severity === 'high' || r.severity === 'critical'
   );
@@ -101,9 +108,15 @@ export async function notifyUser(result: ProactiveCheckResult): Promise<boolean>
       return false;
     }
 
-    await bot.sendMessage(result.telegramChatId, message, {
-      parse_mode: 'Markdown',
-    });
+    try {
+      await bot.sendMessage(result.telegramChatId, message, {
+        parse_mode: 'Markdown',
+      });
+    } catch (parseErr) {
+      // Markdown parse failure — retry as plain text
+      logger.warn(`⚠️ [ProactiveNotifier] Markdown parse failed, retrying plain text`);
+      await bot.sendMessage(result.telegramChatId, message);
+    }
 
     logger.info(`📤 [ProactiveNotifier] Sent to chat ${result.telegramChatId}`);
     return true;

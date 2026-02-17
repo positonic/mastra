@@ -227,10 +227,11 @@ export const sendEmailTool = createTool({
   outputSchema: z.object({
     success: z.boolean(),
     messageId: z.string(),
+    error: z.string().optional(),
   }),
   execute: async (inputData, { requestContext }) => {
     if (!inputData.userConfirmed) {
-      return { success: false, messageId: '', error: 'You must show the email draft to the user and get their confirmation before sending. Set userConfirmed to true after receiving confirmation.' } as any;
+      return { success: false, messageId: '', error: 'You must show the email draft to the user and get their confirmation before sending. Set userConfirmed to true after receiving confirmation.' };
     }
 
     const authToken = requestContext?.get("authToken") as string | undefined;
@@ -244,7 +245,7 @@ export const sendEmailTool = createTool({
     auditWriteAction({
       tool: 'send-email',
       userId: userId,
-      params: { to: inputData.to, subject: inputData.subject },
+      params: { to: inputData.to.replace(/(.{2}).*(@.*)/, '$1***$2'), subject: inputData.subject },
       timestamp: new Date().toISOString(),
       userConfirmed: inputData.userConfirmed,
     });
@@ -277,10 +278,11 @@ export const replyToEmailTool = createTool({
   outputSchema: z.object({
     success: z.boolean(),
     messageId: z.string(),
+    error: z.string().optional(),
   }),
   execute: async (inputData, { requestContext }) => {
     if (!inputData.userConfirmed) {
-      return { success: false, messageId: '', error: 'You must show the reply draft to the user and get their confirmation before sending. Set userConfirmed to true after receiving confirmation.' } as any;
+      return { success: false, messageId: '', error: 'You must show the reply draft to the user and get their confirmation before sending. Set userConfirmed to true after receiving confirmation.' };
     }
 
     const authToken = requestContext?.get("authToken") as string | undefined;

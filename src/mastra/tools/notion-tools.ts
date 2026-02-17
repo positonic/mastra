@@ -244,11 +244,21 @@ export const notionGetPageTool = createTool({
           text: prepareUntrustedContent(b.text!, "notion_page"),
         }));
 
+      // Wrap title and property values — page metadata is also untrusted
+      const rawTitle = extractPageTitle(p.properties ?? {});
+      const rawProps = extractProperties(p.properties ?? {});
+      const wrappedProps: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(rawProps)) {
+        wrappedProps[key] = typeof value === 'string'
+          ? prepareUntrustedContent(value, "notion_page")
+          : value;
+      }
+
       return {
         id: p.id,
         url: p.url,
-        title: extractPageTitle(p.properties ?? {}),
-        properties: extractProperties(p.properties ?? {}),
+        title: prepareUntrustedContent(rawTitle, "notion_page"),
+        properties: wrappedProps,
         content: wrappedContent,
         blockCount: blocks.length,
       };

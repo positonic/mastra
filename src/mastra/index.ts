@@ -34,7 +34,7 @@ export const mastra = new Mastra({
           const expectedSecret = process.env.PROACTIVE_TRIGGER_SECRET;
           
           if (!expectedSecret) {
-            console.error('PROACTIVE_TRIGGER_SECRET not configured');
+            logger.error('PROACTIVE_TRIGGER_SECRET not configured');
             return c.json({ error: 'Endpoint not configured' }, 503);
           }
           
@@ -47,7 +47,7 @@ export const mastra = new Mastra({
             await triggerCheck('evening');
             return c.json({ success: true, message: 'Proactive check completed' });
           } catch (error) {
-            console.error('Proactive trigger failed:', error);
+            logger.error('Proactive trigger failed:', error);
             return c.json({ error: 'Check failed' }, 500);
           }
         },
@@ -72,8 +72,8 @@ export const mastra = new Mastra({
             try {
               if (authSecret) {
                 const payload = jwt.verify(token, authSecret, {
-                  audience: 'mastra-agents',
-                  issuer: 'todo-app',
+                  audience: process.env.JWT_AUDIENCE ?? 'mastra-agents',
+                  issuer: process.env.JWT_ISSUER ?? 'todo-app',
                 }) as { userId?: string; sub?: string };
                 const userId = payload.userId || payload.sub;
                 if (userId) {
