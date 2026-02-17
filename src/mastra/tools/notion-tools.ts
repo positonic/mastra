@@ -18,8 +18,6 @@ import { z } from "zod";
 /** Resolve the Notion client from the user's OAuth token in requestContext. */
 function getClientFromRuntime(requestContext?: any): Client {
   const token = requestContext?.get?.("notionAccessToken") as string | undefined;
-  // TODO: remove debug log after verifying the integration works
-  console.log(`🔑 Notion token ${token ? `present (${token.slice(0, 8)}...)` : "MISSING"}`);
   if (!token) {
     throw new Error(
       "Notion is not connected. Connect your Notion account in Settings → Integrations."
