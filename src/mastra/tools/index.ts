@@ -2538,3 +2538,6 @@ export { listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsT
 
 // PM Agent tools (sprint analytics, GitHub activity, risk signals)
 export { getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from "./pm-tools.js";
+
+// Tradescape trading tools
+export { tradescapeTools, listSetupsTool, createSetupTool, listAlertsTool, createAlertTool, deleteAlertTool, listPositionsTool, syncTradesTool, dailySummaryTool } from "./tradescape-tools.js";
