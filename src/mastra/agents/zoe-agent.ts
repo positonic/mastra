@@ -58,6 +58,14 @@ import {
   listWhatsAppChatsTool,
   getWhatsAppChatHistoryTool,
   searchWhatsAppChatsTool,
+  // Slack tools
+  sendSlackMessageTool,
+  updateSlackMessageTool,
+  getSlackUserInfoTool,
+  listSlackChannelsTool,
+  getSlackChannelHistoryTool,
+  getSlackThreadRepliesTool,
+  searchSlackMessagesTool,
 } from '../tools/index.js';
 
 /**
@@ -200,6 +208,25 @@ You can search and browse the user's WhatsApp messages:
 - "Search my WhatsApp for mentions of the contract" → search with query "contract"
 - "Show my recent WhatsApp conversations" → list chats
 
+### Slack
+You can read, search, and send Slack messages:
+- **list-slack-channels**: See all channels the bot has access to (name, topic, member count)
+- **get-slack-channel-history**: Read recent messages from a channel (newest first, with thread info)
+- **get-slack-thread-replies**: Read the full conversation in a thread
+- **search-slack-messages**: Search for messages by keyword across channels
+- **send-slack-message**: Send a message to a channel or user
+- **update-slack-message**: Update an existing message
+- **get-slack-user-info**: Look up info about a Slack user
+
+**Usage patterns:**
+- "What's happening in Slack?" → list-slack-channels → get-slack-channel-history for active channels
+- "What's the latest in #engineering?" → list-slack-channels (find ID) → get-slack-channel-history
+- "Search Slack for mentions of deployment" → search-slack-messages with query "deployment"
+- "Show me that thread about the bug" → get-slack-thread-replies with the thread timestamp
+- "Send an update to #general" → send-slack-message
+
+**Note:** The bot can only see channels it has been invited to.
+
 ### Web Search & Fetch
 You have real-time web access:
 - **web search**: Search the web for current information — news, docs, prices, facts, people, companies.
@@ -258,6 +285,11 @@ Use this to decide which tool to call:
 | "I completed 30% of [KR]" / "Update progress on [KR]" | get-okr-objectives (find KR) → checkin-okr-key-result |
 | "How are my OKRs doing?" / "OKR dashboard" | get-okr-stats + get-okr-objectives (parallel) |
 | "Delete [objective/KR]" | ALWAYS confirm first → delete-okr-objective or delete-okr-key-result |
+| "What's happening in Slack?" / "Slack updates?" | list-slack-channels → get-slack-channel-history for top channels |
+| "What's the latest in #[channel]?" | list-slack-channels (find ID) → get-slack-channel-history |
+| "Search Slack for [topic]" | search-slack-messages |
+| "Show me that Slack thread about [topic]" | search-slack-messages → get-slack-thread-replies |
+| "Send [message] to #[channel]" | list-slack-channels (find ID) → send-slack-message |
 | "Search for..." / "What's the latest on..." / "Look up..." / "What is [topic]?" | web search → web fetch for deeper reading |
 
 ### Multi-step workflows
@@ -400,6 +432,14 @@ export const zoeAgent = new Agent({
     deleteOkrKeyResultTool,
     checkInOkrKeyResultTool,
     getOkrStatsTool,
+    // Slack tools
+    sendSlackMessageTool,
+    updateSlackMessageTool,
+    getSlackUserInfoTool,
+    listSlackChannelsTool,
+    getSlackChannelHistoryTool,
+    getSlackThreadRepliesTool,
+    searchSlackMessagesTool,
     // Web search & fetch (Anthropic provider tools)
     webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),

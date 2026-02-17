@@ -3,7 +3,6 @@ import { PgVector } from "@mastra/pg";
 import { openai } from "@ai-sdk/openai";
 import { embed } from "ai";
 import { z } from "zod";
-import { WebClient } from "@slack/web-api";
 import {
   authenticatedTrpcCall,
   authenticatedTrpcQuery,
@@ -983,235 +982,6 @@ export const getAllProjectsTool = createTool({
   },
 });
 
-// Initialize Slack Web Client
-const slackClient = new WebClient(process.env.SLACK_BOT_TOKEN);
-
-// Define Block Kit element schema
-const slackBlockElementSchema = z.object({
-  type: z.string(),
-  text: z
-    .object({
-      type: z.string(),
-      text: z.string(),
-      emoji: z.boolean().optional(),
-      verbatim: z.boolean().optional(),
-    })
-    .optional(),
-  value: z.string().optional(),
-  url: z.string().optional(),
-  action_id: z.string().optional(),
-  style: z.string().optional(),
-  confirm: z.any().optional(),
-  placeholder: z
-    .object({
-      type: z.string(),
-      text: z.string(),
-      emoji: z.boolean().optional(),
-    })
-    .optional(),
-  initial_value: z.string().optional(),
-  options: z
-    .array(
-      z.object({
-        text: z.object({
-          type: z.string(),
-          text: z.string(),
-          emoji: z.boolean().optional(),
-        }),
-        value: z.string(),
-      })
-    )
-    .optional(),
-});
-
-// Define Block Kit block schema
-const slackBlockSchema = z.object({
-  type: z.string(),
-  text: z
-    .object({
-      type: z.string(),
-      text: z.string(),
-      emoji: z.boolean().optional(),
-      verbatim: z.boolean().optional(),
-    })
-    .optional(),
-  elements: z.array(slackBlockElementSchema).optional(),
-  accessory: slackBlockElementSchema.optional(),
-  block_id: z.string().optional(),
-  fields: z
-    .array(
-      z.object({
-        type: z.string(),
-        text: z.string(),
-        emoji: z.boolean().optional(),
-        verbatim: z.boolean().optional(),
-      })
-    )
-    .optional(),
-  image_url: z.string().optional(),
-  alt_text: z.string().optional(),
-  title: z
-    .object({
-      type: z.string(),
-      text: z.string(),
-      emoji: z.boolean().optional(),
-    })
-    .optional(),
-});
-
-export const sendSlackMessageTool = createTool({
-  id: "send-slack-message",
-  description: "Send a message to a Slack channel or user",
-  inputSchema: z.object({
-    channel: z
-      .string()
-      .describe(
-        "The channel ID or user ID to send the message to (e.g., C1234567890 or U1234567890)"
-      ),
-    text: z.string().describe("The text content of the message"),
-    blocks: z
-      .array(slackBlockSchema)
-      .optional()
-      .describe("Optional Block Kit blocks for rich formatting"),
-  }),
-  outputSchema: z.object({
-    ok: z.boolean(),
-    channel: z.string(),
-    ts: z.string().describe("Timestamp of the message"),
-    message: z
-      .object({
-        text: z.string(),
-        type: z.string(),
-        user: z.string(),
-        ts: z.string(),
-      })
-      .optional(),
-  }),
-  execute: async (inputData) => {
-    const { channel, text, blocks } = inputData;
-    try {
-      const result = await slackClient.chat.postMessage({
-        channel,
-        text,
-        blocks,
-      });
-
-      return {
-        ok: result.ok || false,
-        channel: result.channel || "",
-        ts: result.ts || "",
-        message: result.message
-          ? {
-              text: result.message.text || "",
-              type: result.message.type || "",
-              user: result.message.user || "",
-              ts: result.message.ts || "",
-            }
-          : undefined,
-      };
-    } catch (error) {
-      throw new Error(
-        `Failed to send Slack message: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
-    }
-  },
-});
-
-export const updateSlackMessageTool = createTool({
-  id: "update-slack-message",
-  description: "Update an existing Slack message",
-  inputSchema: z.object({
-    channel: z.string().describe("The channel ID where the message was posted"),
-    ts: z.string().describe("The timestamp of the message to update"),
-    text: z.string().describe("The new text content of the message"),
-    blocks: z
-      .array(slackBlockSchema)
-      .optional()
-      .describe("Optional Block Kit blocks for rich formatting"),
-  }),
-  outputSchema: z.object({
-    ok: z.boolean(),
-    channel: z.string(),
-    ts: z.string(),
-    text: z.string(),
-  }),
-  execute: async (inputData) => {
-    const { channel, ts, text, blocks } = inputData;
-    try {
-      const result = await slackClient.chat.update({
-        channel,
-        ts,
-        text,
-        blocks,
-      });
-
-      return {
-        ok: result.ok || false,
-        channel: result.channel || "",
-        ts: result.ts || "",
-        text: result.text || "",
-      };
-    } catch (error) {
-      throw new Error(
-        `Failed to update Slack message: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
-    }
-  },
-});
-
-export const getSlackUserInfoTool = createTool({
-  id: "get-slack-user-info",
-  description: "Get information about a Slack user",
-  inputSchema: z.object({
-    user: z
-      .string()
-      .describe("The user ID to get information for (e.g., U1234567890)"),
-  }),
-  outputSchema: z.object({
-    ok: z.boolean(),
-    user: z
-      .object({
-        id: z.string(),
-        name: z.string(),
-        real_name: z.string().optional(),
-        tz: z.string().optional(),
-        tz_label: z.string().optional(),
-        is_bot: z.boolean(),
-        is_admin: z.boolean().optional(),
-        is_owner: z.boolean().optional(),
-      })
-      .optional(),
-  }),
-  execute: async (inputData) => {
-    const { user } = inputData;
-    try {
-      const result = await slackClient.users.info({ user });
-
-      if (!result.ok || !result.user) {
-        return { ok: false };
-      }
-
-      return {
-        ok: true,
-        user: {
-          id: result.user.id || "",
-          name: result.user.name || "",
-          real_name: result.user.real_name,
-          tz: result.user.tz,
-          tz_label: result.user.tz_label,
-          is_bot: result.user.is_bot || false,
-          is_admin: result.user.is_admin,
-          is_owner: result.user.is_owner,
-        },
-      };
-    } catch (error) {
-      throw new Error(
-        `Failed to get Slack user info: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
-    }
-  },
-});
-
 export const getMeetingTranscriptionsTool = createTool({
   id: "get-meeting-transcriptions",
   description:
@@ -1528,6 +1298,20 @@ export const getMeetingInsightsTool = createTool({
           blocker: wrapField(b.blocker, "meeting_insight"),
           impact: wrapField(b.impact, "meeting_insight"),
           resolution: wrapField(b.resolution, "meeting_insight"),
+        }));
+      }
+      if (data.insights.deadlines) {
+        data.insights.deadlines = data.insights.deadlines.map((d: any) => ({
+          ...d,
+          deadline: wrapField(d.deadline, "meeting_insight"),
+          description: wrapField(d.description, "meeting_insight"),
+        }));
+      }
+      if (data.insights.milestones) {
+        data.insights.milestones = data.insights.milestones.map((m: any) => ({
+          ...m,
+          milestone: wrapField(m.milestone, "meeting_insight"),
+          progress: wrapField(m.progress, "meeting_insight"),
         }));
       }
       if (data.insights.teamUpdates) {
@@ -1867,10 +1651,11 @@ export const createCalendarEventTool = createTool({
       htmlLink: z.string(),
     }),
     provider: z.string(),
+    error: z.string().optional(),
   }),
   execute: async (inputData, { requestContext }) => {
     if (!inputData.userConfirmed) {
-      return { event: { id: '', summary: '', htmlLink: '' }, provider: '', error: 'You must show the event details to the user and get their confirmation before creating. Set userConfirmed to true after receiving confirmation.' } as any;
+      return { event: { id: '', summary: '', htmlLink: '' }, provider: '', error: 'You must show the event details to the user and get their confirmation before creating. Set userConfirmed to true after receiving confirmation.' };
     }
 
     const authToken = requestContext?.get("authToken");
@@ -2607,6 +2392,9 @@ export { listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsT
 
 // PM Agent tools (sprint analytics, GitHub activity, risk signals)
 export { getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from "./pm-tools.js";
+
+// Slack tools
+export { sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, listSlackChannelsTool, getSlackChannelHistoryTool, getSlackThreadRepliesTool, searchSlackMessagesTool } from "./slack-tools.js";
 
 // Tradescape trading tools
 export { tradescapeTools, listSetupsTool, createSetupTool, listAlertsTool, createAlertTool, deleteAlertTool, listPositionsTool, syncTradesTool, dailySummaryTool } from "./tradescape-tools.js";
