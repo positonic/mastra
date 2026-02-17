@@ -30,9 +30,14 @@ export const mastra = new Mastra({
         path: '/api/proactive/trigger',
         method: 'POST',
         createHandler: async () => async (c: any) => {
-          const secret = c.req.header('X-Trigger-Secret');
-          const expectedSecret = process.env.PROACTIVE_TRIGGER_SECRET || 'proactive-trigger-secret';
+          const expectedSecret = process.env.PROACTIVE_TRIGGER_SECRET;
           
+          if (!expectedSecret) {
+            console.error('PROACTIVE_TRIGGER_SECRET not configured');
+            return c.json({ error: 'Endpoint not configured' }, 503);
+          }
+          
+          const secret = c.req.header('X-Trigger-Secret');
           if (secret !== expectedSecret) {
             return c.json({ error: 'Unauthorized' }, 401);
           }
