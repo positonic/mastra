@@ -6,6 +6,7 @@
 import { Client, LogLevel, isNotionClientError, ClientErrorCode, APIErrorCode } from "@notionhq/client";
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
+import { prepareUntrustedContent } from "../utils/content-safety.js";
 
 // ---------------------------------------------------------------------------
 // Client — the SDK handles retries (3 attempts with backoff) and rate-limit
@@ -230,18 +231,25 @@ export const notionGetPageTool = createTool({
 
       const p = page as any;
 
+      // Wrap Notion content — pages are untrusted external content
+      const wrappedContent = blocks
+        .map((b: any) => ({
+          type: b.type,
+          text: extractBlockText(b),
+          hasChildren: b.has_children ?? false,
+        }))
+        .filter((b) => b.text)
+        .map((b) => ({
+          ...b,
+          text: prepareUntrustedContent(b.text!, "notion_page"),
+        }));
+
       return {
         id: p.id,
         url: p.url,
         title: extractPageTitle(p.properties ?? {}),
         properties: extractProperties(p.properties ?? {}),
-        content: blocks
-          .map((b: any) => ({
-            type: b.type,
-            text: extractBlockText(b),
-            hasChildren: b.has_children ?? false,
-          }))
-          .filter((b) => b.text),
+        content: wrappedContent,
         blockCount: blocks.length,
       };
     } catch (err) {
@@ -298,12 +306,22 @@ export const notionQueryDatabaseTool = createTool({
             : undefined;
       } while (cursor);
 
+      // Wrap property values — database content is untrusted external content
       return {
-        results: allResults.map((page: any) => ({
-          id: page.id,
-          url: page.url,
-          properties: extractProperties(page.properties ?? {}),
-        })),
+        results: allResults.map((page: any) => {
+          const props = extractProperties(page.properties ?? {});
+          const wrappedProps: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(props)) {
+            wrappedProps[key] = typeof value === 'string'
+              ? prepareUntrustedContent(value, "notion_database")
+              : value;
+          }
+          return {
+            id: page.id,
+            url: page.url,
+            properties: wrappedProps,
+          };
+        }),
         total: allResults.length,
         capped: allResults.length >= maxResults,
       };

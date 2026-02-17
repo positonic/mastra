@@ -8,6 +8,7 @@ import {
   authenticatedTrpcCall,
   authenticatedTrpcQuery,
 } from "../utils/authenticated-fetch.js";
+import { prepareUntrustedContent, auditWriteAction } from "../utils/content-safety.js";
 
 interface GeocodingResponse {
   results: {
@@ -1293,6 +1294,16 @@ export const getMeetingTranscriptionsTool = createTool({
       }));
     }
 
+    // Wrap transcript content — meeting transcripts are untrusted external content
+    if (result.transcriptions) {
+      result.transcriptions = result.transcriptions.map((t: any) => ({
+        ...t,
+        transcript: t.transcript ? prepareUntrustedContent(t.transcript, "meeting_transcript") : t.transcript,
+        title: t.title ? prepareUntrustedContent(t.title, "meeting_title") : t.title,
+        summary: t.summary ? prepareUntrustedContent(t.summary, "meeting_summary") : t.summary,
+      }));
+    }
+
     console.log(`✅ [getMeetingTranscriptions] Retrieved ${result.transcriptions?.length || 0} transcriptions`);
     return result;
   },
@@ -1361,6 +1372,15 @@ export const queryMeetingContextTool = createTool({
       { query, projectId, dateRange, topK },
       { authToken, sessionId, userId }
     );
+
+    // Wrap search results — meeting content is untrusted external content
+    if (data.results) {
+      data.results = data.results.map((r: any) => ({
+        ...r,
+        content: r.content ? prepareUntrustedContent(r.content, "meeting_transcript") : r.content,
+        meetingTitle: r.meetingTitle ? prepareUntrustedContent(r.meetingTitle, "meeting_title") : r.meetingTitle,
+      }));
+    }
 
     return data;
   },
@@ -1483,6 +1503,40 @@ export const getMeetingInsightsTool = createTool({
       { projectId, timeframe, startDate, endDate, insightTypes },
       { authToken, sessionId, userId }
     );
+
+    // Wrap insight text fields — meeting content is untrusted external content
+    if (data.insights) {
+      const wrapField = (text: string | undefined, source: string) =>
+        text ? prepareUntrustedContent(text, source) : text;
+
+      if (data.insights.decisions) {
+        data.insights.decisions = data.insights.decisions.map((d: any) => ({
+          ...d,
+          decision: wrapField(d.decision, "meeting_insight"),
+          context: wrapField(d.context, "meeting_insight"),
+        }));
+      }
+      if (data.insights.actionItems) {
+        data.insights.actionItems = data.insights.actionItems.map((a: any) => ({
+          ...a,
+          action: wrapField(a.action, "meeting_insight"),
+        }));
+      }
+      if (data.insights.blockers) {
+        data.insights.blockers = data.insights.blockers.map((b: any) => ({
+          ...b,
+          blocker: wrapField(b.blocker, "meeting_insight"),
+          impact: wrapField(b.impact, "meeting_insight"),
+          resolution: wrapField(b.resolution, "meeting_insight"),
+        }));
+      }
+      if (data.insights.teamUpdates) {
+        data.insights.teamUpdates = data.insights.teamUpdates.map((u: any) => ({
+          ...u,
+          update: wrapField(u.update, "meeting_insight"),
+        }));
+      }
+    }
 
     return data;
   },
@@ -1802,6 +1856,9 @@ export const createCalendarEventTool = createTool({
       displayName: z.string().optional(),
     })).optional().describe("List of attendees"),
     provider: z.enum(['google', 'microsoft']).default('google').describe("Calendar provider to use"),
+    userConfirmed: z
+      .boolean()
+      .describe("REQUIRED: Must be true. You MUST show the user the event details and receive explicit confirmation before setting this to true."),
   }),
   outputSchema: z.object({
     event: z.object({
@@ -1812,6 +1869,10 @@ export const createCalendarEventTool = createTool({
     provider: z.string(),
   }),
   execute: async (inputData, { requestContext }) => {
+    if (!inputData.userConfirmed) {
+      return { event: { id: '', summary: '', htmlLink: '' }, provider: '', error: 'You must show the event details to the user and get their confirmation before creating. Set userConfirmed to true after receiving confirmation.' } as any;
+    }
+
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
@@ -1819,6 +1880,14 @@ export const createCalendarEventTool = createTool({
     if (!authToken) {
       throw new Error("No authentication token available");
     }
+
+    auditWriteAction({
+      tool: 'create-calendar-event',
+      userId: userId as string | undefined,
+      params: { summary: inputData.summary, start: inputData.startDateTime, attendees: inputData.attendees?.length ?? 0 },
+      timestamp: new Date().toISOString(),
+      userConfirmed: inputData.userConfirmed,
+    });
 
     const { data } = await authenticatedTrpcCall(
       "mastra.createCalendarEvent",

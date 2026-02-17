@@ -7,6 +7,7 @@ import { createTelegramGateway, cleanupTelegramGateway } from './bots/telegram-g
 import { createWhatsAppGateway, cleanupWhatsAppGateway } from './bots/whatsapp-gateway.js';
 import { initSentry, captureException, flushSentry } from './utils/sentry.js';
 import { startScheduler, stopScheduler, triggerCheck } from './proactive/index.js';
+import jwt from 'jsonwebtoken';
 
 // Initialize Sentry first (before anything else)
 initSentry();
@@ -64,15 +65,29 @@ export const mastra = new Mastra({
           if (token) {
             requestContext.set('authToken', token);
 
-            // Decode JWT payload to extract userId (no verification needed,
-            // the Exponential API verifies the token on its end)
+            // Verify JWT and extract userId. When AUTH_SECRET is available,
+            // we cryptographically verify the token instead of blindly trusting it.
+            // This prevents forged JWTs from accessing another user's memory scope.
+            const authSecret = process.env.AUTH_SECRET;
             try {
-              const payload = JSON.parse(atob(token.split('.')[1]));
-              if (payload.userId || payload.sub) {
-                requestContext.set('userId', payload.userId || payload.sub);
+              if (authSecret) {
+                const payload = jwt.verify(token, authSecret, {
+                  audience: 'mastra-agents',
+                  issuer: 'todo-app',
+                }) as { userId?: string; sub?: string };
+                const userId = payload.userId || payload.sub;
+                if (userId) {
+                  requestContext.set('userId', userId);
+                }
+              } else {
+                // No AUTH_SECRET — decode without verification (dev/legacy fallback)
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                if (payload.userId || payload.sub) {
+                  requestContext.set('userId', payload.userId || payload.sub);
+                }
               }
             } catch {
-              // Token decode failed - authToken is still set, tools can try using it
+              // Token verification/decode failed — authToken still set for tool-level auth
             }
           }
 

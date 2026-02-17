@@ -197,8 +197,53 @@ export function validateContentLength(
  */
 export function stripRoleMarkers(content: string): string {
   if (!content) return '';
-  
+
   return content
     .replace(/^(system|assistant|user|human)\s*:/gim, '[role_marker_removed]:')
     .replace(/\n(system|assistant|user|human)\s*:/gim, '\n[role_marker_removed]:');
+}
+
+// ---------------------------------------------------------------------------
+// Audit Logging
+// ---------------------------------------------------------------------------
+
+export type AuditCategory = 'injection' | 'exfiltration' | 'unauthorized-action' | 'policy-override';
+
+interface WriteAuditEntry {
+  tool: string;
+  userId?: string;
+  params: Record<string, unknown>;
+  timestamp: string;
+  userConfirmed?: boolean;
+}
+
+/**
+ * Log a write tool invocation for security auditing.
+ * Outputs structured JSON to stdout for log aggregation.
+ */
+export function auditWriteAction(entry: WriteAuditEntry): void {
+  const log = {
+    type: 'SECURITY_AUDIT_WRITE',
+    ...entry,
+    timestamp: entry.timestamp || new Date().toISOString(),
+  };
+  console.log(JSON.stringify(log));
+}
+
+/**
+ * Generate a machine-parseable security audit tag for refusal logging.
+ * Agents can append this to responses when declining suspicious requests.
+ * The tag is an HTML comment — invisible to users but parseable by monitoring.
+ *
+ * @example
+ * const tag = securityAuditTag('send-email', 'injection', 'email_body', 'Instructions found in email content');
+ * // Returns: <!-- SECURITY-AUDIT: {"action":"send-email","category":"injection","source":"email_body","reason":"Instructions found in email content"} -->
+ */
+export function securityAuditTag(
+  action: string,
+  category: AuditCategory,
+  source: string,
+  reason: string,
+): string {
+  return `<!-- SECURITY-AUDIT: ${JSON.stringify({ action, category, source, reason })} -->`;
 }
