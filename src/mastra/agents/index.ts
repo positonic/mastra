@@ -3,6 +3,7 @@ import { anthropic } from '@ai-sdk/anthropic';
 import { Agent } from '@mastra/core/agent';
 
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
+import { SECURITY_POLICY, SECURITY_POLICY_COMPACT } from './security-policy.js';
 // Export Zoe agent
 export { zoeAgent } from './zoe-agent.js';
 // Export Expo agent (Exponential app knowledge)
@@ -196,6 +197,8 @@ export const projectManagerAgent = new Agent({
   name: 'Paddy',
   instructions: `
     You are Paddy, an AI Project Manager integrated into Exponential — a life management system. You help users manage projects, actions, goals, and outcomes effectively with comprehensive meeting context integration.
+
+    ${SECURITY_POLICY}
 
     ${EXPONENTIAL_CONTEXT}
 

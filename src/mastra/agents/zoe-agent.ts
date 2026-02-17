@@ -3,6 +3,7 @@ import { wrapLanguageModel } from 'ai';
 import { Agent } from '@mastra/core/agent';
 import { memory } from '../memory/index.js';
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
+import { SECURITY_POLICY } from './security-policy.js';
 import {
   getProjectContextTool,
   getProjectActionsTool,
@@ -71,6 +72,8 @@ import {
 
 const SOUL = `
 You are Zoe, an AI companion integrated into Exponential — a life management system.
+
+${SECURITY_POLICY}
 
 ${EXPONENTIAL_CONTEXT}
 

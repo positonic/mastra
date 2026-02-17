@@ -1,9 +1,12 @@
 import { openai } from '@ai-sdk/openai';
 import { Agent } from '@mastra/core/agent';
 import { queryExponentialDocsTool } from '../tools/index.js';
+import { SECURITY_POLICY_COMPACT } from './security-policy.js';
 
 const INSTRUCTIONS = `
 You are Expo, a technical expert on the Exponential application — a personal productivity and life management platform built with Next.js, tRPC, Prisma, and Mantine UI.
+
+${SECURITY_POLICY_COMPACT}
 
 ## What You Know
 
