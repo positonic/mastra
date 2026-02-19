@@ -39,7 +39,8 @@ export function initNotifier(telegramToken: string): void {
  */
 /** Escape Telegram Markdown V1 special characters in user-controlled strings. */
 function escapeMd(text: string): string {
-  return text.replace(/([*_`\[\]])/g, '\\$1');
+  // Escape backslashes first to prevent double-escaping issues
+  return text.replace(/\\/g, '\\\\').replace(/([*_`\[\]])/g, '\\$1');
 }
 
 function composeMessage(result: ProactiveCheckResult): string {
@@ -69,7 +70,10 @@ function composeMessage(result: ProactiveCheckResult): string {
   if (result.atRiskGoals.length > 0) {
     const top3 = result.atRiskGoals.slice(0, 3);
     const names = top3.map(g => `"${safe(g.title)}" (${g.daysRemaining}d left, ${g.progress}%)`).join(', ');
-    sections.push(`⚠️ *${result.atRiskGoals.length} at-risk goal(s):* ${names}`);
+    const extra = result.atRiskGoals.length > 3
+      ? ` +${result.atRiskGoals.length - 3} more`
+      : '';
+    sections.push(`⚠️ *${result.atRiskGoals.length} at-risk goal(s):* ${names}${extra}`);
   }
 
   // Notification includes high+critical risks (intentionally broader than

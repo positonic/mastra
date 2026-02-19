@@ -212,8 +212,15 @@ export function setCorsHeaders(req: any, res: any, methods = 'GET, POST, PUT, DE
     }
     // Always add Vary: Origin when origin-based decisions are possible
     const existing = res.getHeader?.('Vary');
-    const vary = existing ? `${existing}, Origin` : 'Origin';
-    res.setHeader('Vary', vary);
+    if (existing) {
+      // Normalize and check for existing 'Origin' to avoid duplicates
+      const varyValues = existing.toString().split(',').map(v => v.trim().toLowerCase());
+      if (!varyValues.includes('origin')) {
+        res.setHeader('Vary', `${existing}, Origin`);
+      }
+    } else {
+      res.setHeader('Vary', 'Origin');
+    }
   } else {
     // Fallback: no origins configured — allow all (dev convenience)
     res.setHeader('Access-Control-Allow-Origin', '*');

@@ -8,6 +8,7 @@ import { createWhatsAppGateway, cleanupWhatsAppGateway } from './bots/whatsapp-g
 import { initSentry, captureException, flushSentry } from './utils/sentry.js';
 import { startScheduler, stopScheduler, triggerCheck } from './proactive/index.js';
 import jwt from 'jsonwebtoken';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 // Initialize Sentry first (before anything else)
 initSentry();
@@ -39,7 +40,12 @@ export const mastra = new Mastra({
           }
           
           const secret = c.req.header('X-Trigger-Secret');
-          if (secret !== expectedSecret) {
+          // Use constant-time comparison to prevent timing attacks
+          const hmacKey = process.env.HMAC_KEY || 'mastra-default-hmac-key';
+          const h1 = createHmac('sha256', hmacKey).update(secret || '').digest();
+          const h2 = createHmac('sha256', hmacKey).update(expectedSecret).digest();
+          const match = timingSafeEqual(h1, h2);
+          if (!match) {
             return c.json({ error: 'Unauthorized' }, 401);
           }
           
@@ -81,6 +87,10 @@ export const mastra = new Mastra({
                 }
               } else {
                 // No AUTH_SECRET — decode without verification (dev/legacy fallback)
+                logger.warn(
+                  'JWT decoded WITHOUT VERIFICATION (AUTH_SECRET not set)',
+                  { env: process.env.NODE_ENV, hasToken: true }
+                );
                 const payload = JSON.parse(atob(token.split('.')[1]));
                 if (payload.userId || payload.sub) {
                   requestContext.set('userId', payload.userId || payload.sub);

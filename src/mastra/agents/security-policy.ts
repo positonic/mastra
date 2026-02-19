@@ -6,7 +6,6 @@
  * just pattern matching.
  * 
  * @see https://github.com/Dicklesworthstone/acip
- * @see mastra-gfe
  */
 
 export const SECURITY_POLICY = `

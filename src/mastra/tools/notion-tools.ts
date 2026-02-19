@@ -212,6 +212,24 @@ export const notionSearchTool = createTool({
   },
 });
 
+/** Recursively wrap property values with prepareUntrustedContent */
+function wrapPropertyValue(value: unknown, context: string): unknown {
+  if (typeof value === 'string') {
+    return prepareUntrustedContent(value, context);
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => wrapPropertyValue(item, context));
+  }
+  if (value && typeof value === 'object') {
+    const wrapped: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value)) {
+      wrapped[key] = wrapPropertyValue(val, context);
+    }
+    return wrapped;
+  }
+  return value;
+}
+
 export const notionGetPageTool = createTool({
   id: "notion-get-page",
   description:
@@ -249,9 +267,7 @@ export const notionGetPageTool = createTool({
       const rawProps = extractProperties(p.properties ?? {});
       const wrappedProps: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(rawProps)) {
-        wrappedProps[key] = typeof value === 'string'
-          ? prepareUntrustedContent(value, "notion_page")
-          : value;
+        wrappedProps[key] = wrapPropertyValue(value, "notion_page");
       }
 
       return {
@@ -322,9 +338,7 @@ export const notionQueryDatabaseTool = createTool({
           const props = extractProperties(page.properties ?? {});
           const wrappedProps: Record<string, unknown> = {};
           for (const [key, value] of Object.entries(props)) {
-            wrappedProps[key] = typeof value === 'string'
-              ? prepareUntrustedContent(value, "notion_database")
-              : value;
+            wrappedProps[key] = wrapPropertyValue(value, "notion_database");
           }
           return {
             id: page.id,

@@ -93,6 +93,16 @@ export const getRecentEmailsTool = createTool({
       { authToken, sessionId, userId }
     );
 
+    // Sanitize untrusted fields
+    if (data.emails) {
+      data.emails = data.emails.map(email => ({
+        ...email,
+        from: prepareUntrustedContent(email.from || '', "email_from"),
+        subject: prepareUntrustedContent(email.subject || '', "email_subject"),
+        snippet: prepareUntrustedContent(email.snippet || '', "email_snippet"),
+      }));
+    }
+
     console.log(`✅ [getRecentEmails] Retrieved ${data.emails?.length || 0} emails`);
     return data;
   },
@@ -148,6 +158,15 @@ export const getEmailByIdTool = createTool({
     if (data.email?.subject) {
       data.email.subject = prepareUntrustedContent(data.email.subject, "email_subject");
     }
+    if (data.email?.from) {
+      data.email.from = prepareUntrustedContent(data.email.from, "email_from");
+    }
+    if (data.email?.to) {
+      data.email.to = prepareUntrustedContent(data.email.to, "email_to");
+    }
+    if (data.email?.cc) {
+      data.email.cc = prepareUntrustedContent(data.email.cc, "email_cc");
+    }
 
     console.log(`✅ [getEmailById] Retrieved email: "${data.email?.subject?.slice(0, 50)}"`);
     return data;
@@ -197,6 +216,16 @@ export const searchEmailsTool = createTool({
       { query: inputData.query, maxResults: inputData.maxResults },
       { authToken, sessionId, userId }
     );
+
+    // Sanitize untrusted fields
+    if (data.emails) {
+      data.emails = data.emails.map(email => ({
+        ...email,
+        from: prepareUntrustedContent(email.from || '', "email_from"),
+        subject: prepareUntrustedContent(email.subject || '', "email_subject"),
+        snippet: prepareUntrustedContent(email.snippet || '', "email_snippet"),
+      }));
+    }
 
     console.log(`✅ [searchEmails] Found ${data.emails?.length || 0} results`);
     return data;
