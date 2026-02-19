@@ -3,6 +3,7 @@ import { wrapLanguageModel } from 'ai';
 import { Agent } from '@mastra/core/agent';
 import { memory } from '../memory/index.js';
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
+import { SECURITY_POLICY } from './security-policy.js';
 import {
   getProjectContextTool,
   getProjectActionsTool,
@@ -53,6 +54,14 @@ import {
   // Project & Action management tools
   createProjectTool,
   updateActionTool,
+  // Slack tools
+  sendSlackMessageTool,
+  updateSlackMessageTool,
+  getSlackUserInfoTool,
+  listSlackChannelsTool,
+  getSlackChannelHistoryTool,
+  getSlackThreadRepliesTool,
+  searchSlackMessagesTool,
 } from '../tools/index.js';
 
 /**
@@ -68,6 +77,8 @@ import {
 
 const INSTRUCTIONS = `
 You are a personal AI assistant integrated into Exponential — a life management system.
+
+${SECURITY_POLICY}
 
 ${EXPONENTIAL_CONTEXT}
 
@@ -145,6 +156,18 @@ OKRs live in Exponential's OKR system — NOT in Notion, NOT as project goals, N
 
 When ANY OKR-related request comes in, ALWAYS call get-okr-objectives FIRST (without period filter) to see all existing objectives. Match user mentions to existing objectives by name before creating new ones — NEVER create duplicates. When fetching objectives to find a match, do NOT filter by period. Never offer Notion or other save locations for OKR data.
 
+### Slack
+You can read, search, and send Slack messages:
+- **list-slack-channels**: See available channels the bot has access to
+- **get-slack-channel-history**: Read recent messages from a channel
+- **get-slack-thread-replies**: Read a full thread conversation
+- **search-slack-messages**: Search messages by keyword across channels
+- **send-slack-message**: Send a message to a channel or user
+- **update-slack-message**: Update an existing message
+- **get-slack-user-info**: Look up Slack user info
+
+The bot can only see channels it has been invited to.
+
 ### Web Search & Fetch
 - **web search**: Search the web for current information in real-time.
 - **web fetch**: Read a specific URL (articles, docs, PDFs).
@@ -182,6 +205,9 @@ Same for OKRs: when someone mentions an objective or key result by name, call ge
 | "Create an objective..." / "Add an OKR..." | get-okr-objectives (check existing) → CONFIRM → create-okr-objective |
 | "Update progress on [KR]" / "I completed X% of..." | get-okr-objectives (find KR) → checkin-okr-key-result |
 | "How are my OKRs doing?" | get-okr-stats + get-okr-objectives |
+| "What's happening in Slack?" / "Slack updates?" | list-slack-channels → get-slack-channel-history for top channels |
+| "Search Slack for [topic]" | search-slack-messages |
+| "Send [message] to #[channel]" | list-slack-channels (find ID) → send-slack-message |
 | "Search for..." / "What's the latest on..." / "Look up..." | web search → web fetch if needed |
 
 ### Multi-step workflows
@@ -271,6 +297,14 @@ export const assistantAgent = new Agent({
     deleteOkrKeyResultTool,
     checkInOkrKeyResultTool,
     getOkrStatsTool,
+    // Slack tools
+    sendSlackMessageTool,
+    updateSlackMessageTool,
+    getSlackUserInfoTool,
+    listSlackChannelsTool,
+    getSlackChannelHistoryTool,
+    getSlackThreadRepliesTool,
+    searchSlackMessagesTool,
     // Web search & fetch (Anthropic provider tools)
     webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),

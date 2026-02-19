@@ -6,6 +6,7 @@
 import { Client, LogLevel, isNotionClientError, ClientErrorCode, APIErrorCode } from "@notionhq/client";
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
+import { prepareUntrustedContent } from "../utils/content-safety.js";
 
 // ---------------------------------------------------------------------------
 // Client — the SDK handles retries (3 attempts with backoff) and rate-limit
@@ -18,8 +19,6 @@ import { z } from "zod";
 /** Resolve the Notion client from the user's OAuth token in requestContext. */
 function getClientFromRuntime(requestContext?: any): Client {
   const token = requestContext?.get?.("notionAccessToken") as string | undefined;
-  // TODO: remove debug log after verifying the integration works
-  console.log(`🔑 Notion token ${token ? `present (${token.slice(0, 8)}...)` : "MISSING"}`);
   if (!token) {
     throw new Error(
       "Notion is not connected. Connect your Notion account in Settings → Integrations."
@@ -213,6 +212,24 @@ export const notionSearchTool = createTool({
   },
 });
 
+/** Recursively wrap property values with prepareUntrustedContent */
+function wrapPropertyValue(value: unknown, context: string): unknown {
+  if (typeof value === 'string') {
+    return prepareUntrustedContent(value, context);
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => wrapPropertyValue(item, context));
+  }
+  if (value && typeof value === 'object') {
+    const wrapped: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value)) {
+      wrapped[key] = wrapPropertyValue(val, context);
+    }
+    return wrapped;
+  }
+  return value;
+}
+
 export const notionGetPageTool = createTool({
   id: "notion-get-page",
   description:
@@ -232,18 +249,33 @@ export const notionGetPageTool = createTool({
 
       const p = page as any;
 
+      // Wrap Notion content — pages are untrusted external content
+      const wrappedContent = blocks
+        .map((b: any) => ({
+          type: b.type,
+          text: extractBlockText(b),
+          hasChildren: b.has_children ?? false,
+        }))
+        .filter((b) => b.text)
+        .map((b) => ({
+          ...b,
+          text: prepareUntrustedContent(b.text!, "notion_page"),
+        }));
+
+      // Wrap title and property values — page metadata is also untrusted
+      const rawTitle = extractPageTitle(p.properties ?? {});
+      const rawProps = extractProperties(p.properties ?? {});
+      const wrappedProps: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(rawProps)) {
+        wrappedProps[key] = wrapPropertyValue(value, "notion_page");
+      }
+
       return {
         id: p.id,
         url: p.url,
-        title: extractPageTitle(p.properties ?? {}),
-        properties: extractProperties(p.properties ?? {}),
-        content: blocks
-          .map((b: any) => ({
-            type: b.type,
-            text: extractBlockText(b),
-            hasChildren: b.has_children ?? false,
-          }))
-          .filter((b) => b.text),
+        title: prepareUntrustedContent(rawTitle, "notion_page"),
+        properties: wrappedProps,
+        content: wrappedContent,
         blockCount: blocks.length,
       };
     } catch (err) {
@@ -300,12 +332,20 @@ export const notionQueryDatabaseTool = createTool({
             : undefined;
       } while (cursor);
 
+      // Wrap property values — database content is untrusted external content
       return {
-        results: allResults.map((page: any) => ({
-          id: page.id,
-          url: page.url,
-          properties: extractProperties(page.properties ?? {}),
-        })),
+        results: allResults.map((page: any) => {
+          const props = extractProperties(page.properties ?? {});
+          const wrappedProps: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(props)) {
+            wrappedProps[key] = wrapPropertyValue(value, "notion_database");
+          }
+          return {
+            id: page.id,
+            url: page.url,
+            properties: wrappedProps,
+          };
+        }),
         total: allResults.length,
         capped: allResults.length >= maxResults,
       };

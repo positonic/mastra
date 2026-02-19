@@ -7,6 +7,8 @@ import { createTelegramGateway, cleanupTelegramGateway } from './bots/telegram-g
 import { createWhatsAppGateway, cleanupWhatsAppGateway } from './bots/whatsapp-gateway.js';
 import { initSentry, captureException, flushSentry } from './utils/sentry.js';
 import { startScheduler, stopScheduler, triggerCheck } from './proactive/index.js';
+import jwt from 'jsonwebtoken';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 // Initialize Sentry first (before anything else)
 initSentry();
@@ -30,10 +32,20 @@ export const mastra = new Mastra({
         path: '/api/proactive/trigger',
         method: 'POST',
         createHandler: async () => async (c: any) => {
-          const secret = c.req.header('X-Trigger-Secret');
-          const expectedSecret = process.env.PROACTIVE_TRIGGER_SECRET || 'proactive-trigger-secret';
+          const expectedSecret = process.env.PROACTIVE_TRIGGER_SECRET;
           
-          if (secret !== expectedSecret) {
+          if (!expectedSecret) {
+            logger.error('PROACTIVE_TRIGGER_SECRET not configured');
+            return c.json({ error: 'Endpoint not configured' }, 503);
+          }
+          
+          const secret = c.req.header('X-Trigger-Secret');
+          // Use constant-time comparison to prevent timing attacks
+          const hmacKey = process.env.HMAC_KEY || 'mastra-default-hmac-key';
+          const h1 = createHmac('sha256', hmacKey).update(secret || '').digest();
+          const h2 = createHmac('sha256', hmacKey).update(expectedSecret).digest();
+          const match = timingSafeEqual(h1, h2);
+          if (!match) {
             return c.json({ error: 'Unauthorized' }, 401);
           }
           
@@ -41,7 +53,7 @@ export const mastra = new Mastra({
             await triggerCheck('evening');
             return c.json({ success: true, message: 'Proactive check completed' });
           } catch (error) {
-            console.error('Proactive trigger failed:', error);
+            logger.error('Proactive trigger failed:', error);
             return c.json({ error: 'Check failed' }, 500);
           }
         },
@@ -59,15 +71,33 @@ export const mastra = new Mastra({
           if (token) {
             requestContext.set('authToken', token);
 
-            // Decode JWT payload to extract userId (no verification needed,
-            // the Exponential API verifies the token on its end)
+            // Verify JWT and extract userId. When AUTH_SECRET is available,
+            // we cryptographically verify the token instead of blindly trusting it.
+            // This prevents forged JWTs from accessing another user's memory scope.
+            const authSecret = process.env.AUTH_SECRET;
             try {
-              const payload = JSON.parse(atob(token.split('.')[1]));
-              if (payload.userId || payload.sub) {
-                requestContext.set('userId', payload.userId || payload.sub);
+              if (authSecret) {
+                const payload = jwt.verify(token, authSecret, {
+                  audience: process.env.JWT_AUDIENCE ?? 'mastra-agents',
+                  issuer: process.env.JWT_ISSUER ?? 'todo-app',
+                }) as { userId?: string; sub?: string };
+                const userId = payload.userId || payload.sub;
+                if (userId) {
+                  requestContext.set('userId', userId);
+                }
+              } else {
+                // No AUTH_SECRET — decode without verification (dev/legacy fallback)
+                logger.warn(
+                  'JWT decoded WITHOUT VERIFICATION (AUTH_SECRET not set)',
+                  { env: process.env.NODE_ENV, hasToken: true }
+                );
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                if (payload.userId || payload.sub) {
+                  requestContext.set('userId', payload.userId || payload.sub);
+                }
               }
             } catch {
-              // Token decode failed - authToken is still set, tools can try using it
+              // Token verification/decode failed — authToken still set for tool-level auth
             }
           }
 

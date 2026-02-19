@@ -1,5 +1,6 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
+import { prepareUntrustedContent } from "../utils/content-safety.js";
 /**
  * Normalizes a phone number or JID string to a WhatsApp JID.
  * If the input already contains '@', it's returned as-is.
@@ -119,6 +120,14 @@ export const getWhatsAppChatHistoryTool = createTool({
       limit: inputData.limit,
       before: inputData.before ? new Date(inputData.before) : undefined,
     });
+
+    // Wrap message text — WhatsApp messages are untrusted external content
+    if (result.messages) {
+      result.messages = result.messages.map((m: any) => ({
+        ...m,
+        text: m.text ? prepareUntrustedContent(m.text, "whatsapp_message") : m.text,
+      }));
+    }
 
     console.log(`✅ [getWhatsAppChatHistory] Returned ${result.messages.length} messages (hasMore: ${result.hasMore})`);
 
@@ -240,7 +249,11 @@ export const searchWhatsAppChatsTool = createTool({
       return true;
     });
 
-    const finalResults = deduped.slice(0, inputData.limit);
+    // Wrap message text — search results are untrusted external content
+    const finalResults = deduped.slice(0, inputData.limit).map((r) => ({
+      ...r,
+      text: r.text ? prepareUntrustedContent(r.text, "whatsapp_message") : r.text,
+    }));
 
     console.log(`✅ [searchWhatsAppChats] Found ${finalResults.length} results`);
 

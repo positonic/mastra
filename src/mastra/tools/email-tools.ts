@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
+import { prepareUntrustedContent, auditWriteAction } from "../utils/content-safety.js";
 
 // ==================== Email Tools ====================
 // Per-user email access via the Exponential backend (IMAP/SMTP).
@@ -92,6 +93,16 @@ export const getRecentEmailsTool = createTool({
       { authToken, sessionId, userId }
     );
 
+    // Sanitize untrusted fields
+    if (data.emails) {
+      data.emails = data.emails.map(email => ({
+        ...email,
+        from: prepareUntrustedContent(email.from || '', "email_from"),
+        subject: prepareUntrustedContent(email.subject || '', "email_subject"),
+        snippet: prepareUntrustedContent(email.snippet || '', "email_snippet"),
+      }));
+    }
+
     console.log(`✅ [getRecentEmails] Retrieved ${data.emails?.length || 0} emails`);
     return data;
   },
@@ -140,7 +151,24 @@ export const getEmailByIdTool = createTool({
       { authToken, sessionId, userId }
     );
 
-    console.log(`✅ [getEmailById] Retrieved email: "${data.email?.subject}"`);
+    // Wrap email body — it's untrusted external content that could contain injection payloads
+    if (data.email?.body) {
+      data.email.body = prepareUntrustedContent(data.email.body, "email_body");
+    }
+    if (data.email?.subject) {
+      data.email.subject = prepareUntrustedContent(data.email.subject, "email_subject");
+    }
+    if (data.email?.from) {
+      data.email.from = prepareUntrustedContent(data.email.from, "email_from");
+    }
+    if (data.email?.to) {
+      data.email.to = prepareUntrustedContent(data.email.to, "email_to");
+    }
+    if (data.email?.cc) {
+      data.email.cc = prepareUntrustedContent(data.email.cc, "email_cc");
+    }
+
+    console.log(`✅ [getEmailById] Retrieved email: "${data.email?.subject?.slice(0, 50)}"`);
     return data;
   },
 });
@@ -189,6 +217,16 @@ export const searchEmailsTool = createTool({
       { authToken, sessionId, userId }
     );
 
+    // Sanitize untrusted fields
+    if (data.emails) {
+      data.emails = data.emails.map(email => ({
+        ...email,
+        from: prepareUntrustedContent(email.from || '', "email_from"),
+        subject: prepareUntrustedContent(email.subject || '', "email_subject"),
+        snippet: prepareUntrustedContent(email.snippet || '', "email_snippet"),
+      }));
+    }
+
     console.log(`✅ [searchEmails] Found ${data.emails?.length || 0} results`);
     return data;
   },
@@ -211,12 +249,20 @@ export const sendEmailTool = createTool({
       .string()
       .optional()
       .describe("References header (for threading)"),
+    userConfirmed: z
+      .boolean()
+      .describe("REQUIRED: Must be true. You MUST show the user the full email draft and receive explicit confirmation before setting this to true."),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     messageId: z.string(),
+    error: z.string().optional(),
   }),
   execute: async (inputData, { requestContext }) => {
+    if (!inputData.userConfirmed) {
+      return { success: false, messageId: '', error: 'You must show the email draft to the user and get their confirmation before sending. Set userConfirmed to true after receiving confirmation.' };
+    }
+
     const authToken = requestContext?.get("authToken") as string | undefined;
     const sessionId = requestContext?.get("whatsappSession") as string | undefined;
     const userId = requestContext?.get("userId") as string | undefined;
@@ -225,11 +271,20 @@ export const sendEmailTool = createTool({
       throw new Error("No authentication token available");
     }
 
+    auditWriteAction({
+      tool: 'send-email',
+      userId: userId,
+      params: { to: inputData.to.replace(/(.{2}).*(@.*)/, '$1***$2'), subject: inputData.subject },
+      timestamp: new Date().toISOString(),
+      userConfirmed: inputData.userConfirmed,
+    });
+
     console.log(`🎯 [sendEmail] Sending to: ${inputData.to}, subject: "${inputData.subject}"`);
 
+    const { userConfirmed: _, ...emailData } = inputData;
     const { data } = await authenticatedTrpcCall<{ success: boolean; messageId: string }>(
       "mastra.sendEmail",
-      inputData,
+      emailData,
       { authToken, sessionId, userId }
     );
 
@@ -245,12 +300,20 @@ export const replyToEmailTool = createTool({
   inputSchema: z.object({
     emailId: z.string().describe("The email ID (UID) to reply to"),
     body: z.string().describe("Reply body (plain text)"),
+    userConfirmed: z
+      .boolean()
+      .describe("REQUIRED: Must be true. You MUST show the user the full reply draft and receive explicit confirmation before setting this to true."),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     messageId: z.string(),
+    error: z.string().optional(),
   }),
   execute: async (inputData, { requestContext }) => {
+    if (!inputData.userConfirmed) {
+      return { success: false, messageId: '', error: 'You must show the reply draft to the user and get their confirmation before sending. Set userConfirmed to true after receiving confirmation.' };
+    }
+
     const authToken = requestContext?.get("authToken") as string | undefined;
     const sessionId = requestContext?.get("whatsappSession") as string | undefined;
     const userId = requestContext?.get("userId") as string | undefined;
@@ -258,6 +321,14 @@ export const replyToEmailTool = createTool({
     if (!authToken) {
       throw new Error("No authentication token available");
     }
+
+    auditWriteAction({
+      tool: 'reply-to-email',
+      userId: userId,
+      params: { emailId: inputData.emailId },
+      timestamp: new Date().toISOString(),
+      userConfirmed: inputData.userConfirmed,
+    });
 
     console.log(`🎯 [replyToEmail] Replying to email: ${inputData.emailId}`);
 

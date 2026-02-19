@@ -3,13 +3,14 @@ import { anthropic } from '@ai-sdk/anthropic';
 import { Agent } from '@mastra/core/agent';
 
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
+import { SECURITY_POLICY } from './security-policy.js';
 // Export Zoe agent
 export { zoeAgent } from './zoe-agent.js';
 // Export Expo agent (Exponential app knowledge)
 export { expoAgent } from './expo-agent.js';
 // Export Assistant agent (blank canvas for user-customized personalities)
 export { assistantAgent } from './assistant-agent.js';
-import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateActionTool, listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool, getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from '../tools';
+import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, listSlackChannelsTool, getSlackChannelHistoryTool, getSlackThreadRepliesTool, searchSlackMessagesTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateActionTool, listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool, getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
 export const weatherAgent = new Agent({
@@ -197,6 +198,8 @@ export const projectManagerAgent = new Agent({
   instructions: `
     You are Paddy, an AI Project Manager integrated into Exponential — a life management system. You help users manage projects, actions, goals, and outcomes effectively with comprehensive meeting context integration.
 
+    ${SECURITY_POLICY}
+
     ${EXPONENTIAL_CONTEXT}
 
     ## CORE CAPABILITIES:
@@ -233,10 +236,21 @@ export const projectManagerAgent = new Agent({
     - Monitor project evolution through meeting and call history
     
     ### Slack Integration
+    - **Read channel history** to stay across team discussions
+    - **Search Slack messages** to find relevant conversations
+    - **Read thread replies** to follow discussions in detail
+    - **List available channels** to discover where conversations are happening
     - Send project updates and notifications to Slack channels
     - Update existing Slack messages with progress reports
     - Notify team members about task assignments and deadlines
     - Share project status summaries in designated channels
+
+    **Note:** The bot can only see channels it has been invited to.
+
+    For questions like:
+    - "What's happening in Slack?" → list-slack-channels → get-slack-channel-history for active channels
+    - "Search Slack for mentions of the deadline" → search-slack-messages with query "deadline"
+    - "Show me the thread about the deployment" → search-slack-messages → get-slack-thread-replies
 
     ### WhatsApp Chat Search & Browsing
     - **list-whatsapp-chats**: List all WhatsApp conversations with contact info and message counts
@@ -456,10 +470,14 @@ export const projectManagerAgent = new Agent({
     **Calendar:**
     10. 'get-calendar-events' - For fetching upcoming calendar events (today, this week, custom range). Use for "What's on my calendar?" queries.
 
-    **Communication:**
-    11. 'send-slack-message' - For sending updates to Slack
-    12. 'update-slack-message' - For updating existing messages
-    13. 'get-slack-user-info' - For retrieving user information
+    **Communication (Slack):**
+    11. 'list-slack-channels' - Discover available Slack channels
+    12. 'get-slack-channel-history' - Read recent messages from a channel
+    13. 'get-slack-thread-replies' - Read full thread conversations
+    14. 'search-slack-messages' - Search messages by keyword across channels
+    15. 'send-slack-message' - For sending updates to Slack
+    16. 'update-slack-message' - For updating existing messages
+    17. 'get-slack-user-info' - For retrieving user information
 
     **WhatsApp Context (Requires User Consent):**
     14. 'lookup-contact-by-email' - Find contact's phone number from their email in CRM
@@ -571,6 +589,10 @@ export const projectManagerAgent = new Agent({
     sendSlackMessageTool,
     updateSlackMessageTool,
     getSlackUserInfoTool,
+    listSlackChannelsTool,
+    getSlackChannelHistoryTool,
+    getSlackThreadRepliesTool,
+    searchSlackMessagesTool,
     getCalendarEventsTool,
     getTodayCalendarEventsTool,
     getUpcomingCalendarEventsTool,

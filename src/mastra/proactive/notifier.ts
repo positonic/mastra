@@ -1,13 +1,16 @@
 /**
  * Proactive Notifier
- * 
- * Takes check results, uses Paddy to compose a helpful message,
- * then sends it via Telegram.
+ *
+ * Takes check results and sends template-based notifications via Telegram.
+ *
+ * SECURITY: This pipeline runs autonomously with no human in the loop.
+ * We use structured templates instead of LLM generation to prevent
+ * prompt injection via crafted project names, action titles, etc.
  */
 
 import TelegramBot from 'node-telegram-bot-api';
 import { createLogger } from '@mastra/core/logger';
-import { projectManagerAgent } from '../agents/index.js';
+import { sanitizeForPrompt } from '../utils/content-safety.js';
 import type { ProactiveCheckResult } from './types.js';
 
 const logger = createLogger({
@@ -28,70 +31,65 @@ export function initNotifier(telegramToken: string): void {
 }
 
 /**
- * Compose a helpful message using the PM agent
+ * Compose a notification from a fixed template.
+ *
+ * SECURITY: No LLM in the loop. All user-controlled strings are sanitized
+ * and interpolated into a static template. This eliminates the risk of
+ * prompt injection via crafted project/action names in this autonomous pipeline.
  */
-async function composeMessage(result: ProactiveCheckResult): Promise<string> {
-  const issues: string[] = [];
+/** Escape Telegram Markdown V1 special characters in user-controlled strings. */
+function escapeMd(text: string): string {
+  // Escape backslashes first to prevent double-escaping issues
+  return text.replace(/\\/g, '\\\\').replace(/([*_`\[\]])/g, '\\$1');
+}
+
+function composeMessage(result: ProactiveCheckResult): string {
+  const safe = (text: string, maxLen = 80) =>
+    escapeMd(sanitizeForPrompt(text, { maxLength: maxLen, flagSuspicious: false }));
+
+  const sections: string[] = [];
 
   if (result.staleProjects.length > 0) {
-    const projectList = result.staleProjects
-      .map(p => `- "${p.name}" (${p.lastActivityDays} days since activity)`)
-      .join('\n');
-    issues.push(`**Stale Projects:**\n${projectList}`);
+    const top3 = result.staleProjects.slice(0, 3);
+    const names = top3.map(p => `"${safe(p.name)}" (${p.lastActivityDays}d)`).join(', ');
+    const extra = result.staleProjects.length > 3
+      ? ` +${result.staleProjects.length - 3} more`
+      : '';
+    sections.push(`🔴 *${result.staleProjects.length} stale project(s):* ${names}${extra}`);
   }
 
   if (result.overdueActions.length > 0) {
-    const actionList = result.overdueActions
-      .slice(0, 5) // Limit to top 5
-      .map(a => `- "${a.title}" (${a.daysOverdue} days overdue)`)
-      .join('\n');
-    const more = result.overdueActions.length > 5 
-      ? `\n...and ${result.overdueActions.length - 5} more` 
+    const top3 = result.overdueActions.slice(0, 3);
+    const names = top3.map(a => `"${safe(a.title)}" (${a.daysOverdue}d overdue)`).join(', ');
+    const extra = result.overdueActions.length > 3
+      ? ` +${result.overdueActions.length - 3} more`
       : '';
-    issues.push(`**Overdue Actions:**\n${actionList}${more}`);
+    sections.push(`⏰ *${result.overdueActions.length} overdue action(s):* ${names}${extra}`);
   }
 
   if (result.atRiskGoals.length > 0) {
-    const goalList = result.atRiskGoals
-      .map(g => `- "${g.title}" (${g.daysRemaining} days left, ${g.progress}% done)`)
-      .join('\n');
-    issues.push(`**At-Risk Goals:**\n${goalList}`);
+    const top3 = result.atRiskGoals.slice(0, 3);
+    const names = top3.map(g => `"${safe(g.title)}" (${g.daysRemaining}d left, ${g.progress}%)`).join(', ');
+    const extra = result.atRiskGoals.length > 3
+      ? ` +${result.atRiskGoals.length - 3} more`
+      : '';
+    sections.push(`⚠️ *${result.atRiskGoals.length} at-risk goal(s):* ${names}${extra}`);
   }
 
-  if (result.riskSignals.length > 0) {
-    const criticalSignals = result.riskSignals.filter(
-      r => r.severity === 'high' || r.severity === 'critical'
-    );
-    if (criticalSignals.length > 0) {
-      const signalList = criticalSignals.map(r => `- ${r.message}`).join('\n');
-      issues.push(`**Sprint Risks:**\n${signalList}`);
-    }
+  // Notification includes high+critical risks (intentionally broader than
+  // formatDailyDigest which only counts critical) to prompt user action.
+  const criticalRisks = result.riskSignals.filter(
+    r => r.severity === 'high' || r.severity === 'critical'
+  );
+  if (criticalRisks.length > 0) {
+    sections.push(`🚨 *${criticalRisks.length} sprint risk(s)* need attention`);
   }
 
-  if (issues.length === 0) {
-    return ''; // Nothing to report
+  if (sections.length === 0) {
+    return '';
   }
 
-  // Use Paddy to compose a helpful, human message
-  const prompt = `You're doing a proactive check-in. The following issues were detected:
-
-${issues.join('\n\n')}
-
-Compose a brief, friendly Telegram message (max 500 chars) that:
-1. Highlights the most important issue(s)
-2. Asks a helpful question to unblock progress
-3. Keeps it conversational, not robotic
-
-Don't list everything - focus on what matters most. Be encouraging but direct.`;
-
-  try {
-    const response = await projectManagerAgent.generate(prompt);
-    return typeof response.text === 'string' ? response.text : String(response.text);
-  } catch (error) {
-    logger.error('❌ [ProactiveNotifier] Agent composition failed:', error);
-    // Fallback to simple message
-    return `Hey! Quick check-in: You have ${result.staleProjects.length} stale projects and ${result.overdueActions.length} overdue actions. Want to tackle something today?`;
-  }
+  return `Hey! Quick check-in:\n\n${sections.join('\n\n')}\n\nWhat would you like to tackle first?`;
 }
 
 /**
@@ -109,14 +107,20 @@ export async function notifyUser(result: ProactiveCheckResult): Promise<boolean>
   }
 
   try {
-    const message = await composeMessage(result);
+    const message = composeMessage(result);
     if (!message) {
       return false;
     }
 
-    await bot.sendMessage(result.telegramChatId, message, {
-      parse_mode: 'Markdown',
-    });
+    try {
+      await bot.sendMessage(result.telegramChatId, message, {
+        parse_mode: 'Markdown',
+      });
+    } catch (parseErr) {
+      // Markdown parse failure — retry as plain text
+      logger.warn(`⚠️ [ProactiveNotifier] Markdown parse failed, retrying plain text`);
+      await bot.sendMessage(result.telegramChatId, message);
+    }
 
     logger.info(`📤 [ProactiveNotifier] Sent to chat ${result.telegramChatId}`);
     return true;
