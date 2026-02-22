@@ -374,7 +374,7 @@ export const dailySummaryTool = createTool({
   description:
     "Get a daily trading summary from Tradescape. Use this when the user asks for their trading stats or daily report.",
   inputSchema: z.object({
-    date: z.string().optional().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format").describe("Date in YYYY-MM-DD format (defaults to today)"),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format").optional().describe("Date in YYYY-MM-DD format (defaults to today)"),
   }),
   outputSchema: z.object({
     trades: z.object({
