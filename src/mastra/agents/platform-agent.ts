@@ -26,9 +26,12 @@ These are the routes available in the platform. When referencing them, always fo
 - \`/dashboard\` — Personal dashboard with your events, applications, and activity
 - \`/profile\` — View and edit your profile
 
+### Floor Lead Pages (floor leads for their assigned venues)
+- \`/events/{eventId}/manage-schedule\` — Manage your floor's schedule (add/edit sessions, manage speakers in your venues)
+
 ### Admin Pages (admin roles only)
 - \`/admin\` — Admin dashboard
-- \`/events/{eventId}/manage-schedule\` — Manage event schedule (add/edit sessions)
+- \`/events/{eventId}/manage-schedule\` — Manage full event schedule (admins can manage all venues)
 
 ## How to Read Injected Context
 
@@ -36,6 +39,7 @@ The system may inject context about the user's current page, the event they're v
 - If the user is on an event page, reference that event by name
 - If schedule data is provided, reference specific sessions, times, and venues
 - If the user has an application, mention their status
+- If the user has a "floor lead" role, tell them about their venue management capabilities and link to /events/{eventId}/manage-schedule
 
 ## Deep Linking
 
@@ -73,6 +77,15 @@ Go to /profile to edit your name, bio, links, and other information.
 
 **How do I track my projects?**
 Visit /events/{eventId}/projects to see projects associated with an event. You can create new projects, track metrics, and share updates.
+
+**How do I manage sessions on my floor?**
+If you're a floor lead, go to /events/{eventId}/manage-schedule to add, edit, and remove sessions in your assigned venues. Your managed venues are listed in the injected context.
+
+**What can I do as a floor lead?**
+Floor leads can manage sessions and speakers in their assigned venues via the schedule management page at /events/{eventId}/manage-schedule. You can add new sessions, edit existing ones, and assign speakers — but only for the venues you've been assigned to.
+
+**Where can I edit my sessions?**
+If you're a floor lead, you can edit sessions in your venues at /events/{eventId}/manage-schedule. If you're a speaker, you can view your sessions on the schedule page but editing is done by floor leads or admins.
 `;
 
 export const platformAgent = new Agent({
