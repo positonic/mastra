@@ -6,7 +6,7 @@ import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js
 import { createTelegramGateway, cleanupTelegramGateway } from './bots/telegram-gateway.js';
 import { createWhatsAppGateway, cleanupWhatsAppGateway } from './bots/whatsapp-gateway.js';
 import { initSentry, captureException, flushSentry } from './utils/sentry.js';
-import { startScheduler, stopScheduler, triggerCheck } from './proactive/index.js';
+import { startScheduler, stopScheduler, triggerCheck, deliverWhatsAppBriefings } from './proactive/index.js';
 import jwt from 'jsonwebtoken';
 import { createHmac, timingSafeEqual } from 'crypto';
 
@@ -50,8 +50,27 @@ export const mastra = new Mastra({
           }
           
           try {
-            await triggerCheck('evening');
-            return c.json({ success: true, message: 'Proactive check completed' });
+            const body = await c.req.json().catch(() => ({}));
+            const type = body.type || 'evening';
+
+            if (type === 'whatsapp-briefing') {
+              const stats = await deliverWhatsAppBriefings();
+              return c.json({ success: true, message: 'WhatsApp briefing delivery complete', stats });
+            }
+
+            await triggerCheck(type);
+
+            // Also deliver WhatsApp briefings for morning triggers
+            let whatsappStats = null;
+            if (type === 'morning') {
+              whatsappStats = await deliverWhatsAppBriefings();
+            }
+
+            return c.json({
+              success: true,
+              message: 'Proactive check completed',
+              whatsappBriefings: whatsappStats,
+            });
           } catch (error) {
             logger.error('Proactive trigger failed:', error);
             return c.json({ error: 'Check failed' }, 500);

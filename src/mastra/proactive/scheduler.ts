@@ -1,8 +1,9 @@
 /**
  * Proactive Scheduler
- * 
+ *
  * Runs periodic checks for all paired Telegram users
  * and sends proactive notifications when issues are found.
+ * Also delivers WhatsApp morning briefings to connected users.
  */
 
 import cron from 'node-cron';
@@ -12,6 +13,7 @@ import os from 'os';
 import { createLogger } from '@mastra/core/logger';
 import { checkUser } from './checker.js';
 import { initNotifier, notifyUser, formatDailyDigest } from './notifier.js';
+import { deliverWhatsAppBriefings } from './whatsapp-briefing.js';
 import { decryptToken } from '../utils/gateway-shared.js';
 import type { UserContext } from './types.js';
 
@@ -79,35 +81,46 @@ async function loadPairedUsers(): Promise<UserContext[]> {
  */
 async function runProactiveChecks(type: 'morning' | 'evening'): Promise<void> {
   logger.info(`🚀 [ProactiveScheduler] Starting ${type} check run`);
-  
-  const users = await loadPairedUsers();
-  if (users.length === 0) {
-    logger.info('📭 [ProactiveScheduler] No paired users to check');
-    return;
-  }
 
-  logger.info(`👥 [ProactiveScheduler] Checking ${users.length} user(s)`);
-
+  // --- Telegram proactive alerts ---
   let notificationsSent = 0;
   let errorsEncountered = 0;
 
-  for (const user of users) {
-    try {
-      const result = await checkUser(user);
-      
-      if (result.hasIssues) {
-        const sent = await notifyUser(result);
-        if (sent) notificationsSent++;
+  const users = await loadPairedUsers();
+  if (users.length > 0) {
+    logger.info(`👥 [ProactiveScheduler] Checking ${users.length} Telegram user(s)`);
+
+    for (const user of users) {
+      try {
+        const result = await checkUser(user);
+
+        if (result.hasIssues) {
+          const sent = await notifyUser(result);
+          if (sent) notificationsSent++;
+        }
+      } catch (error) {
+        logger.error(`❌ [ProactiveScheduler] Error checking user ${user.userId}:`, error);
+        errorsEncountered++;
       }
+    }
+  }
+
+  // --- WhatsApp morning briefings (morning only) ---
+  let whatsappBriefingsSent = 0;
+  if (type === 'morning') {
+    try {
+      const whatsappStats = await deliverWhatsAppBriefings();
+      whatsappBriefingsSent = whatsappStats.sent;
     } catch (error) {
-      logger.error(`❌ [ProactiveScheduler] Error checking user ${user.userId}:`, error);
-      errorsEncountered++;
+      logger.error('❌ [ProactiveScheduler] WhatsApp briefing delivery failed:', error);
     }
   }
 
   logger.info(
     `✅ [ProactiveScheduler] ${type} run complete: ` +
-    `${notificationsSent} notification(s) sent, ${errorsEncountered} error(s)`
+    `${notificationsSent} Telegram notification(s), ` +
+    `${whatsappBriefingsSent} WhatsApp briefing(s), ` +
+    `${errorsEncountered} error(s)`
   );
 }
 
@@ -116,16 +129,14 @@ async function runProactiveChecks(type: 'morning' | 'evening'): Promise<void> {
  */
 export function startScheduler(): void {
   const telegramToken = process.env.TELEGRAM_GATEWAY_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
-  
-  if (!telegramToken) {
-    logger.warn('⚠️ [ProactiveScheduler] No Telegram token - scheduler disabled');
-    return;
+
+  if (telegramToken) {
+    initNotifier(telegramToken);
+  } else {
+    logger.warn('⚠️ [ProactiveScheduler] No Telegram token - Telegram notifications disabled');
   }
 
-  // Initialize the notifier
-  initNotifier(telegramToken);
-
-  // Schedule morning check
+  // Schedule morning check (Telegram alerts + WhatsApp briefings)
   morningTask = cron.schedule(MORNING_SCHEDULE, () => {
     runProactiveChecks('morning').catch(err => {
       logger.error('❌ [ProactiveScheduler] Morning check failed:', err);
@@ -134,7 +145,7 @@ export function startScheduler(): void {
     timezone: process.env.TZ || 'Europe/Berlin',
   });
 
-  // Schedule evening check
+  // Schedule evening check (Telegram alerts only)
   eveningTask = cron.schedule(EVENING_SCHEDULE, () => {
     runProactiveChecks('evening').catch(err => {
       logger.error('❌ [ProactiveScheduler] Evening check failed:', err);
@@ -145,7 +156,8 @@ export function startScheduler(): void {
 
   logger.info(
     `🕐 [ProactiveScheduler] Started with schedules: ` +
-    `morning="${MORNING_SCHEDULE}", evening="${EVENING_SCHEDULE}"`
+    `morning="${MORNING_SCHEDULE}", evening="${EVENING_SCHEDULE}" ` +
+    `(Telegram: ${telegramToken ? 'enabled' : 'disabled'}, WhatsApp: enabled)`
   );
 }
 

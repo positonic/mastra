@@ -1439,6 +1439,75 @@ Example format for lists:
   }
 
   /**
+   * Get all connected WhatsApp users with session metadata.
+   * Used by proactive notification systems to enumerate delivery targets.
+   */
+  getConnectedUsers(): Array<{
+    sessionId: string;
+    userId: string;
+    phoneNumber: string | null;
+    isConnected: boolean;
+    encryptedAuthToken?: string;
+  }> {
+    const users: Array<{
+      sessionId: string;
+      userId: string;
+      phoneNumber: string | null;
+      isConnected: boolean;
+      encryptedAuthToken?: string;
+    }> = [];
+
+    for (const [sessionId, session] of this.sessions) {
+      users.push({
+        sessionId,
+        userId: session.userId,
+        phoneNumber: session.phoneNumber,
+        isConnected: session.isConnected,
+        encryptedAuthToken: this.sessionsMetadata[sessionId]?.encryptedAuthToken,
+      });
+    }
+
+    return users;
+  }
+
+  /**
+   * Send a text message to a user's self-chat (their own WhatsApp number).
+   * Used for proactive notifications like morning briefings.
+   */
+  async sendTextMessage(sessionId: string, text: string): Promise<boolean> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      logger.warn(`⚠️ [${INSTANCE_ID}] sendTextMessage: Session ${sessionId} not found`);
+      return false;
+    }
+
+    if (!session.isConnected || !session.sock) {
+      logger.warn(`⚠️ [${INSTANCE_ID}] sendTextMessage: Session ${sessionId} not connected`);
+      return false;
+    }
+
+    const selfJid = session.sock.user?.id;
+    if (!selfJid) {
+      logger.warn(`⚠️ [${INSTANCE_ID}] sendTextMessage: No self JID for session ${sessionId}`);
+      return false;
+    }
+
+    try {
+      await this.sendLongMessage(session, selfJid, text);
+      logger.info(`📤 [${INSTANCE_ID}] sendTextMessage: Sent to self-chat in session ${sessionId}`);
+      return true;
+    } catch (error) {
+      logger.error(`❌ [${INSTANCE_ID}] sendTextMessage: Failed for session ${sessionId}:`, error);
+      captureException(error, {
+        userId: session.userId,
+        sessionId: session.id,
+        operation: 'sendTextMessage',
+      });
+      return false;
+    }
+  }
+
+  /**
    * Get a session by ID (for use by tools)
    */
   getSession(sessionId: string): WhatsAppSession | undefined {
