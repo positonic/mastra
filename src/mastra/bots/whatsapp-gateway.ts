@@ -141,6 +141,8 @@ async function ensureDir(dir: string): Promise<void> {
 /**
  * Convert markdown formatting to WhatsApp-compatible formatting.
  * Agent SOUL instructions produce markdown, but WhatsApp needs its own format.
+ *
+ * WhatsApp bold rules: *text* with NO space after opening * or before closing *.
  */
 function markdownToWhatsApp(text: string): string {
   return text
@@ -149,14 +151,20 @@ function markdownToWhatsApp(text: string): string {
     // Inline code → plain text
     .replace(/`([^`]+)`/g, '$1')
     // **bold** or __bold__ → *bold* (WhatsApp bold)
-    .replace(/\*\*(.+?)\*\*/g, '*$1*')
-    .replace(/__(.+?)__/g, '*$1*')
+    // Use \S boundary check to avoid producing * text* (space breaks WhatsApp bold)
+    .replace(/\*\*(\S(?:.*?\S)?)\*\*/g, '*$1*')
+    .replace(/__(\S(?:.*?\S)?)__/g, '*$1*')
     // Markdown headers → *bold* text
-    .replace(/^#{1,6}\s+(.+)$/gm, '*$1*')
-    // [text](url) → text (url)
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
-    // Horizontal rules → empty line
-    .replace(/^[-*]{3,}$/gm, '')
+    .replace(/^#{1,6}\s+(.+?)[\s]*$/gm, (_match, content) => {
+      const trimmed = content.trim();
+      return trimmed ? `*${trimmed}*` : '';
+    })
+    // Markdown links: [text](url) → text: url (bare URL so WhatsApp auto-links it)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '$1: $2')
+    // Non-http links: [text](non-url) → just the text
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    // Horizontal rules (only hyphens, not asterisks — avoid eating bold markers)
+    .replace(/^-{3,}$/gm, '')
     // Collapse 3+ consecutive blank lines into 2
     .replace(/\n{4,}/g, '\n\n\n');
 }
@@ -919,12 +927,13 @@ export class WhatsAppGateway {
 
       // WhatsApp-specific formatting context for the agent
       const whatsappSystemContext = `You are responding via WhatsApp. Format your responses for WhatsApp:
-- Use *bold* for emphasis (renders correctly)
+- Use *bold* for emphasis (single asterisks, no spaces inside: *like this* not * like this *)
 - Use numbered lists (1. 2. 3.) instead of markdown tables
 - Keep responses concise - WhatsApp has a 4096 character limit per message
 - NO markdown tables - they don't render properly
 - NO headers with # - use *bold text* instead
-- NO markdown links [text](url) - just write the text
+- For links, use markdown format [text](url) - they will be auto-converted to bare URLs that WhatsApp makes clickable
+- When showing Slack messages, always include the permalink so the user can tap to open in Slack
 
 Example format for lists:
 1. *Item Name* (Status, Priority)
