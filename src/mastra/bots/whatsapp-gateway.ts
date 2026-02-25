@@ -132,6 +132,29 @@ async function ensureDir(dir: string): Promise<void> {
   await fs.mkdir(dir, { recursive: true });
 }
 
+/**
+ * Convert markdown formatting to WhatsApp-compatible formatting.
+ * Agent SOUL instructions produce markdown, but WhatsApp needs its own format.
+ */
+function markdownToWhatsApp(text: string): string {
+  return text
+    // Code blocks → plain text (before other transformations)
+    .replace(/```[\w]*\n?([\s\S]*?)```/g, '$1')
+    // Inline code → plain text
+    .replace(/`([^`]+)`/g, '$1')
+    // **bold** or __bold__ → *bold* (WhatsApp bold)
+    .replace(/\*\*(.+?)\*\*/g, '*$1*')
+    .replace(/__(.+?)__/g, '*$1*')
+    // Markdown headers → *bold* text
+    .replace(/^#{1,6}\s+(.+)$/gm, '*$1*')
+    // [text](url) → text (url)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
+    // Horizontal rules → empty line
+    .replace(/^[-*]{3,}$/gm, '')
+    // Collapse 3+ consecutive blank lines into 2
+    .replace(/\n{4,}/g, '\n\n\n');
+}
+
 // Agent routing types and functions
 type AgentIdentifier = 'weather' | 'pierre' | 'ash' | 'paddy' | 'zoe';
 
@@ -940,8 +963,8 @@ Example format for lists:
           history.shift();
         }
 
-        // In private mode, prefix with context about which chat the question was from
-        let finalResponse = agentResponse;
+        // Convert markdown to WhatsApp-friendly formatting
+        let finalResponse = markdownToWhatsApp(agentResponse);
         if (PRIVATE_RESPONSE_MODE && !isSelfChat) {
           const chatContext = jidToE164(jid) || jid.split('@')[0];
           finalResponse = `[Re: ${chatContext}]\n\n${agentResponse}`;
