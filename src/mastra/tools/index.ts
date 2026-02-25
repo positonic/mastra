@@ -554,17 +554,27 @@ export const getProjectActionsTool = createTool({
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
 
+    console.log(`🚀 [getProjectActions] Starting: projectId=${projectId}, status=${status || "all"}`);
+
     if (!authToken) {
+      console.error(`❌ [getProjectActions] No auth token available`);
       throw new Error("No authentication token available");
     }
 
-    const { data } = await authenticatedTrpcCall(
-      "mastra.projectActions",
-      { projectId, status },
-      { authToken, sessionId, userId }
-    );
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "mastra.projectActions",
+        { projectId, status },
+        { authToken, sessionId, userId }
+      );
 
-    return data;
+      const actions = (data as any)?.actions || [];
+      console.log(`✅ [getProjectActions] Retrieved ${actions.length} actions for project ${projectId}`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [getProjectActions] FAILED for project ${projectId}:`, error);
+      throw error;
+    }
   },
 });
 
@@ -747,17 +757,26 @@ export const updateProjectStatusTool = createTool({
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
 
+    console.log(`🚀 [updateProjectStatus] Starting: projectId=${projectId}, status=${status || "unchanged"}, priority=${priority || "unchanged"}, progress=${progress ?? "unchanged"}`);
+
     if (!authToken) {
+      console.error(`❌ [updateProjectStatus] No auth token available`);
       throw new Error("No authentication token available");
     }
 
-    const { data } = await authenticatedTrpcCall(
-      "mastra.updateProjectStatus",
-      { projectId, status, priority, progress, reviewDate, nextActionDate },
-      { authToken, sessionId, userId }
-    );
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "mastra.updateProjectStatus",
+        { projectId, status, priority, progress, reviewDate, nextActionDate },
+        { authToken, sessionId, userId }
+      );
 
-    return data;
+      console.log(`✅ [updateProjectStatus] SUCCESS for project ${projectId}`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [updateProjectStatus] FAILED for project ${projectId}:`, error);
+      throw error;
+    }
   },
 });
 
@@ -788,19 +807,29 @@ export const getProjectGoalsTool = createTool({
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
 
+    console.log(`🚀 [getProjectGoals] Starting: projectId=${projectId}`);
+
     if (!authToken) {
+      console.error(`❌ [getProjectGoals] No auth token available`);
       throw new Error("No authentication token available");
     }
 
-    // Get project context which includes goals
-    const { data: contextData } = await authenticatedTrpcCall(
-      "mastra.projectContext",
-      { projectId },
-      { authToken, sessionId, userId }
-    );
+    try {
+      // Get project context which includes goals
+      const { data: contextData } = await authenticatedTrpcCall(
+        "mastra.projectContext",
+        { projectId },
+        { authToken, sessionId, userId }
+      );
 
-    // Extract just the goals from the project context response
-    return { goals: contextData.goals || [] };
+      // Extract just the goals from the project context response
+      const goals = (contextData as any)?.goals || [];
+      console.log(`✅ [getProjectGoals] Retrieved ${goals.length} goals for project ${projectId}`);
+      return { goals };
+    } catch (error) {
+      console.error(`❌ [getProjectGoals] FAILED for project ${projectId}:`, error);
+      throw error;
+    }
   },
 });
 
