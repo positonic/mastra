@@ -11,6 +11,50 @@ const slackUserClient = process.env.SLACK_USER_TOKEN
   ? new WebClient(process.env.SLACK_USER_TOKEN)
   : undefined;
 
+// ── Workspace domain cache (for constructing permalinks) ────────────
+let _teamDomain: string | null = null;
+
+async function getTeamDomain(): Promise<string | null> {
+  if (_teamDomain) return _teamDomain;
+  try {
+    const auth = await slackBotClient.auth.test();
+    // auth.url is like "https://workspace.slack.com/" — extract the subdomain
+    if (auth.url) {
+      const match = auth.url.match(/https?:\/\/([^.]+)\.slack\.com/);
+      if (match) _teamDomain = match[1];
+    }
+    return _teamDomain;
+  } catch {
+    return null;
+  }
+}
+
+function buildPermalink(teamDomain: string | null, channelId: string, ts: string): string | null {
+  if (!teamDomain || !ts) return null;
+  // Slack permalink format: https://WORKSPACE.slack.com/archives/CHANNEL/pTIMESTAMP_WITHOUT_DOT
+  const tsNoDot = ts.replace(".", "");
+  return `https://${teamDomain}.slack.com/archives/${channelId}/p${tsNoDot}`;
+}
+
+// ── User ID → display name cache ────────────────────────────────────
+const _userNameCache = new Map<string, string>();
+
+async function resolveUserNames(userIds: string[]): Promise<Map<string, string>> {
+  const unknowns = userIds.filter((id) => id && !_userNameCache.has(id));
+  // Resolve up to 10 unknown users per call to avoid rate limits
+  for (const uid of unknowns.slice(0, 10)) {
+    try {
+      const result = await slackBotClient.users.info({ user: uid });
+      if (result.ok && result.user) {
+        _userNameCache.set(uid, result.user.real_name || result.user.name || uid);
+      }
+    } catch {
+      _userNameCache.set(uid, uid); // fallback to raw ID
+    }
+  }
+  return _userNameCache;
+}
+
 // Block Kit schemas
 const slackBlockElementSchema = z.object({
   type: z.string(),
@@ -172,7 +216,7 @@ export const listSlackChannelsTool = createTool({
 export const getSlackChannelHistoryTool = createTool({
   id: "get-slack-channel-history",
   description:
-    "Read recent messages from a Slack channel. Returns messages in reverse chronological order (newest first). Use the channel ID from list-slack-channels. Messages include sender user ID, text, timestamp, and thread info.",
+    "Read recent messages from a Slack channel. Returns messages in reverse chronological order (newest first). Use the channel ID from list-slack-channels. Messages include sender display name, text, permalink, and thread info.",
   inputSchema: z.object({
     channel: z.string().describe("Channel ID (e.g., C1234567890). Use list-slack-channels to find IDs."),
     limit: z.number().min(1).max(100).default(25).describe("Number of messages to return (default: 25, max: 100)"),
@@ -181,8 +225,9 @@ export const getSlackChannelHistoryTool = createTool({
   }),
   outputSchema: z.object({
     messages: z.array(z.object({
-      ts: z.string(), user: z.string().nullable(), text: z.string(),
+      ts: z.string(), user: z.string().nullable(), userName: z.string().nullable(), text: z.string(),
       threadTs: z.string().nullable(), replyCount: z.number().nullable(),
+      permalink: z.string().nullable(),
       reactions: z.array(z.object({ name: z.string(), count: z.number() })).optional(),
     })),
     hasMore: z.boolean(),
@@ -192,13 +237,21 @@ export const getSlackChannelHistoryTool = createTool({
     const { channel, limit, oldest, latest } = inputData;
     console.log(`📜 [getSlackChannelHistory] Fetching history for ${channel} (limit: ${limit})`);
     try {
-      const result = await slackBotClient.conversations.history({ channel, limit, oldest, latest });
-      const messages = (result.messages || []).map((msg) => ({
+      const [result, teamDomain] = await Promise.all([
+        slackBotClient.conversations.history({ channel, limit, oldest, latest }),
+        getTeamDomain(),
+      ]);
+      const rawMessages = result.messages || [];
+      const userIds = rawMessages.map((m) => m.user).filter(Boolean) as string[];
+      const nameMap = await resolveUserNames(userIds);
+      const messages = rawMessages.map((msg) => ({
         ts: msg.ts || "",
         user: msg.user || null,
+        userName: msg.user ? nameMap.get(msg.user) || null : null,
         text: msg.text ? prepareUntrustedContent(msg.text, "slack_message") : "",
         threadTs: msg.thread_ts || null,
         replyCount: msg.reply_count ?? null,
+        permalink: buildPermalink(teamDomain, channel, msg.ts || ""),
         reactions: msg.reactions?.map((r) => ({ name: r.name || "", count: r.count || 0 })),
       }));
       console.log(`✅ [getSlackChannelHistory] Returned ${messages.length} messages (hasMore: ${result.has_more})`);
@@ -220,7 +273,8 @@ export const getSlackThreadRepliesTool = createTool({
   }),
   outputSchema: z.object({
     messages: z.array(z.object({
-      ts: z.string(), user: z.string().nullable(), text: z.string(), isParent: z.boolean(),
+      ts: z.string(), user: z.string().nullable(), userName: z.string().nullable(),
+      text: z.string(), isParent: z.boolean(), permalink: z.string().nullable(),
     })),
     hasMore: z.boolean(),
     replyCount: z.number(),
@@ -229,12 +283,20 @@ export const getSlackThreadRepliesTool = createTool({
     const { channel, threadTs, limit } = inputData;
     console.log(`🧵 [getSlackThreadReplies] Fetching thread ${threadTs} in ${channel} (limit: ${limit})`);
     try {
-      const result = await slackBotClient.conversations.replies({ channel, ts: threadTs, limit });
-      const messages = (result.messages || []).map((msg) => ({
+      const [result, teamDomain] = await Promise.all([
+        slackBotClient.conversations.replies({ channel, ts: threadTs, limit }),
+        getTeamDomain(),
+      ]);
+      const rawMessages = result.messages || [];
+      const userIds = rawMessages.map((m) => m.user).filter(Boolean) as string[];
+      const nameMap = await resolveUserNames(userIds);
+      const messages = rawMessages.map((msg) => ({
         ts: msg.ts || "",
         user: msg.user || null,
+        userName: msg.user ? nameMap.get(msg.user) || null : null,
         text: msg.text ? prepareUntrustedContent(msg.text, "slack_message") : "",
         isParent: msg.ts === threadTs,
+        permalink: buildPermalink(teamDomain, channel, msg.ts || ""),
       }));
       const parentMsg = result.messages?.[0];
       const replyCount = parentMsg?.reply_count ?? messages.length - 1;
@@ -257,7 +319,7 @@ export const searchSlackMessagesTool = createTool({
   }),
   outputSchema: z.object({
     results: z.array(z.object({
-      text: z.string(), user: z.string().nullable(), ts: z.string(),
+      text: z.string(), user: z.string().nullable(), userName: z.string().nullable(), ts: z.string(),
       channelId: z.string(), channelName: z.string().nullable(),
       permalink: z.string().nullable(), searchMode: z.enum(["api", "local"]),
     })),
@@ -278,9 +340,12 @@ export const searchSlackMessagesTool = createTool({
           sort_dir: "desc",
         });
         const matches = searchResult.messages?.matches || [];
+        const userIds = matches.map((m: any) => m.user).filter(Boolean) as string[];
+        const nameMap = await resolveUserNames(userIds);
         const results = matches.map((match: any) => ({
           text: match.text ? prepareUntrustedContent(match.text, "slack_message") : "",
           user: match.user || null,
+          userName: match.user ? nameMap.get(match.user) || null : null,
           ts: match.ts || "",
           channelId: match.channel?.id || "",
           channelName: match.channel?.name || null,
@@ -296,6 +361,7 @@ export const searchSlackMessagesTool = createTool({
 
     // Path 2: Local fallback — fetch history from channels and filter
     try {
+      const teamDomain = await getTeamDomain();
       let channelsToSearch: Array<{ id: string; name: string }> = [];
       if (channel) {
         channelsToSearch = [{ id: channel, name: "" }];
@@ -312,7 +378,7 @@ export const searchSlackMessagesTool = createTool({
 
       const queryLower = query.toLowerCase();
       const allResults: Array<{
-        text: string; user: string | null; ts: string;
+        text: string; user: string | null; userName: string | null; ts: string;
         channelId: string; channelName: string | null;
         permalink: string | null; searchMode: "local";
       }> = [];
@@ -323,12 +389,17 @@ export const searchSlackMessagesTool = createTool({
           const matches = (history.messages || []).filter(
             (msg) => msg.text && msg.text.toLowerCase().includes(queryLower)
           );
+          const matchUserIds = matches.map((m) => m.user).filter(Boolean) as string[];
+          const nameMap = await resolveUserNames(matchUserIds);
           for (const msg of matches) {
             allResults.push({
               text: msg.text ? prepareUntrustedContent(msg.text, "slack_message") : "",
-              user: msg.user || null, ts: msg.ts || "",
+              user: msg.user || null,
+              userName: msg.user ? nameMap.get(msg.user) || null : null,
+              ts: msg.ts || "",
               channelId: ch.id, channelName: ch.name || null,
-              permalink: null, searchMode: "local",
+              permalink: buildPermalink(teamDomain, ch.id, msg.ts || ""),
+              searchMode: "local",
             });
           }
         } catch (err) {

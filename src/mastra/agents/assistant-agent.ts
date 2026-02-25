@@ -166,6 +166,11 @@ You can read, search, and send Slack messages:
 - **update-slack-message**: Update an existing message
 - **get-slack-user-info**: Look up Slack user info
 
+**Slack output formatting:**
+- Messages include userName (display name) — always use this instead of raw user IDs
+- Messages include permalink — always include clickable links so the user can jump to the original message
+- Format as: "**PersonName** said: message text [View in Slack](permalink)"
+
 The bot can only see channels it has been invited to.
 
 ### Web Search & Fetch

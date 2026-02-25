@@ -225,6 +225,11 @@ You can read, search, and send Slack messages:
 - "Show me that thread about the bug" → get-slack-thread-replies with the thread timestamp
 - "Send an update to #general" → send-slack-message
 
+**Slack output formatting:**
+- Messages include userName (display name) — always use this instead of raw user IDs
+- Messages include permalink — always include clickable links so the user can jump to the original message
+- Format as: "**PersonName** said: message text [View in Slack](permalink)"
+
 **Note:** The bot can only see channels it has been invited to.
 
 ### Slack Policies

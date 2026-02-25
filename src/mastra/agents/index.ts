@@ -249,6 +249,11 @@ export const projectManagerAgent = new Agent({
 
     **Note:** The bot can only see channels it has been invited to.
 
+    **Slack output formatting:**
+    - Messages include userName (display name) — always use this instead of raw user IDs
+    - Messages include permalink — always include clickable links to messages so the user can jump to them
+    - Format as: "**PersonName** said: message text [View in Slack](permalink)"
+
     For questions like:
     - "What's happening in Slack?" → list-slack-channels → get-slack-channel-history for active channels
     - "Search Slack for mentions of the deadline" → search-slack-messages with query "deadline"
