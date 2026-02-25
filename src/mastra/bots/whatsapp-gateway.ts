@@ -13,6 +13,8 @@ import makeWASocket, {
   WASocket,
   BaileysEventMap,
   proto,
+  isLidUser,
+  jidNormalizedUser,
 } from '@whiskeysockets/baileys';
 import QRCode from 'qrcode';
 import { createLogger } from '@mastra/core/logger';
@@ -102,6 +104,7 @@ interface WhatsAppSession {
   conversations: Map<string, ConversationState>; // Track active conversations per chat
   sentMessageIds: Set<string>; // Track messages sent by the bot to avoid feedback loops
   messageCache: Map<string, CachedMessage[]>; // Cache messages per contact JID for context
+  lidJid: string | null; // User's own LID JID (e.g., "12345@lid") for self-chat detection
 }
 
 interface ConnectionStatus {
@@ -114,6 +117,9 @@ interface ConnectionStatus {
 function jidToE164(jid: string): string | null {
   const match = jid.match(/^(\d+)(?::\d+)?@s\.whatsapp\.net$/);
   if (match) return `+${match[1]}`;
+  // Return a readable identifier for LID JIDs (used in logging)
+  const lidMatch = jid.match(/^(\d+)(?::\d+)?@lid$/);
+  if (lidMatch) return `LID:${lidMatch[1]}`;
   return null;
 }
 
@@ -215,6 +221,12 @@ function getAgentByIdentifier(identifier: AgentIdentifier) {
 
 // Conversation management helpers
 function isSelfChat(session: WhatsAppSession, jid: string): boolean {
+  // Check if this is a LID JID matching the user's own LID
+  if (isLidUser(jid) && session.lidJid) {
+    const normalizedJid = jidNormalizedUser(jid);
+    if (normalizedJid === session.lidJid) return true;
+  }
+
   const chatPhone = jid.replace(/@.*/, '').replace(/\D/g, '');
 
   // Primary: check socket user ID directly (most reliable when connected)
@@ -377,6 +389,7 @@ export class WhatsAppGateway {
           conversations: new Map(),
           sentMessageIds: new Set(),
           messageCache: new Map(),
+          lidJid: null,
         };
 
         this.sessions.set(sessionId, session);
@@ -428,6 +441,7 @@ export class WhatsAppGateway {
       conversations: new Map(),
       sentMessageIds: new Set(),
       messageCache: new Map(),
+      lidJid: null,
     };
 
     this.sessions.set(sessionId, session);
@@ -574,7 +588,7 @@ export class WhatsAppGateway {
       session.currentQr = null;
       session.reconnectAttempts = 0;
 
-      // Get phone number from credentials
+      // Get phone number and LID from credentials
       const phoneNumber = session.sock?.user?.id;
       if (phoneNumber) {
         session.phoneNumber = jidToE164(phoneNumber);
@@ -586,6 +600,13 @@ export class WhatsAppGateway {
           lastConnected: new Date().toISOString(),
         };
         this.saveSessionsMetadata();
+      }
+
+      // Store user's LID for self-chat detection with @lid JIDs
+      const userLid = session.sock?.user?.lid;
+      if (userLid) {
+        session.lidJid = jidNormalizedUser(userLid);
+        logger.info(`🆔 [${INSTANCE_ID}] Session ${session.id} LID: ${session.lidJid}`);
       }
 
       logger.info(`✅ [${INSTANCE_ID}] Session ${session.id} connected as ${session.phoneNumber}`);
@@ -846,11 +867,22 @@ export class WhatsAppGateway {
     agentId: AgentIdentifier
   ): Promise<void> {
     try {
+      // Resolve LID JIDs to PN format for reliable message delivery
+      // WhatsApp now uses @lid JIDs for self-chat; convert back to @s.whatsapp.net
+      let resolvedJid = jid;
+      if (isLidUser(jid) && session.lidJid && jidNormalizedUser(jid) === session.lidJid) {
+        const pnJid = session.sock?.user?.id;
+        if (pnJid) {
+          resolvedJid = jidNormalizedUser(pnJid);
+          logger.info(`🔄 [${INSTANCE_ID}] Resolved self-chat LID ${jid} → ${resolvedJid}`);
+        }
+      }
+
       // Determine where to send the response
       // In private mode, always respond in self-chat so only the user sees it
-      const selfChatJid = session.sock?.user?.id;
-      const isSelfChat = selfChatJid && jid === selfChatJid;
-      const responseJid = (PRIVATE_RESPONSE_MODE && !isSelfChat && selfChatJid) ? selfChatJid : jid;
+      const selfChatJid = session.sock?.user?.id ? jidNormalizedUser(session.sock.user.id) : undefined;
+      const isSelfChat = selfChatJid && resolvedJid === selfChatJid;
+      const responseJid = (PRIVATE_RESPONSE_MODE && !isSelfChat && selfChatJid) ? selfChatJid : resolvedJid;
 
       // Send typing indicator
       await session.sock?.sendPresenceUpdate('composing', responseJid);
