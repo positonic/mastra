@@ -17,12 +17,16 @@
 1. Go to "OAuth & Permissions" in the sidebar
 2. Under "Bot Token Scopes", add these scopes:
    - `chat:write` - Send messages
+   - `chat:write.customize` - Override bot display name and icon per message (required for multi-agent identity)
    - `chat:write.public` - Send messages to channels without joining
    - `users:read` - View user info
    - `channels:read` - View channel info
+   - `channels:history` - Read channel message history
    - `groups:read` - View private channel info
+   - `groups:history` - Read private channel message history
    - `im:read` - View direct message info
    - `mpim:read` - View group direct message info
+   - `mpim:history` - Read group DM message history
 
 ## Step 3: Install to Workspace
 

@@ -477,7 +477,7 @@ export const projectManagerAgent = new Agent({
     12. 'get-slack-channel-history' - Read recent messages from a channel
     13. 'get-slack-thread-replies' - Read full thread conversations
     14. 'search-slack-messages' - Search messages by keyword across channels
-    15. 'send-slack-message' - For sending updates to Slack
+    15. 'send-slack-message' - For sending updates to Slack. ALWAYS pass username: "Paddy" and icon_emoji: ":clipboard:" to identify yourself.
     16. 'update-slack-message' - For updating existing messages
     17. 'get-slack-user-info' - For retrieving user information
 

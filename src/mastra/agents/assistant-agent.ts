@@ -162,7 +162,7 @@ You can read, search, and send Slack messages:
 - **get-slack-channel-history**: Read recent messages from a channel
 - **get-slack-thread-replies**: Read a full thread conversation
 - **search-slack-messages**: Search messages by keyword across channels
-- **send-slack-message**: Send a message to a channel or user
+- **send-slack-message**: Send a message to a channel or user. ALWAYS pass your configured name as username and your emoji as icon_emoji to identify yourself (e.g., username: "Your Name", icon_emoji: ":your_emoji:"). Use the name and emoji from your Identity section.
 - **update-slack-message**: Update an existing message
 - **get-slack-user-info**: Look up Slack user info
 

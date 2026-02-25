@@ -41,11 +41,13 @@ const slackBlockSchema = z.object({
 
 export const sendSlackMessageTool = createTool({
   id: "send-slack-message",
-  description: "Send a message to a Slack channel or user",
+  description: "Send a message to a Slack channel or user. Always pass username and icon_emoji to identify which agent is sending the message.",
   inputSchema: z.object({
     channel: z.string().describe("The channel ID or user ID to send the message to (e.g., C1234567890 or U1234567890)"),
     text: z.string().describe("The text content of the message"),
     blocks: z.array(slackBlockSchema).optional().describe("Optional Block Kit blocks for rich formatting"),
+    username: z.string().optional().describe("Display name override for the bot (e.g., 'Paddy', 'Zoe'). Requires chat:write.customize scope."),
+    icon_emoji: z.string().optional().describe("Emoji icon override for the bot avatar (e.g., ':clipboard:', ':sparkles:'). Requires chat:write.customize scope."),
   }),
   outputSchema: z.object({
     ok: z.boolean(),
@@ -54,9 +56,9 @@ export const sendSlackMessageTool = createTool({
     message: z.object({ text: z.string(), type: z.string(), user: z.string(), ts: z.string() }).optional(),
   }),
   execute: async (inputData) => {
-    const { channel, text, blocks } = inputData;
+    const { channel, text, blocks, username, icon_emoji } = inputData;
     try {
-      const result = await slackBotClient.chat.postMessage({ channel, text, blocks });
+      const result = await slackBotClient.chat.postMessage({ channel, text, blocks, username, icon_emoji });
       return {
         ok: result.ok || false,
         channel: result.channel || "",
@@ -84,6 +86,7 @@ export const updateSlackMessageTool = createTool({
   execute: async (inputData) => {
     const { channel, ts, text, blocks } = inputData;
     try {
+      // Note: chat.update does not support username/icon_emoji overrides — Slack limitation
       const result = await slackBotClient.chat.update({ channel, ts, text, blocks });
       return { ok: result.ok || false, channel: result.channel || "", ts: result.ts || "", text: result.text || "" };
     } catch (error) {
