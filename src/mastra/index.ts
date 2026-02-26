@@ -5,6 +5,7 @@ import { memory } from './memory/index.js';
 import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js';
 import { createTelegramGateway, cleanupTelegramGateway } from './bots/telegram-gateway.js';
 import { createWhatsAppGateway, cleanupWhatsAppGateway } from './bots/whatsapp-gateway.js';
+import { startSignalGateway, getSignalGateway } from './bots/signal-gateway.js';
 import { initSentry, captureException, flushSentry } from './utils/sentry.js';
 import { startScheduler, stopScheduler, triggerCheck, deliverWhatsAppBriefings } from './proactive/index.js';
 import jwt from 'jsonwebtoken';
@@ -153,6 +154,16 @@ if (!enableTelegramGateway) {
 // Initialize WhatsApp gateway
 export const whatsAppGateway = createWhatsAppGateway();
 
+// Initialize Signal gateway
+const enableSignalGateway = process.env.ENABLE_SIGNAL_GATEWAY === 'true';
+if (enableSignalGateway) {
+  startSignalGateway().catch(err => {
+    logger.error('❌ [MAIN] Failed to start Signal gateway:', err);
+  });
+} else {
+  logger.info('📵 [MAIN] Signal gateway disabled (set ENABLE_SIGNAL_GATEWAY=true to enable)');
+}
+
 // Start proactive scheduler (checks projects and notifies users)
 const enableProactive = process.env.ENABLE_PROACTIVE_SCHEDULER !== 'false';
 if (enableProactive) {
@@ -179,6 +190,12 @@ const shutdown = async (signal: string, error?: Error) => {
       await cleanupTelegramGateway();
     }
     await cleanupWhatsAppGateway();
+
+    // Cleanup Signal gateway
+    const signalGw = getSignalGateway();
+    if (signalGw) {
+      await signalGw.shutdown();
+    }
     
     // Stop proactive scheduler
     stopScheduler();
