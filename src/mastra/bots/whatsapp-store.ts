@@ -71,6 +71,11 @@ const EMBEDDING_FLUSH_INTERVAL_MS = 5000;
 const VECTOR_INDEX_NAME = 'whatsapp_message_embeddings';
 const SCHEMA_NAME = 'whatsapp_messages';
 
+// Backoff constants for quota errors
+const INITIAL_BACKOFF_MS = 60_000;     // 1 minute
+const MAX_BACKOFF_MS = 30 * 60_000;    // 30 minutes
+const MAX_QUEUE_SIZE = 500;            // Drop oldest messages if queue grows too large
+
 export class WhatsAppMessageStore {
   private vectorStore: PgVector;
   private pool: pg.Pool;
@@ -78,6 +83,8 @@ export class WhatsAppMessageStore {
   private embedBatchTimer: NodeJS.Timeout | null = null;
   private initialized = false;
   private initPromise: Promise<void> | null = null;
+  private embeddingBackoffUntil: number = 0;   // Timestamp until which we skip embedding
+  private embeddingBackoffMs: number = 0;       // Current backoff duration
 
   constructor() {
     this.vectorStore = new PgVector({
@@ -493,6 +500,12 @@ export class WhatsAppMessageStore {
   // ── Embedding queue ──
 
   private queueEmbedding(id: string, text: string, metadata: Record<string, any>): void {
+    // Drop oldest messages if queue grows too large (quota exhaustion scenario)
+    if (this.embeddingQueue.length >= MAX_QUEUE_SIZE) {
+      const dropped = this.embeddingQueue.splice(0, this.embeddingQueue.length - MAX_QUEUE_SIZE + 1);
+      logger.warn(`⚠️ Embedding queue overflow: dropped ${dropped.length} oldest messages`);
+    }
+
     this.embeddingQueue.push({ id, text, metadata });
 
     // Flush immediately if batch is full
@@ -503,15 +516,34 @@ export class WhatsAppMessageStore {
     }
   }
 
+  private isQuotaError(error: unknown): boolean {
+    const msg = String(error);
+    return msg.includes('insufficient_quota') ||
+      msg.includes('exceeded your current quota') ||
+      (typeof error === 'object' && error !== null && 'statusCode' in error && (error as any).statusCode === 429);
+  }
+
   private async flushEmbeddingQueue(): Promise<void> {
     if (this.embeddingQueue.length === 0) return;
+
+    // Respect backoff — don't attempt embeddings while backing off
+    if (Date.now() < this.embeddingBackoffUntil) {
+      return;
+    }
 
     const batch = this.embeddingQueue.splice(0, EMBEDDING_BATCH_SIZE);
     const embeddings: number[][] = [];
     const metadataArray: Record<string, any>[] = [];
     const ids: string[] = [];
+    let quotaHit = false;
 
     for (const item of batch) {
+      if (quotaHit) {
+        // Re-queue remaining items — don't waste API calls
+        this.embeddingQueue.unshift(item);
+        continue;
+      }
+
       try {
         const { embedding } = await embed({
           model: openai.embedding('text-embedding-3-small'),
@@ -520,8 +552,34 @@ export class WhatsAppMessageStore {
         embeddings.push(embedding);
         metadataArray.push({ ...item.metadata, content: item.text });
         ids.push(item.id);
+
+        // Reset backoff on success
+        if (this.embeddingBackoffMs > 0) {
+          logger.info('✅ Embedding quota restored, resuming normal operation');
+          this.embeddingBackoffMs = 0;
+          this.embeddingBackoffUntil = 0;
+        }
       } catch (error) {
-        logger.error(`Failed to embed message ${item.id}:`, error);
+        if (this.isQuotaError(error)) {
+          quotaHit = true;
+          // Re-queue this item for retry
+          this.embeddingQueue.unshift(item);
+
+          // Exponential backoff
+          this.embeddingBackoffMs = this.embeddingBackoffMs === 0
+            ? INITIAL_BACKOFF_MS
+            : Math.min(this.embeddingBackoffMs * 2, MAX_BACKOFF_MS);
+          this.embeddingBackoffUntil = Date.now() + this.embeddingBackoffMs;
+
+          const mins = Math.round(this.embeddingBackoffMs / 60_000);
+          logger.warn(
+            `⚠️ OpenAI quota exceeded — pausing embeddings for ${mins}m ` +
+            `(${this.embeddingQueue.length} messages queued)`
+          );
+        } else {
+          // Non-quota error: log and drop the message (not retryable)
+          logger.error(`Failed to embed message ${item.id}:`, error);
+        }
       }
     }
 

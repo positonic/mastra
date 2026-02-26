@@ -11,7 +11,7 @@
 import { createLogger } from '@mastra/core/logger';
 import { sanitizeForPrompt } from '../utils/content-safety.js';
 import { decryptToken } from '../utils/gateway-shared.js';
-import { authenticatedTrpcCall } from '../utils/authenticated-fetch.js';
+import { authenticatedTrpcQuery } from '../utils/authenticated-fetch.js';
 import { captureException } from '../utils/sentry.js';
 
 const logger = createLogger({
@@ -267,9 +267,9 @@ export async function deliverWhatsAppBriefings(): Promise<{
       }
 
       // Fetch morning briefing (workspaceId not required — endpoint returns cross-workspace data)
-      const { data: briefing } = await authenticatedTrpcCall<MorningBriefing>(
+      // This is a tRPC query (read-only) — must use GET, not POST
+      const { data: briefing } = await authenticatedTrpcQuery<MorningBriefing>(
         'briefing.getMorningBriefing',
-        {},
         { authToken, userId: user.userId, sessionId: user.sessionId }
       );
 
