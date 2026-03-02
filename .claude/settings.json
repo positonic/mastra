@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/james/code/exponential/**)",
+      "Bash(git -C /Users/james/code/exponential status)",
+      "Bash(git -C /Users/james/code/exponential diff src/app/api/webhooks/slack/route.ts)",
+      "Bash(git -C /Users/james/code/exponential push)"
+    ],
+    "additionalDirectories": [
+      "/Users/james/code/exponential/src/app/api/webhooks/slack"
+    ]
+  }
+}
