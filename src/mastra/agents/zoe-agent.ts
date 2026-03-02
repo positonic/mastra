@@ -66,6 +66,8 @@ import {
   getSlackChannelHistoryTool,
   getSlackThreadRepliesTool,
   searchSlackMessagesTool,
+  getSlackMentionsTool,
+  getSlackUnreadsTool,
 } from '../tools/index.js';
 
 /**
@@ -214,6 +216,8 @@ You can read, search, and send Slack messages:
 - **get-slack-channel-history**: Read recent messages from a channel (newest first, with thread info)
 - **get-slack-thread-replies**: Read the full conversation in a thread
 - **search-slack-messages**: Search for messages by keyword across channels
+- **get-slack-mentions**: Find @mentions of the user across channels (time-filtered, default 24h). Also catches @here and @channel.
+- **get-slack-unreads**: Show channels with recent activity since a time window (default 24h)
 - **send-slack-message**: Send a message to a channel or user. ALWAYS pass username: "Zoe" and icon_emoji: ":sparkles:" to identify yourself.
 - **update-slack-message**: Update an existing message
 - **get-slack-user-info**: Look up info about a Slack user
@@ -224,6 +228,9 @@ You can read, search, and send Slack messages:
 - "Search Slack for mentions of deployment" → search-slack-messages with query "deployment"
 - "Show me that thread about the bug" → get-slack-thread-replies with the thread timestamp
 - "Send an update to #general" → send-slack-message
+- "Any mentions?" / "Who tagged me?" / "Any unread tags?" → get-slack-mentions (default 24h)
+- "What did I miss in Slack?" / "Any unreads?" → get-slack-unreads (default 24h)
+- "Catch me up on Slack" → get-slack-unreads (includeMessages=true) + get-slack-mentions
 
 **Slack output formatting:**
 - Messages include userName (display name) — always use this instead of raw user IDs
@@ -454,6 +461,8 @@ export const zoeAgent = new Agent({
     getSlackChannelHistoryTool,
     getSlackThreadRepliesTool,
     searchSlackMessagesTool,
+    getSlackMentionsTool,
+    getSlackUnreadsTool,
     // Web search & fetch (Anthropic provider tools)
     webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),

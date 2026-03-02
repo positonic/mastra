@@ -62,6 +62,8 @@ import {
   getSlackChannelHistoryTool,
   getSlackThreadRepliesTool,
   searchSlackMessagesTool,
+  getSlackMentionsTool,
+  getSlackUnreadsTool,
 } from '../tools/index.js';
 
 /**
@@ -162,9 +164,16 @@ You can read, search, and send Slack messages:
 - **get-slack-channel-history**: Read recent messages from a channel
 - **get-slack-thread-replies**: Read a full thread conversation
 - **search-slack-messages**: Search messages by keyword across channels
+- **get-slack-mentions**: Find @mentions of the user across channels (time-filtered, default 24h). Also catches @here and @channel.
+- **get-slack-unreads**: Show channels with recent activity since a time window (default 24h)
 - **send-slack-message**: Send a message to a channel or user. ALWAYS pass your configured name as username and your emoji as icon_emoji to identify yourself (e.g., username: "Your Name", icon_emoji: ":your_emoji:"). Use the name and emoji from your Identity section.
 - **update-slack-message**: Update an existing message
 - **get-slack-user-info**: Look up Slack user info
+
+**Usage patterns:**
+- "Any mentions?" / "Who tagged me?" / "Any unread tags?" → get-slack-mentions (default 24h)
+- "What did I miss in Slack?" / "Any unreads?" → get-slack-unreads (default 24h)
+- "Catch me up on Slack" → get-slack-unreads (includeMessages=true) + get-slack-mentions
 
 **Slack output formatting:**
 - Messages include userName (display name) — always use this instead of raw user IDs
@@ -310,6 +319,8 @@ export const assistantAgent = new Agent({
     getSlackChannelHistoryTool,
     getSlackThreadRepliesTool,
     searchSlackMessagesTool,
+    getSlackMentionsTool,
+    getSlackUnreadsTool,
     // Web search & fetch (Anthropic provider tools)
     webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),

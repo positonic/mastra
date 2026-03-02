@@ -55,6 +55,79 @@ async function resolveUserNames(userIds: string[]): Promise<Map<string, string>>
   return _userNameCache;
 }
 
+// ── Owner user identity (for mention detection) ─────────────────────
+let _ownerUserId: string | null = null;
+
+async function getOwnerUserId(): Promise<string | null> {
+  if (_ownerUserId) return _ownerUserId;
+  if (process.env.SLACK_OWNER_USER_ID) {
+    _ownerUserId = process.env.SLACK_OWNER_USER_ID;
+    return _ownerUserId;
+  }
+  if (slackUserClient) {
+    try {
+      const auth = await slackUserClient.auth.test();
+      if (auth.user_id) {
+        _ownerUserId = auth.user_id;
+        return _ownerUserId;
+      }
+    } catch { /* fall through */ }
+  }
+  return null;
+}
+
+// ── Time window helper ──────────────────────────────────────────────
+function sinceToOldest(since: string): string {
+  const now = Date.now();
+  const durations: Record<string, number> = {
+    "1h": 60 * 60 * 1000,
+    "4h": 4 * 60 * 60 * 1000,
+    "12h": 12 * 60 * 60 * 1000,
+    "24h": 24 * 60 * 60 * 1000,
+    "3d": 3 * 24 * 60 * 60 * 1000,
+    "7d": 7 * 24 * 60 * 60 * 1000,
+  };
+  const ms = durations[since] || durations["24h"];
+  return ((now - ms) / 1000).toFixed(6);
+}
+
+// ── Mention classification ──────────────────────────────────────────
+function classifyMentions(
+  text: string,
+  userId: string,
+  includeGroup: boolean,
+): Array<"direct" | "here" | "channel"> {
+  const types: Array<"direct" | "here" | "channel"> = [];
+  if (text.includes(`<@${userId}>`)) types.push("direct");
+  if (includeGroup) {
+    if (text.includes("<!here>") || text.includes("<!here|here>")) types.push("here");
+    if (text.includes("<!channel>") || text.includes("<!channel|channel>")) types.push("channel");
+  }
+  return types;
+}
+
+// ── Batch processing for rate-limit safety ──────────────────────────
+async function batchProcess<T, R>(
+  items: T[],
+  batchSize: number,
+  fn: (item: T) => Promise<R>,
+): Promise<Array<{ item: T; result: R | null; error?: unknown }>> {
+  const results: Array<{ item: T; result: R | null; error?: unknown }> = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const settled = await Promise.allSettled(batch.map(fn));
+    for (let j = 0; j < batch.length; j++) {
+      const s = settled[j];
+      results.push({
+        item: batch[j],
+        result: s.status === "fulfilled" ? s.value : null,
+        error: s.status === "rejected" ? s.reason : undefined,
+      });
+    }
+  }
+  return results;
+}
+
 // Block Kit schemas
 const slackBlockElementSchema = z.object({
   type: z.string(),
@@ -414,5 +487,343 @@ export const searchSlackMessagesTool = createTool({
     } catch (error) {
       throw new Error(`Failed to search Slack messages: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
+  },
+});
+
+// ── Mentions & Unreads tools ────────────────────────────────────────
+
+const sinceEnum = z.enum(["1h", "4h", "12h", "24h", "3d", "7d"]);
+
+export const getSlackMentionsTool = createTool({
+  id: "get-slack-mentions",
+  description:
+    "Find @mentions of the user across Slack channels. Returns messages where the user was directly mentioned (@user), and optionally @here/@channel mentions. Use this when the user asks about tags, mentions, or who's been pinging them. Requires SLACK_OWNER_USER_ID env var.",
+  inputSchema: z.object({
+    since: sinceEnum.default("24h").describe("Time window to search (default: 24h)"),
+    includeGroupMentions: z.boolean().default(true).describe("Include @here and @channel mentions (default: true)"),
+    limit: z.number().min(1).max(50).default(25).describe("Max mentions to return (default: 25)"),
+    maxChannels: z.number().min(1).max(50).default(20).describe("Max channels to scan in bot-token mode (default: 20)"),
+  }),
+  outputSchema: z.object({
+    mentions: z.array(z.object({
+      text: z.string(),
+      user: z.string().nullable(),
+      userName: z.string().nullable(),
+      ts: z.string(),
+      channelId: z.string(),
+      channelName: z.string().nullable(),
+      permalink: z.string().nullable(),
+      threadTs: z.string().nullable(),
+      mentionType: z.enum(["direct", "here", "channel"]),
+      searchMode: z.enum(["api", "local"]),
+    })),
+    totalFound: z.number(),
+    searchMode: z.enum(["api", "local"]),
+    userId: z.string().nullable(),
+    timeWindow: z.string(),
+  }),
+  execute: async (inputData) => {
+    const { since, includeGroupMentions, limit, maxChannels } = inputData;
+    console.log(`🔔 [getSlackMentions] Searching mentions (since: ${since}, limit: ${limit})`);
+
+    const userId = await getOwnerUserId();
+    if (!userId) {
+      throw new Error(
+        "Cannot detect user identity. Set SLACK_OWNER_USER_ID in your .env file " +
+        "(find your ID in Slack: Profile → ⋮ → Copy member ID)."
+      );
+    }
+
+    const oldest = sinceToOldest(since);
+
+    // Path 1: API search with user token
+    if (slackUserClient) {
+      try {
+        const searchQuery = `<@${userId}>`;
+        const searchResult = await slackUserClient.search.messages({
+          query: searchQuery,
+          count: limit,
+          sort: "timestamp",
+          sort_dir: "desc",
+        });
+        const matches = searchResult.messages?.matches || [];
+        // Filter by time window
+        const filtered = matches.filter((m: any) => !oldest || parseFloat(m.ts || "0") >= parseFloat(oldest));
+        const userIds = filtered.map((m: any) => m.user).filter(Boolean) as string[];
+        const nameMap = await resolveUserNames(userIds);
+
+        const mentions = filtered.map((match: any) => {
+          const types = classifyMentions(match.text || "", userId, includeGroupMentions);
+          return {
+            text: match.text ? prepareUntrustedContent(match.text, "slack_message") : "",
+            user: match.user || null,
+            userName: match.user ? nameMap.get(match.user) || null : null,
+            ts: match.ts || "",
+            channelId: match.channel?.id || "",
+            channelName: match.channel?.name || null,
+            permalink: match.permalink || null,
+            threadTs: match.thread_ts || null,
+            mentionType: (types[0] || "direct") as "direct" | "here" | "channel",
+            searchMode: "api" as const,
+          };
+        });
+
+        console.log(`✅ [getSlackMentions] API search found ${mentions.length} mentions`);
+        return { mentions, totalFound: mentions.length, searchMode: "api" as const, userId, timeWindow: since };
+      } catch (error) {
+        console.error(`⚠️ [getSlackMentions] API search failed, falling back to local:`, error);
+      }
+    }
+
+    // Path 2: Local scan with bot token
+    const teamDomain = await getTeamDomain();
+    const channelList = await slackBotClient.conversations.list({
+      types: "public_channel,private_channel",
+      exclude_archived: true,
+      limit: maxChannels,
+    });
+    const memberChannels = (channelList.channels || [])
+      .filter((ch) => ch.is_member)
+      .map((ch) => ({ id: ch.id || "", name: ch.name || "" }));
+
+    console.log(`🔍 [getSlackMentions] Scanning ${memberChannels.length} channels for <@${userId}>`);
+
+    type MentionResult = Array<{
+      text: string; user: string | null; ts: string;
+      channelId: string; channelName: string;
+      threadTs: string | null; mentionType: "direct" | "here" | "channel";
+    }>;
+
+    const batchResults = await batchProcess(memberChannels, 5, async (ch): Promise<MentionResult> => {
+      const history = await slackBotClient.conversations.history({ channel: ch.id, oldest, limit: 200 });
+      const found: MentionResult = [];
+      for (const msg of history.messages || []) {
+        if (!msg.text) continue;
+        const types = classifyMentions(msg.text, userId, includeGroupMentions);
+        if (types.length > 0) {
+          for (const t of types) {
+            found.push({
+              text: msg.text,
+              user: msg.user || null,
+              ts: msg.ts || "",
+              channelId: ch.id,
+              channelName: ch.name,
+              threadTs: msg.thread_ts || null,
+              mentionType: t,
+            });
+          }
+        }
+      }
+      return found;
+    });
+
+    const allMentions: Array<{
+      text: string; user: string | null; userName: string | null; ts: string;
+      channelId: string; channelName: string | null; permalink: string | null;
+      threadTs: string | null; mentionType: "direct" | "here" | "channel";
+      searchMode: "local";
+    }> = [];
+
+    const allUserIds = new Set<string>();
+    for (const br of batchResults) {
+      if (br.result) {
+        for (const m of br.result) {
+          if (m.user) allUserIds.add(m.user);
+        }
+      }
+    }
+    const nameMap = await resolveUserNames([...allUserIds]);
+
+    for (const br of batchResults) {
+      if (br.result) {
+        for (const m of br.result) {
+          allMentions.push({
+            text: prepareUntrustedContent(m.text, "slack_message"),
+            user: m.user,
+            userName: m.user ? nameMap.get(m.user) || null : null,
+            ts: m.ts,
+            channelId: m.channelId,
+            channelName: m.channelName,
+            permalink: buildPermalink(teamDomain, m.channelId, m.ts),
+            threadTs: m.threadTs,
+            mentionType: m.mentionType,
+            searchMode: "local",
+          });
+        }
+      }
+    }
+
+    allMentions.sort((a, b) => (parseFloat(b.ts) || 0) - (parseFloat(a.ts) || 0));
+    const trimmed = allMentions.slice(0, limit);
+    console.log(`✅ [getSlackMentions] Local scan found ${trimmed.length} mentions across ${memberChannels.length} channels`);
+    return { mentions: trimmed, totalFound: trimmed.length, searchMode: "local" as const, userId, timeWindow: since };
+  },
+});
+
+export const getSlackUnreadsTool = createTool({
+  id: "get-slack-unreads",
+  description:
+    "Show channels with unread messages or recent activity. With a user token, shows actual unread counts. Without a user token, shows channels with recent activity since a given time window. Use this when the user asks what they missed, about unreads, or wants to catch up on Slack.",
+  inputSchema: z.object({
+    since: sinceEnum.default("24h").describe("Time window for recent activity mode (default: 24h)"),
+    includeMessages: z.boolean().default(false).describe("Include actual recent messages in the response (default: false, just counts)"),
+    messagesPerChannel: z.number().min(1).max(10).default(3).describe("Messages to show per channel when includeMessages is true (default: 3)"),
+    maxChannels: z.number().min(1).max(50).default(30).describe("Max channels to check (default: 30)"),
+  }),
+  outputSchema: z.object({
+    channels: z.array(z.object({
+      channelId: z.string(),
+      channelName: z.string(),
+      isPrivate: z.boolean(),
+      unreadCount: z.number().nullable(),
+      recentMessageCount: z.number().nullable(),
+      lastMessageTs: z.string().nullable(),
+      lastMessagePreview: z.string().nullable(),
+      messages: z.array(z.object({
+        ts: z.string(),
+        user: z.string().nullable(),
+        userName: z.string().nullable(),
+        text: z.string(),
+        permalink: z.string().nullable(),
+      })).optional(),
+    })),
+    totalActiveChannels: z.number(),
+    mode: z.enum(["unread", "recent_activity"]),
+    timeWindow: z.string().nullable(),
+  }),
+  execute: async (inputData) => {
+    const { since, includeMessages, messagesPerChannel, maxChannels } = inputData;
+    console.log(`📬 [getSlackUnreads] Checking unreads (since: ${since}, includeMessages: ${includeMessages})`);
+
+    // Path 1: User token — use actual unread counts
+    if (slackUserClient) {
+      try {
+        const channelList = await slackUserClient.conversations.list({
+          types: "public_channel,private_channel",
+          exclude_archived: true,
+          limit: maxChannels,
+        });
+        const teamDomain = await getTeamDomain();
+        const unreadChannels = (channelList.channels || [])
+          .filter((ch) => ch.is_member && ((ch as any).unread_count_display || 0) > 0)
+          .map((ch) => ({
+            id: ch.id || "",
+            name: ch.name || "",
+            isPrivate: ch.is_private || false,
+            unreadCount: (ch as any).unread_count_display as number || 0,
+          }));
+
+        type ChannelResult = {
+          channelId: string; channelName: string; isPrivate: boolean;
+          unreadCount: number; recentMessageCount: null; lastMessageTs: string | null;
+          lastMessagePreview: string | null;
+          messages?: Array<{ ts: string; user: string | null; userName: string | null; text: string; permalink: string | null }>;
+        };
+
+        const results = await batchProcess(unreadChannels, 5, async (ch): Promise<ChannelResult> => {
+          const result: ChannelResult = {
+            channelId: ch.id, channelName: ch.name, isPrivate: ch.isPrivate,
+            unreadCount: ch.unreadCount, recentMessageCount: null,
+            lastMessageTs: null, lastMessagePreview: null,
+          };
+          if (includeMessages) {
+            const history = await slackBotClient.conversations.history({ channel: ch.id, limit: messagesPerChannel });
+            const msgs = history.messages || [];
+            const userIds = msgs.map((m) => m.user).filter(Boolean) as string[];
+            const nameMap = await resolveUserNames(userIds);
+            result.messages = msgs.map((msg) => ({
+              ts: msg.ts || "",
+              user: msg.user || null,
+              userName: msg.user ? nameMap.get(msg.user) || null : null,
+              text: msg.text ? prepareUntrustedContent(msg.text, "slack_message") : "",
+              permalink: buildPermalink(teamDomain, ch.id, msg.ts || ""),
+            }));
+            if (msgs.length > 0) {
+              result.lastMessageTs = msgs[0].ts || null;
+              result.lastMessagePreview = msgs[0].text ? prepareUntrustedContent(msgs[0].text.slice(0, 100), "slack_message") : null;
+            }
+          } else {
+            const history = await slackBotClient.conversations.history({ channel: ch.id, limit: 1 });
+            const latest = history.messages?.[0];
+            if (latest) {
+              result.lastMessageTs = latest.ts || null;
+              result.lastMessagePreview = latest.text ? prepareUntrustedContent(latest.text.slice(0, 100), "slack_message") : null;
+            }
+          }
+          return result;
+        });
+
+        const channels = results
+          .filter((r) => r.result)
+          .map((r) => r.result!)
+          .sort((a, b) => (parseFloat(b.lastMessageTs || "0") || 0) - (parseFloat(a.lastMessageTs || "0") || 0));
+
+        console.log(`✅ [getSlackUnreads] Found ${channels.length} channels with unreads`);
+        return { channels, totalActiveChannels: channels.length, mode: "unread" as const, timeWindow: null };
+      } catch (error) {
+        console.error(`⚠️ [getSlackUnreads] User token mode failed, falling back to recent activity:`, error);
+      }
+    }
+
+    // Path 2: Bot token — show recent activity since time window
+    const oldest = sinceToOldest(since);
+    const teamDomain = await getTeamDomain();
+    const channelList = await slackBotClient.conversations.list({
+      types: "public_channel,private_channel",
+      exclude_archived: true,
+      limit: maxChannels,
+    });
+    const memberChannels = (channelList.channels || [])
+      .filter((ch) => ch.is_member)
+      .map((ch) => ({ id: ch.id || "", name: ch.name || "", isPrivate: ch.is_private || false }));
+
+    console.log(`🔍 [getSlackUnreads] Scanning ${memberChannels.length} channels for activity since ${since}`);
+
+    type ActivityResult = {
+      channelId: string; channelName: string; isPrivate: boolean;
+      messageCount: number; lastMessageTs: string | null; lastMessagePreview: string | null;
+      messages?: Array<{ ts: string; user: string | null; userName: string | null; text: string; permalink: string | null }>;
+    };
+
+    const batchResults = await batchProcess(memberChannels, 5, async (ch): Promise<ActivityResult> => {
+      const fetchLimit = includeMessages ? messagesPerChannel : 1;
+      const history = await slackBotClient.conversations.history({ channel: ch.id, oldest, limit: fetchLimit });
+      const msgs = history.messages || [];
+      const result: ActivityResult = {
+        channelId: ch.id, channelName: ch.name, isPrivate: ch.isPrivate,
+        messageCount: msgs.length + (history.has_more ? 1 : 0), // approximate — has_more means there are more
+        lastMessageTs: msgs[0]?.ts || null,
+        lastMessagePreview: msgs[0]?.text ? prepareUntrustedContent(msgs[0].text.slice(0, 100), "slack_message") : null,
+      };
+      if (includeMessages && msgs.length > 0) {
+        const userIds = msgs.map((m) => m.user).filter(Boolean) as string[];
+        const nameMap = await resolveUserNames(userIds);
+        result.messages = msgs.map((msg) => ({
+          ts: msg.ts || "",
+          user: msg.user || null,
+          userName: msg.user ? nameMap.get(msg.user) || null : null,
+          text: msg.text ? prepareUntrustedContent(msg.text, "slack_message") : "",
+          permalink: buildPermalink(teamDomain, ch.id, msg.ts || ""),
+        }));
+      }
+      return result;
+    });
+
+    const activeChannels = batchResults
+      .filter((r) => r.result && r.result.messageCount > 0)
+      .map((r) => ({
+        channelId: r.result!.channelId,
+        channelName: r.result!.channelName,
+        isPrivate: r.result!.isPrivate,
+        unreadCount: null as number | null,
+        recentMessageCount: r.result!.messageCount,
+        lastMessageTs: r.result!.lastMessageTs,
+        lastMessagePreview: r.result!.lastMessagePreview,
+        messages: r.result!.messages,
+      }))
+      .sort((a, b) => (parseFloat(b.lastMessageTs || "0") || 0) - (parseFloat(a.lastMessageTs || "0") || 0));
+
+    console.log(`✅ [getSlackUnreads] Found ${activeChannels.length} active channels in the last ${since}`);
+    return { channels: activeChannels, totalActiveChannels: activeChannels.length, mode: "recent_activity" as const, timeWindow: since };
   },
 });

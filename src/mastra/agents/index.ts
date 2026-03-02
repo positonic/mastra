@@ -12,7 +12,7 @@ export { expoAgent } from './expo-agent.js';
 export { assistantAgent } from './assistant-agent.js';
 // Export Platform agent (FtC platform navigation assistant)
 export { platformAgent } from './platform-agent.js';
-import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, listSlackChannelsTool, getSlackChannelHistoryTool, getSlackThreadRepliesTool, searchSlackMessagesTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateActionTool, listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool, getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from '../tools';
+import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, listSlackChannelsTool, getSlackChannelHistoryTool, getSlackThreadRepliesTool, searchSlackMessagesTool, getSlackMentionsTool, getSlackUnreadsTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateActionTool, listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool, getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
 export const weatherAgent = new Agent({
@@ -242,6 +242,8 @@ export const projectManagerAgent = new Agent({
     - **Search Slack messages** to find relevant conversations
     - **Read thread replies** to follow discussions in detail
     - **List available channels** to discover where conversations are happening
+    - **Check @mentions** to see who's been tagging the user
+    - **Check unreads/recent activity** to see which channels have new messages
     - Send project updates and notifications to Slack channels
     - Update existing Slack messages with progress reports
     - Notify team members about task assignments and deadlines
@@ -258,6 +260,9 @@ export const projectManagerAgent = new Agent({
     - "What's happening in Slack?" → list-slack-channels → get-slack-channel-history for active channels
     - "Search Slack for mentions of the deadline" → search-slack-messages with query "deadline"
     - "Show me the thread about the deployment" → search-slack-messages → get-slack-thread-replies
+    - "Any mentions?" / "Who tagged me?" / "Any unread tags?" → get-slack-mentions (default 24h)
+    - "What did I miss in Slack?" / "Any unreads?" → get-slack-unreads (default 24h)
+    - "Catch me up on Slack" → get-slack-unreads (includeMessages=true) + get-slack-mentions
 
     ### WhatsApp Chat Search & Browsing
     - **list-whatsapp-chats**: List all WhatsApp conversations with contact info and message counts
@@ -482,9 +487,11 @@ export const projectManagerAgent = new Agent({
     12. 'get-slack-channel-history' - Read recent messages from a channel
     13. 'get-slack-thread-replies' - Read full thread conversations
     14. 'search-slack-messages' - Search messages by keyword across channels
-    15. 'send-slack-message' - For sending updates to Slack. ALWAYS pass username: "Paddy" and icon_emoji: ":clipboard:" to identify yourself.
-    16. 'update-slack-message' - For updating existing messages
-    17. 'get-slack-user-info' - For retrieving user information
+    15. 'get-slack-mentions' - Find @mentions of the user across channels (time-filtered)
+    16. 'get-slack-unreads' - Show channels with recent activity since a time window
+    17. 'send-slack-message' - For sending updates to Slack. ALWAYS pass username: "Paddy" and icon_emoji: ":clipboard:" to identify yourself.
+    18. 'update-slack-message' - For updating existing messages
+    19. 'get-slack-user-info' - For retrieving user information
 
     **WhatsApp Context (Requires User Consent):**
     14. 'lookup-contact-by-email' - Find contact's phone number from their email in CRM
@@ -600,6 +607,8 @@ export const projectManagerAgent = new Agent({
     getSlackChannelHistoryTool,
     getSlackThreadRepliesTool,
     searchSlackMessagesTool,
+    getSlackMentionsTool,
+    getSlackUnreadsTool,
     getCalendarEventsTool,
     getTodayCalendarEventsTool,
     getUpcomingCalendarEventsTool,

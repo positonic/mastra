@@ -2423,7 +2423,7 @@ export { listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsT
 export { getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from "./pm-tools.js";
 
 // Slack tools
-export { sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, listSlackChannelsTool, getSlackChannelHistoryTool, getSlackThreadRepliesTool, searchSlackMessagesTool } from "./slack-tools.js";
+export { sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, listSlackChannelsTool, getSlackChannelHistoryTool, getSlackThreadRepliesTool, searchSlackMessagesTool, getSlackMentionsTool, getSlackUnreadsTool } from "./slack-tools.js";
 
 // Tradescape trading tools
 export { tradescapeTools, listSetupsTool, createSetupTool, listAlertsTool, createAlertTool, deleteAlertTool, listPositionsTool, syncTradesTool, dailySummaryTool } from "./tradescape-tools.js";
