@@ -55,24 +55,23 @@ async function resolveUserNames(userIds: string[]): Promise<Map<string, string>>
   return _userNameCache;
 }
 
-// ── Owner user identity (for mention detection) ─────────────────────
-let _ownerUserId: string | null = null;
+// ── User identity resolution (for mention detection) ────────────────
+/**
+ * Resolve the Slack user ID for mention/unread queries.
+ * Priority: requestContext.slackUserId > SLACK_OWNER_USER_ID env var > null
+ *
+ * In production, the Exponential app looks up IntegrationUserMapping
+ * and passes slackUserId via requestContext.
+ * SLACK_OWNER_USER_ID is a dev/single-tenant fallback.
+ */
+function resolveSlackUserId(requestContext?: any): string | null {
+  // Priority 1: Per-request user identity from Exponential app
+  const ctxUserId = requestContext?.get?.("slackUserId") as string | undefined;
+  if (ctxUserId) return ctxUserId;
 
-async function getOwnerUserId(): Promise<string | null> {
-  if (_ownerUserId) return _ownerUserId;
-  if (process.env.SLACK_OWNER_USER_ID) {
-    _ownerUserId = process.env.SLACK_OWNER_USER_ID;
-    return _ownerUserId;
-  }
-  if (slackUserClient) {
-    try {
-      const auth = await slackUserClient.auth.test();
-      if (auth.user_id) {
-        _ownerUserId = auth.user_id;
-        return _ownerUserId;
-      }
-    } catch { /* fall through */ }
-  }
+  // Priority 2: Dev/single-tenant fallback
+  if (process.env.SLACK_OWNER_USER_ID) return process.env.SLACK_OWNER_USER_ID;
+
   return null;
 }
 
@@ -497,7 +496,7 @@ const sinceEnum = z.enum(["1h", "4h", "12h", "24h", "3d", "7d"]);
 export const getSlackMentionsTool = createTool({
   id: "get-slack-mentions",
   description:
-    "Find @mentions of the user across Slack channels. Returns messages where the user was directly mentioned (@user), and optionally @here/@channel mentions. Use this when the user asks about tags, mentions, or who's been pinging them. Requires SLACK_OWNER_USER_ID env var.",
+    "Find @mentions of the user across Slack channels. Returns messages where the user was directly mentioned (@user), and optionally @here/@channel mentions. Use this when the user asks about tags, mentions, or who's been pinging them.",
   inputSchema: z.object({
     since: sinceEnum.default("24h").describe("Time window to search (default: 24h)"),
     includeGroupMentions: z.boolean().default(true).describe("Include @here and @channel mentions (default: true)"),
@@ -522,15 +521,15 @@ export const getSlackMentionsTool = createTool({
     userId: z.string().nullable(),
     timeWindow: z.string(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, { requestContext }) => {
     const { since, includeGroupMentions, limit, maxChannels } = inputData;
     console.log(`🔔 [getSlackMentions] Searching mentions (since: ${since}, limit: ${limit})`);
 
-    const userId = await getOwnerUserId();
+    const userId = resolveSlackUserId(requestContext);
     if (!userId) {
       throw new Error(
-        "Cannot detect user identity. Set SLACK_OWNER_USER_ID in your .env file " +
-        "(find your ID in Slack: Profile → ⋮ → Copy member ID)."
+        "Cannot detect Slack user identity. Ensure slackUserId is passed via requestContext " +
+        "(from IntegrationUserMapping), or set SLACK_OWNER_USER_ID in .env for dev."
       );
     }
 
