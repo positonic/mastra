@@ -119,6 +119,32 @@ async function batchProcess<T, R>(
   return results;
 }
 
+// ── Paginated channel fetching ──────────────────────────────────────
+/**
+ * Fetch Slack channels with cursor-based pagination.
+ * Slack conversations.list returns at most `limit` channels per page.
+ * This helper collects all pages until no cursor remains or maxChannels is reached.
+ */
+async function fetchAllSlackChannels(
+  client: WebClient,
+  options: { types: string; excludeArchived: boolean; maxChannels?: number },
+): Promise<Array<any>> {
+  const max = options.maxChannels ?? 1000;
+  const allChannels: Array<any> = [];
+  let cursor: string | undefined;
+  do {
+    const result = await client.conversations.list({
+      types: options.types,
+      exclude_archived: options.excludeArchived,
+      limit: 200,
+      cursor,
+    });
+    allChannels.push(...(result.channels ?? []));
+    cursor = result.response_metadata?.next_cursor || undefined;
+  } while (cursor && allChannels.length < max);
+  return allChannels.slice(0, max);
+}
+
 // Block Kit schemas
 const slackBlockElementSchema = z.object({
   type: z.string(),
@@ -245,7 +271,7 @@ export const listSlackChannelsTool = createTool({
   inputSchema: z.object({
     types: z.string().default("public_channel,private_channel").describe("Comma-separated channel types: public_channel, private_channel, mpim, im"),
     excludeArchived: z.boolean().default(true).describe("Exclude archived channels (default: true)"),
-    limit: z.number().min(1).max(200).default(100).describe("Max channels to return (default: 100)"),
+    limit: z.number().min(1).max(1000).default(200).describe("Max channels to return (default: 200, max: 1000). Fetches all pages automatically."),
   }),
   outputSchema: z.object({
     channels: z.array(z.object({
@@ -258,8 +284,8 @@ export const listSlackChannelsTool = createTool({
     const { types, excludeArchived, limit } = inputData;
     console.log(`📋 [listSlackChannels] Listing channels (types: ${types}, limit: ${limit})`);
     try {
-      const result = await slackBotClient.conversations.list({ types, exclude_archived: excludeArchived, limit });
-      const channels = (result.channels || []).map((ch) => ({
+      const rawChannels = await fetchAllSlackChannels(slackBotClient, { types: types ?? "public_channel,private_channel", excludeArchived: excludeArchived ?? true, maxChannels: limit });
+      const channels = rawChannels.map((ch) => ({
         id: ch.id || "",
         name: ch.name || "",
         topic: ch.topic?.value ? prepareUntrustedContent(ch.topic.value, "slack_channel_metadata") : null,
@@ -430,12 +456,12 @@ export const searchSlackMessagesTool = createTool({
       if (channel) {
         channelsToSearch = [{ id: channel, name: "" }];
       } else {
-        const channelList = await slackBotClient.conversations.list({
+        const rawChannels = await fetchAllSlackChannels(slackBotClient, {
           types: "public_channel,private_channel",
-          exclude_archived: true,
-          limit: 10,
+          excludeArchived: true,
+          maxChannels: 1000,
         });
-        channelsToSearch = (channelList.channels || [])
+        channelsToSearch = rawChannels
           .filter((ch) => ch.is_member)
           .map((ch) => ({ id: ch.id || "", name: ch.name || "" }));
       }
