@@ -4,10 +4,13 @@
       "Read(//Users/james/code/exponential/**)",
       "Bash(git -C /Users/james/code/exponential status)",
       "Bash(git -C /Users/james/code/exponential diff src/app/api/webhooks/slack/route.ts)",
-      "Bash(git -C /Users/james/code/exponential push)"
+      "Bash(git -C /Users/james/code/exponential push)",
+      "Bash(npx next build)"
     ],
     "additionalDirectories": [
-      "/Users/james/code/exponential/src/app/api/webhooks/slack"
+      "/Users/james/code/exponential/src/app/api/webhooks/slack",
+      "/Users/james/code/exponential/src/app/api/chat/stream",
+      "/Users/james/code/exponential/src/server/api/routers"
     ]
   }
 }
