@@ -58,21 +58,13 @@ async function resolveUserNames(userIds: string[]): Promise<Map<string, string>>
 // ── User identity resolution (for mention detection) ────────────────
 /**
  * Resolve the Slack user ID for mention/unread queries.
- * Priority: requestContext.slackUserId > SLACK_OWNER_USER_ID env var > null
- *
- * In production, the Exponential app looks up IntegrationUserMapping
- * and passes slackUserId via requestContext.
- * SLACK_OWNER_USER_ID is a dev/single-tenant fallback.
+ * The Exponential app looks up IntegrationUserMapping and passes
+ * slackUserId via requestContext. Returns null if user hasn't
+ * connected their Slack account.
  */
 function resolveSlackUserId(requestContext?: any): string | null {
-  // Priority 1: Per-request user identity from Exponential app
   const ctxUserId = requestContext?.get?.("slackUserId") as string | undefined;
-  if (ctxUserId) return ctxUserId;
-
-  // Priority 2: Dev/single-tenant fallback
-  if (process.env.SLACK_OWNER_USER_ID) return process.env.SLACK_OWNER_USER_ID;
-
-  return null;
+  return ctxUserId || null;
 }
 
 // ── Time window helper ──────────────────────────────────────────────
@@ -528,8 +520,7 @@ export const getSlackMentionsTool = createTool({
     const userId = resolveSlackUserId(requestContext);
     if (!userId) {
       throw new Error(
-        "Cannot detect Slack user identity. Ensure slackUserId is passed via requestContext " +
-        "(from IntegrationUserMapping), or set SLACK_OWNER_USER_ID in .env for dev."
+        "Your Slack account is not connected. Please connect Slack in Settings → Integrations to use this feature."
       );
     }
 
