@@ -403,7 +403,7 @@ export class WhatsAppGateway {
         this.sessions.set(sessionId, session);
         await this.createSocketForSession(session);
 
-        logger.info(`🔄 [${INSTANCE_ID}] Reconnecting session ${sessionId}`);
+        logger.info(`🔄 [${INSTANCE_ID}] Reconnecting session ${sessionId} for userId ${metadata.userId} (phone: ${metadata.phoneNumber || 'unknown'}, hasToken: ${!!restoredAuthToken})`);
       } catch (error) {
         logger.error(`❌ [${INSTANCE_ID}] Error reconnecting session ${sessionId}:`, error);
       }
@@ -466,7 +466,7 @@ export class WhatsAppGateway {
     // Create socket (will generate QR)
     await this.createSocketForSession(session);
 
-    logger.info(`✨ [${INSTANCE_ID}] Created new session ${sessionId}`);
+    logger.info(`✨ [${INSTANCE_ID}] Created new session ${sessionId} for userId ${userId}`);
     return sessionId;
   }
 
@@ -837,12 +837,33 @@ export class WhatsAppGateway {
       }
 
       const data = await response.json() as { token: string; expiresAt: string };
+
+      // CRITICAL: Verify the refreshed token belongs to the same user as this session.
+      // Without this check, a corrupted DB record could cause one user's session to
+      // silently authenticate as a different user (multi-tenant identity leak).
+      try {
+        const refreshedUserId = verifyAndExtractUserId(data.token, { audience: 'whatsapp-gateway' });
+        if (refreshedUserId !== session.userId) {
+          logger.error(`SECURITY [${INSTANCE_ID}] Token refresh returned userId ${refreshedUserId} but session ${session.id} belongs to ${session.userId}. Rejecting token.`);
+          captureException(new Error('Token refresh userId mismatch - potential identity leak'), {
+            userId: session.userId,
+            sessionId: session.id,
+            operation: 'refreshAuthToken',
+            extra: { refreshedUserId },
+          });
+          return null;
+        }
+      } catch (verifyError) {
+        logger.error(`SECURITY [${INSTANCE_ID}] Failed to verify refreshed token for session ${session.id}:`, verifyError);
+        return null;
+      }
+
       session.lastAuthToken = data.token;
 
       // Save the new encrypted token to metadata
       await this.saveSessionsMetadata();
 
-      logger.info(`✅ [${INSTANCE_ID}] Token refreshed successfully for session ${session.id}, expires at ${data.expiresAt}`);
+      logger.info(`✅ [${INSTANCE_ID}] Token refreshed successfully for session ${session.id} (userId: ${session.userId}), expires at ${data.expiresAt}`);
       return data.token;
     } catch (error) {
       logger.error(`❌ [${INSTANCE_ID}] Error refreshing token:`, error);

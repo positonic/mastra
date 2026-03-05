@@ -1,4 +1,5 @@
 import { captureAuthFailure } from './sentry.js';
+import { verifyAndExtractUserId } from './gateway-shared.js';
 
 const TODO_APP_BASE_URL = process.env.TODO_APP_BASE_URL || 'http://localhost:3000';
 const WHATSAPP_GATEWAY_SECRET = process.env.WHATSAPP_GATEWAY_SECRET;
@@ -21,7 +22,7 @@ export interface AuthenticatedFetchResult<T> {
  * Attempt to refresh an auth token via the WhatsApp gateway refresh endpoint.
  * Returns the new token or null if refresh fails.
  */
-async function refreshToken(sessionId: string): Promise<string | null> {
+async function refreshToken(sessionId: string, expectedUserId?: string): Promise<string | null> {
   if (!WHATSAPP_GATEWAY_SECRET) {
     console.warn('[authenticated-fetch] Cannot refresh token: WHATSAPP_GATEWAY_SECRET not configured');
     return null;
@@ -51,6 +52,21 @@ async function refreshToken(sessionId: string): Promise<string | null> {
     }
 
     const data = (await response.json()) as { token: string; expiresAt: string };
+
+    // Verify the refreshed token belongs to the expected user (prevents identity leak)
+    if (expectedUserId) {
+      try {
+        const refreshedUserId = verifyAndExtractUserId(data.token, { audience: 'whatsapp-gateway' });
+        if (refreshedUserId !== expectedUserId) {
+          console.error(`[authenticated-fetch] SECURITY: Token refresh returned userId ${refreshedUserId} but expected ${expectedUserId}. Rejecting.`);
+          return null;
+        }
+      } catch (verifyError) {
+        console.error('[authenticated-fetch] SECURITY: Failed to verify refreshed token:', verifyError);
+        return null;
+      }
+    }
+
     console.log(`[authenticated-fetch] Token refreshed successfully, expires at ${data.expiresAt}`);
     return data.token;
   } catch (error) {
@@ -94,7 +110,7 @@ export async function authenticatedFetch<T>(
   if (response.status === 401 && sessionId) {
     console.log(`[authenticated-fetch] Got 401 from ${url}, attempting token refresh...`);
 
-    const newToken = await refreshToken(sessionId);
+    const newToken = await refreshToken(sessionId, userId);
 
     if (newToken) {
       // Retry with new token
