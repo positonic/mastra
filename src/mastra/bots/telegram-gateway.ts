@@ -142,6 +142,11 @@ async function readBody(req: IncomingMessage): Promise<string> {
 
 // ─── Main Gateway Class ─────────────────────────────────────────────────────
 
+// Polling health check configuration
+const HEALTH_CHECK_INTERVAL_MS = 5 * 60 * 1000; // Check every 5 minutes
+const MAX_RESTART_ATTEMPTS = 5;
+const RESTART_BACKOFF_BASE_MS = 5_000; // 5s, 10s, 20s, 40s, 80s
+
 export class TelegramGateway {
   private bot: TelegramBot | null = null;
   private mappings: Map<number, TelegramUserMapping> = new Map(); // chatId → mapping
@@ -150,6 +155,11 @@ export class TelegramGateway {
   private conversations: Map<number, ConversationState> = new Map(); // chatId → state
   private httpServer: Server | null = null;
   private pairingCleanupInterval: ReturnType<typeof setInterval> | null = null;
+  private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
+  private consecutivePollingErrors = 0;
+  private restartAttempts = 0;
+  private isRestarting = false;
+  private lastSuccessfulPoll: number = Date.now();
 
   constructor() {
     logger.info(`🚀 [${INSTANCE_ID}] Telegram Gateway initializing...`);
@@ -221,10 +231,20 @@ export class TelegramGateway {
 
       this.bot = new TelegramBot(token, { polling: false });
       this.setupEventHandlers();
-      await this.bot.startPolling();
+      await this.bot.startPolling({
+        restart: true,
+      });
 
       const me = await this.bot.getMe();
       logger.info(`✅ [${INSTANCE_ID}] Telegram bot @${me.username} polling started`);
+
+      // Reset error counters on successful start
+      this.consecutivePollingErrors = 0;
+      this.restartAttempts = 0;
+      this.lastSuccessfulPoll = Date.now();
+
+      // Start health check monitor
+      this.startHealthCheck();
     } catch (error) {
       logger.error(`❌ [${INSTANCE_ID}] Failed to start Telegram bot:`, error);
       throw error;
@@ -249,6 +269,9 @@ export class TelegramGateway {
 
     this.bot.on('message', async (msg) => {
       try {
+        // A message received means polling is alive
+        this.lastSuccessfulPoll = Date.now();
+        this.consecutivePollingErrors = 0;
         await this.handleMessage(msg);
       } catch (error) {
         logger.error(`❌ [${INSTANCE_ID}] Error handling message from ${msg.chat.id}:`, error);
@@ -257,11 +280,112 @@ export class TelegramGateway {
 
     this.bot.on('error', (error) => {
       logger.error(`🚨 [${INSTANCE_ID}] Bot error:`, error);
+      this.handlePollingFailure(error);
     });
 
     this.bot.on('polling_error', (error) => {
-      logger.error(`🔄 [${INSTANCE_ID}] Polling error:`, error);
+      this.consecutivePollingErrors++;
+      logger.error(`🔄 [${INSTANCE_ID}] Polling error (consecutive: ${this.consecutivePollingErrors}):`, error);
+      this.handlePollingFailure(error);
     });
+  }
+
+  private async handlePollingFailure(error: unknown): Promise<void> {
+    // If we're getting repeated errors, attempt a restart
+    if (this.consecutivePollingErrors >= 3 && !this.isRestarting) {
+      await this.restartPolling('consecutive polling errors');
+    }
+  }
+
+  private async restartPolling(reason: string): Promise<void> {
+    if (this.isRestarting) return;
+    if (this.restartAttempts >= MAX_RESTART_ATTEMPTS) {
+      logger.error(`❌ [${INSTANCE_ID}] Max restart attempts (${MAX_RESTART_ATTEMPTS}) reached, giving up. Reason: ${reason}`);
+      return;
+    }
+
+    this.isRestarting = true;
+    this.restartAttempts++;
+    const backoffMs = RESTART_BACKOFF_BASE_MS * Math.pow(2, this.restartAttempts - 1);
+
+    logger.warn(`⚠️ [${INSTANCE_ID}] Restarting polling in ${backoffMs}ms (attempt ${this.restartAttempts}/${MAX_RESTART_ATTEMPTS}, reason: ${reason})`);
+
+    try {
+      // Stop current polling
+      if (this.bot) {
+        try {
+          await this.bot.stopPolling();
+        } catch {
+          // Ignore stop errors
+        }
+      }
+
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
+
+      // Clear stale connections and restart
+      const token = process.env.TELEGRAM_BOT_TOKEN;
+      if (token) {
+        await this.clearExistingConnections(token);
+      }
+
+      if (this.bot) {
+        await this.bot.startPolling({ restart: true });
+        const me = await this.bot.getMe();
+        logger.info(`✅ [${INSTANCE_ID}] Polling restarted successfully (@${me.username}), attempt ${this.restartAttempts}`);
+
+        // Reset error counters on successful restart
+        this.consecutivePollingErrors = 0;
+        this.restartAttempts = 0;
+        this.lastSuccessfulPoll = Date.now();
+      }
+    } catch (error) {
+      logger.error(`❌ [${INSTANCE_ID}] Failed to restart polling (attempt ${this.restartAttempts}):`, error);
+    } finally {
+      this.isRestarting = false;
+    }
+  }
+
+  private startHealthCheck(): void {
+    // Clear any existing health check
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+    }
+
+    this.healthCheckInterval = setInterval(async () => {
+      try {
+        if (!this.bot) return;
+
+        // Check if polling is still active via getMe() — lightweight API call
+        const me = await this.bot.getMe();
+        if (!me) {
+          logger.warn(`⚠️ [${INSTANCE_ID}] Health check: getMe() returned null`);
+          await this.restartPolling('health check getMe failed');
+          return;
+        }
+
+        // Check if bot thinks it's still polling
+        if (!this.bot.isPolling()) {
+          logger.warn(`⚠️ [${INSTANCE_ID}] Health check: bot.isPolling() returned false`);
+          await this.restartPolling('polling stopped unexpectedly');
+          return;
+        }
+
+        // Check if it's been too long since last successful poll/message
+        const timeSinceLastPoll = Date.now() - this.lastSuccessfulPoll;
+        if (timeSinceLastPoll > HEALTH_CHECK_INTERVAL_MS * 3) {
+          logger.warn(`⚠️ [${INSTANCE_ID}] Health check: no activity for ${Math.round(timeSinceLastPoll / 60_000)}min`);
+          await this.restartPolling('no polling activity detected');
+          return;
+        }
+
+        // Health check passed — reset the timer so quiet periods don't trigger false restarts
+        this.lastSuccessfulPoll = Date.now();
+        logger.debug(`💚 [${INSTANCE_ID}] Health check OK`);
+      } catch (error) {
+        logger.error(`❌ [${INSTANCE_ID}] Health check failed:`, error);
+        await this.restartPolling('health check exception');
+      }
+    }, HEALTH_CHECK_INTERVAL_MS);
   }
 
   // ─── Message handling ───────────────────────────────────────────────────
@@ -1121,6 +1245,10 @@ export class TelegramGateway {
 
   async shutdown(): Promise<void> {
     logger.info(`🛑 [${INSTANCE_ID}] Shutting down Telegram Gateway...`);
+
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+    }
 
     if (this.pairingCleanupInterval) {
       clearInterval(this.pairingCleanupInterval);
