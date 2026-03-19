@@ -11,7 +11,9 @@
       "Bash(TOKEN=\"8524909282:AAEN-FXr0Lsuat1GCbcF-CvnGqe4IqjFmLE\")",
       "Read(//Users/james/code/one-2b/**)",
       "Bash(npm run:*)",
-      "Bash(curl -s -X POST http://localhost:4111/api/agents/one2bAgent/generate -H \"Content-Type: application/json\" -d '{\"\"\"\"messages\"\"\"\": [:*)"
+      "Bash(curl -s -X POST http://localhost:4111/api/agents/one2bAgent/generate -H \"Content-Type: application/json\" -d '{\"\"\"\"messages\"\"\"\": [:*)",
+      "WebFetch(domain:docs.vapi.ai)",
+      "Bash(git -C /Users/james/code/mastra ls-files .claude/settings.json)"
     ],
     "additionalDirectories": [
       "/Users/james/code/exponential/src/app/api/webhooks/slack",
