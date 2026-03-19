@@ -27,6 +27,7 @@ import {
   ashAgent,
   projectManagerAgent,
   zoeAgent,
+  one2bAgent,
 } from '../agents/index.js';
 import { captureException, captureAuthFailure } from '../utils/sentry.js';
 import {
@@ -223,6 +224,7 @@ function getAgentByIdentifier(identifier: AgentIdentifier) {
     'ash': ashAgent,
     'paddy': projectManagerAgent,
     'zoe': zoeAgent,
+    'one2b': one2bAgent,
   };
   return agents[identifier];
 }

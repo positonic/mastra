@@ -1,11 +1,12 @@
 import { Mastra } from '@mastra/core/mastra';
 import { createLogger } from '@mastra/core/logger';
-import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent, zoeAgent, expoAgent, assistantAgent, platformAgent } from './agents';
+import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent, zoeAgent, expoAgent, assistantAgent, platformAgent, one2bAgent } from './agents';
 import { memory } from './memory/index.js';
 import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js';
 import { createTelegramGateway, cleanupTelegramGateway } from './bots/telegram-gateway.js';
 import { createWhatsAppGateway, cleanupWhatsAppGateway } from './bots/whatsapp-gateway.js';
 import { startSignalGateway, getSignalGateway } from './bots/signal-gateway.js';
+import { startVoiceGateway, cleanupVoiceGateway } from './bots/voice-gateway.js';
 import { initSentry, captureException, flushSentry } from './utils/sentry.js';
 import { startScheduler, stopScheduler, triggerCheck, deliverWhatsAppBriefings } from './proactive/index.js';
 import jwt from 'jsonwebtoken';
@@ -22,7 +23,7 @@ const logger = createLogger({
 const isDev = process.env.NODE_ENV !== 'production';
 
 export const mastra = new Mastra({
-  agents: { zoeAgent, weatherAgent, ashAgent, pierreAgent, projectManagerAgent, expoAgent, assistantAgent, platformAgent },
+  agents: { zoeAgent, weatherAgent, ashAgent, pierreAgent, projectManagerAgent, expoAgent, assistantAgent, platformAgent, one2bAgent },
   memory,
   logger,
   server: {
@@ -164,6 +165,11 @@ if (enableSignalGateway) {
   logger.info('📵 [MAIN] Signal gateway disabled (set ENABLE_SIGNAL_GATEWAY=true to enable)');
 }
 
+// Initialize Voice gateway (Vapi + ElevenLabs for One2b)
+startVoiceGateway().catch(err => {
+  logger.error('❌ [MAIN] Failed to start Voice gateway:', err);
+});
+
 // Start proactive scheduler (checks projects and notifies users)
 const enableProactive = process.env.ENABLE_PROACTIVE_SCHEDULER !== 'false';
 if (enableProactive) {
@@ -190,6 +196,7 @@ const shutdown = async (signal: string, error?: Error) => {
       await cleanupTelegramGateway();
     }
     await cleanupWhatsAppGateway();
+    await cleanupVoiceGateway();
 
     // Cleanup Signal gateway
     const signalGw = getSignalGateway();

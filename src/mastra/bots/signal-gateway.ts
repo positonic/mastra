@@ -41,6 +41,7 @@ import {
   ashAgent,
   projectManagerAgent,
   zoeAgent,
+  one2bAgent,
 } from '../agents/index.js';
 import { assistantAgent } from '../agents/assistant-agent.js';
 import { captureException } from '../utils/sentry.js';
@@ -53,6 +54,7 @@ function getAgentByIdentifier(identifier: AgentIdentifier) {
     'paddy': projectManagerAgent,
     'zoe': zoeAgent,
     'assistant': assistantAgent,
+    'one2b': one2bAgent,
   };
   return agents[identifier];
 }
@@ -416,7 +418,7 @@ async function handleCommand(sender: string, text: string): Promise<void> {
       }
       const agentName = parts[1]?.toLowerCase() as AgentIdentifier;
       if (!agentName || !getAgentByIdentifier(agentName)) {
-        const available = ['assistant', 'zoe', 'paddy', 'pierre', 'ash', 'weather'];
+        const available = ['assistant', 'zoe', 'paddy', 'pierre', 'ash', 'weather', 'one2b'];
         await sendSignalMessage(sender, `Available agents: ${available.join(', ')}\nUsage: /agent <name>`);
         return;
       }
