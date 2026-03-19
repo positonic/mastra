@@ -6,12 +6,22 @@
       "Bash(git -C /Users/james/code/exponential diff src/app/api/webhooks/slack/route.ts)",
       "Bash(git -C /Users/james/code/exponential push)",
       "Bash(npx next build)",
-      "Read(//Users/james/.mastra/**)"
+      "Read(//Users/james/.mastra/**)",
+      "Read(//Users/james/code/mastra/**)",
+      "Bash(TOKEN=\"8524909282:AAEN-FXr0Lsuat1GCbcF-CvnGqe4IqjFmLE\")",
+      "Read(//Users/james/code/one-2b/**)",
+      "Bash(npm run:*)",
+      "Bash(curl -s -X POST http://localhost:4111/api/agents/one2bAgent/generate -H \"Content-Type: application/json\" -d '{\"\"\"\"messages\"\"\"\": [:*)",
+      "WebFetch(domain:docs.vapi.ai)",
+      "Bash(git -C /Users/james/code/mastra ls-files .claude/settings.json)"
     ],
     "additionalDirectories": [
       "/Users/james/code/exponential/src/app/api/webhooks/slack",
       "/Users/james/code/exponential/src/app/api/chat/stream",
-      "/Users/james/code/exponential/src/server/api/routers"
+      "/Users/james/code/exponential/src/server/api/routers",
+      "/Users/james/code/one-2b/src/app/api",
+      "/Users/james/code/one-2b/src/app/_components",
+      "/Users/james/code/one-2b/src/app"
     ]
   }
 }

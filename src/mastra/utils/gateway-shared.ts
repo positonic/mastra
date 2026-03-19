@@ -116,7 +116,7 @@ export function decryptToken(encrypted: string, secret: string): string | null {
 
 // ─── Agent routing ──────────────────────────────────────────────────────────
 
-export type AgentIdentifier = 'weather' | 'pierre' | 'ash' | 'paddy' | 'zoe' | 'assistant';
+export type AgentIdentifier = 'weather' | 'pierre' | 'ash' | 'paddy' | 'zoe' | 'assistant' | 'one2b';
 
 export interface ParsedMessage {
   text: string;
@@ -129,6 +129,7 @@ const AGENT_ALIASES: Record<string, AgentIdentifier> = {
   'ash': 'ash',
   'paddy': 'paddy',
   'zoe': 'zoe',
+  'one2b': 'one2b',
   'assistant': 'assistant',
 };
 

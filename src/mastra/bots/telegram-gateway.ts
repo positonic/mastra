@@ -26,6 +26,7 @@ import {
   ashAgent,
   projectManagerAgent,
   zoeAgent,
+  one2bAgent,
 } from '../agents/index.js';
 import { assistantAgent } from '../agents/assistant-agent.js';
 import { captureException, captureAuthFailure } from '../utils/sentry.js';
@@ -38,6 +39,7 @@ function getAgentByIdentifier(identifier: AgentIdentifier) {
     'paddy': projectManagerAgent,
     'zoe': zoeAgent,
     'assistant': assistantAgent,
+    'one2b': one2bAgent,
   };
   return agents[identifier];
 }
@@ -485,7 +487,7 @@ export class TelegramGateway {
         if (!agentName) {
           await this.bot?.sendMessage(
             chatId,
-            "Switch your default agent:\n/agent assistant\n/agent zoe\n/agent paddy\n/agent pierre\n/agent ash\n/agent weather"
+            "Switch your default agent:\n/agent assistant\n/agent zoe\n/agent paddy\n/agent pierre\n/agent ash\n/agent weather\n/agent one2b"
           );
           return;
         }
@@ -496,7 +498,7 @@ export class TelegramGateway {
           return;
         }
 
-        const validAgents: AgentIdentifier[] = ['assistant', 'zoe', 'paddy', 'pierre', 'ash', 'weather'];
+        const validAgents: AgentIdentifier[] = ['assistant', 'zoe', 'paddy', 'pierre', 'ash', 'weather', 'one2b'];
         if (!validAgents.includes(agentName as AgentIdentifier)) {
           await this.bot?.sendMessage(chatId, `Unknown agent "${agentName}". Available: ${validAgents.join(', ')}`);
           return;
@@ -515,7 +517,7 @@ export class TelegramGateway {
           "Commands:\n" +
           "/start CODE — Connect your Exponential account\n" +
           "/disconnect — Disconnect your account\n" +
-          "/agent NAME — Switch default agent (assistant, zoe, paddy, pierre, ash, weather)\n" +
+          "/agent NAME — Switch default agent (assistant, zoe, paddy, pierre, ash, weather, one2b)\n" +
           "/help — Show this help\n\n" +
           "You can also @mention an agent inline:\n" +
           "@paddy what are my tasks?\n" +

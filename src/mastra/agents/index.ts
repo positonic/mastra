@@ -12,6 +12,8 @@ export { expoAgent } from './expo-agent.js';
 export { assistantAgent } from './assistant-agent.js';
 // Export Platform agent (FtC platform navigation assistant)
 export { platformAgent } from './platform-agent.js';
+// Export One2b agent (CRM onboarding via voice and text)
+export { one2bAgent } from './one2b-agent.js';
 import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, listSlackChannelsTool, getSlackChannelHistoryTool, getSlackThreadRepliesTool, searchSlackMessagesTool, getSlackMentionsTool, getSlackUnreadsTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateActionTool, listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool, getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
