@@ -16,7 +16,10 @@
     "additionalDirectories": [
       "/Users/james/code/exponential/src/app/api/webhooks/slack",
       "/Users/james/code/exponential/src/app/api/chat/stream",
-      "/Users/james/code/exponential/src/server/api/routers"
+      "/Users/james/code/exponential/src/server/api/routers",
+      "/Users/james/code/one-2b/src/app/api",
+      "/Users/james/code/one-2b/src/app/_components",
+      "/Users/james/code/one-2b/src/app"
     ]
   }
 }
