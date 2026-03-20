@@ -1054,10 +1054,10 @@ export const getMeetingTranscriptionsTool = createTool({
         transcript: z.string(),
         participants: z.array(z.string()),
         meetingDate: z.string(),
-        meetingType: z.string().optional(),
-        projectId: z.string().optional(),
-        duration: z.number().optional(),
-        summary: z.string().optional(),
+        meetingType: z.string().nullish(),
+        projectId: z.string().nullish(),
+        duration: z.number().nullish(),
+        summary: z.string().nullish(),
       })
     ),
     total: z.number(),
@@ -1137,11 +1137,13 @@ export const queryMeetingContextTool = createTool({
     results: z.array(
       z.object({
         content: z.string(),
-        meetingTitle: z.string(),
-        meetingDate: z.string(),
-        participants: z.array(z.string()),
-        meetingType: z.string().optional(),
-        projectId: z.string().optional(),
+        sourceType: z.string().optional(),
+        sourceId: z.string().optional(),
+        sourceTitle: z.string().optional(),
+        meetingTitle: z.string().optional(),
+        meetingDate: z.string().optional(),
+        url: z.string().nullish(),
+        contentType: z.string().nullish(),
         relevanceScore: z.number(),
         contextType: z
           .enum([
@@ -1153,8 +1155,10 @@ export const queryMeetingContextTool = createTool({
             "update",
           ])
           .optional(),
+        chunkIndex: z.number().nullish(),
       })
     ),
+    aiContext: z.string().optional(),
   }),
   execute: async (inputData, { requestContext }) => {
     const { query, projectId, dateRange, topK } = inputData;
@@ -1222,48 +1226,48 @@ export const getMeetingInsightsTool = createTool({
       decisions: z.array(
         z.object({
           decision: z.string(),
-          context: z.string(),
-          meetingDate: z.string(),
-          participants: z.array(z.string()),
+          context: z.string().optional(),
+          meetingDate: z.string().optional(),
+          participants: z.array(z.string()).optional(),
           impact: z.enum(["high", "medium", "low"]).optional(),
         })
       ),
       actionItems: z.array(
         z.object({
           action: z.string(),
-          assignee: z.string().optional(),
-          dueDate: z.string().optional(),
+          assignee: z.string().nullish(),
+          dueDate: z.string().nullish(),
           status: z.enum(["pending", "in_progress", "completed"]).optional(),
-          meetingDate: z.string(),
+          meetingDate: z.string().optional(),
           priority: z.enum(["high", "medium", "low"]).optional(),
         })
       ),
       deadlines: z.array(
         z.object({
           deadline: z.string(),
-          description: z.string(),
+          description: z.string().optional(),
           dueDate: z.string(),
-          owner: z.string().optional(),
+          owner: z.string().nullish(),
           status: z.enum(["upcoming", "overdue", "completed"]).optional(),
-          meetingDate: z.string(),
+          meetingDate: z.string().optional(),
         })
       ),
       blockers: z.array(
         z.object({
           blocker: z.string(),
-          impact: z.string(),
-          owner: z.string().optional(),
-          resolution: z.string().optional(),
-          meetingDate: z.string(),
+          impact: z.string().optional(),
+          owner: z.string().nullish(),
+          resolution: z.string().nullish(),
+          meetingDate: z.string().optional(),
           severity: z.enum(["critical", "high", "medium", "low"]).optional(),
         })
       ),
       milestones: z.array(
         z.object({
           milestone: z.string(),
-          targetDate: z.string().optional(),
-          progress: z.string().optional(),
-          meetingDate: z.string(),
+          targetDate: z.string().nullish(),
+          progress: z.string().nullish(),
+          meetingDate: z.string().optional(),
           status: z.enum(["planned", "in_progress", "achieved"]).optional(),
         })
       ),
@@ -1274,7 +1278,7 @@ export const getMeetingInsightsTool = createTool({
           category: z
             .enum(["progress", "blocker", "achievement", "challenge"])
             .optional(),
-          meetingDate: z.string(),
+          meetingDate: z.string().optional(),
         })
       ),
     }),
