@@ -68,6 +68,10 @@ import {
   searchSlackMessagesTool,
   getSlackMentionsTool,
   getSlackUnreadsTool,
+  // Meeting tools
+  getMeetingTranscriptionsTool,
+  queryMeetingContextTool,
+  getMeetingInsightsTool,
 } from '../tools/index.js';
 
 /**
@@ -210,6 +214,17 @@ You can search and browse the user's WhatsApp messages:
 - "Search my WhatsApp for mentions of the contract" → search with query "contract"
 - "Show my recent WhatsApp conversations" → list chats
 
+### Meetings & Call Transcriptions
+You can search and analyze meeting transcriptions:
+- **get-meeting-transcriptions**: Retrieve meeting transcriptions, optionally filtered by project, date range, participants, or meeting type
+- **query-meeting-context**: Semantic search across meeting content — finds relevant discussions, decisions, action items by query
+- **get-meeting-insights**: Extract structured insights (decisions, action items, deadlines, blockers, milestones) from meetings over a time period
+
+**Usage patterns:**
+- "What was discussed about [topic]?" → query-meeting-context with the topic as query
+- "Show me recent meeting notes" → get-meeting-transcriptions
+- "What decisions were made last week?" / "Any blockers from meetings?" → get-meeting-insights with appropriate insightTypes
+
 ### Slack
 You can read, search, and send Slack messages:
 - **list-slack-channels**: See all channels the bot has access to (name, topic, member count)
@@ -311,6 +326,9 @@ Use this to decide which tool to call:
 | "Search Slack for [topic]" | search-slack-messages |
 | "Show me that Slack thread about [topic]" | search-slack-messages → get-slack-thread-replies |
 | "Send [message] to #[channel]" | list-slack-channels (find ID) → send-slack-message |
+| "What was discussed in our calls about [topic]?" / "Meeting notes about [topic]" | query-meeting-context with the topic as query |
+| "Show me recent meeting transcriptions" / "What meetings did we have?" | get-meeting-transcriptions |
+| "What decisions were made last week?" / "Any blockers from meetings?" | get-meeting-insights with appropriate insightTypes |
 | "Search for..." / "What's the latest on..." / "Look up..." / "What is [topic]?" | web search → web fetch for deeper reading |
 
 ### Multi-step workflows
@@ -463,6 +481,10 @@ export const zoeAgent = new Agent({
     searchSlackMessagesTool,
     getSlackMentionsTool,
     getSlackUnreadsTool,
+    // Meeting tools
+    getMeetingTranscriptionsTool,
+    queryMeetingContextTool,
+    getMeetingInsightsTool,
     // Web search & fetch (Anthropic provider tools)
     webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),

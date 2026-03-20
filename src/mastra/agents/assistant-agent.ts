@@ -64,6 +64,10 @@ import {
   searchSlackMessagesTool,
   getSlackMentionsTool,
   getSlackUnreadsTool,
+  // Meeting tools
+  getMeetingTranscriptionsTool,
+  queryMeetingContextTool,
+  getMeetingInsightsTool,
 } from '../tools/index.js';
 
 /**
@@ -321,6 +325,10 @@ export const assistantAgent = new Agent({
     searchSlackMessagesTool,
     getSlackMentionsTool,
     getSlackUnreadsTool,
+    // Meeting tools
+    getMeetingTranscriptionsTool,
+    queryMeetingContextTool,
+    getMeetingInsightsTool,
     // Web search & fetch (Anthropic provider tools)
     webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),
