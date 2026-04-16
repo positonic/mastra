@@ -843,7 +843,7 @@ export const getAllGoalsTool = createTool({
         id: z.number(),
         title: z.string(),
         description: z.string().nullable(),
-        dueDate: z.string().nullable(),
+        dueDate: z.string().nullish(),
         lifeDomain: z.object({
           id: z.number(),
           title: z.string(),
@@ -861,7 +861,7 @@ export const getAllGoalsTool = createTool({
             id: z.string(),
             description: z.string(),
             type: z.string(),
-            dueDate: z.string().nullable(),
+            dueDate: z.string().nullish(),
           })
         ),
       })
