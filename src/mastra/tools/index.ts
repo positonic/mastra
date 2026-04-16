@@ -848,7 +848,7 @@ export const getAllGoalsTool = createTool({
           id: z.number(),
           title: z.string(),
           description: z.string().nullable(),
-        }),
+        }).nullable(),
         projects: z.array(
           z.object({
             id: z.string(),
