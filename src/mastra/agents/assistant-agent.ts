@@ -261,6 +261,7 @@ export const assistantAgent = new Agent({
   model: assistantModel,
   memory,
   defaultOptions: {
+    maxSteps: 15,
     modelSettings: {
       temperature: 0.7,
     },

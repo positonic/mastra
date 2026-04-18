@@ -413,6 +413,7 @@ export const zoeAgent = new Agent({
   model: zoeModel,
   memory,
   defaultOptions: {
+    maxSteps: 15,
     modelSettings: {
       temperature: 0.7,
     },

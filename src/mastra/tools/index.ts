@@ -877,7 +877,7 @@ export const getAllGoalsTool = createTool({
 
     if (!authToken) {
       console.error("❌ [ERROR] No auth token available");
-      throw new Error("No auth token available");
+      return { goals: [], total: 0 };
     }
 
     const { data } = await authenticatedTrpcQuery(

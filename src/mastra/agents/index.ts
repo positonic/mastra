@@ -589,6 +589,9 @@ export const projectManagerAgent = new Agent({
     Always provide actionable insights with specific next steps, deadlines, and clear ownership, enriched with meeting context and team intelligence.
 `,
   model: openai('gpt-4o'),
+  defaultOptions: {
+    maxSteps: 20,
+  },
   tools: {
     getProjectContextTool,
     getProjectActionsTool,
