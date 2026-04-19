@@ -2415,10 +2415,10 @@ export { notionTools, notionSearchTool, notionGetPageTool, notionQueryDatabaseTo
 export { checkEmailConnectionTool, getRecentEmailsTool, getEmailByIdTool, searchEmailsTool, sendEmailTool, replyToEmailTool } from "./email-tools.js";
 
 // OKR tools
-export { getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool } from "./okr-tools.js";
+export { getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, linkProjectToGoalTool, unlinkProjectFromGoalTool } from "./okr-tools.js";
 
 // Project & Action management tools
-export { createProjectTool, updateActionTool } from "./project-tools.js";
+export { createProjectTool, updateActionTool, deleteProjectTool } from "./project-tools.js";
 
 // WhatsApp search tools
 export { listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool } from "./whatsapp-tools.js";

@@ -51,9 +51,12 @@ import {
   deleteOkrKeyResultTool,
   checkInOkrKeyResultTool,
   getOkrStatsTool,
+  linkProjectToGoalTool,
+  unlinkProjectFromGoalTool,
   // Project & Action management tools
   createProjectTool,
   updateActionTool,
+  deleteProjectTool,
   // WhatsApp search tools
   listWhatsAppChatsTool,
   getWhatsAppChatHistoryTool,
@@ -426,6 +429,7 @@ export const zoeAgent = new Agent({
     quickCreateActionTool,
     createProjectTool,
     updateActionTool,
+    deleteProjectTool,
     updateProjectStatusTool,
     getProjectGoalsTool,
     getAllGoalsTool,
@@ -472,6 +476,8 @@ export const zoeAgent = new Agent({
     deleteOkrKeyResultTool,
     checkInOkrKeyResultTool,
     getOkrStatsTool,
+    linkProjectToGoalTool,
+    unlinkProjectFromGoalTool,
     // Slack tools
     sendSlackMessageTool,
     updateSlackMessageTool,

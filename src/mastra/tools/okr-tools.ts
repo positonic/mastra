@@ -386,3 +386,69 @@ export const getOkrStatsTool = createTool({
     return data;
   },
 });
+
+export const linkProjectToGoalTool = createTool({
+  id: "link-project-to-goal",
+  description:
+    "Link a project to an OKR objective (goal). Use this when the user wants to associate or connect a project with a goal/objective. You need both the numeric goal ID and the project ID string.",
+  inputSchema: z.object({
+    goalId: z.number().describe("The numeric ID of the OKR objective/goal"),
+    projectId: z.string().describe("The ID of the project to link to the goal"),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    goalId: z.number(),
+    projectId: z.string(),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`🔗 [linkProjectToGoal] Linking project ${inputData.projectId} to goal ${inputData.goalId}`);
+
+    const { data } = await authenticatedTrpcCall(
+      "mastra.linkProjectToGoal",
+      { goalId: inputData.goalId, projectId: inputData.projectId },
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [linkProjectToGoal] Success`);
+    return data;
+  },
+});
+
+export const unlinkProjectFromGoalTool = createTool({
+  id: "unlink-project-from-goal",
+  description:
+    "Remove the link between a project and an OKR objective (goal). Use this when the user wants to dissociate or disconnect a project from a goal/objective.",
+  inputSchema: z.object({
+    goalId: z.number().describe("The numeric ID of the OKR objective/goal"),
+    projectId: z.string().describe("The ID of the project to unlink from the goal"),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    goalId: z.number(),
+    projectId: z.string(),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`🔗 [unlinkProjectFromGoal] Unlinking project ${inputData.projectId} from goal ${inputData.goalId}`);
+
+    const { data } = await authenticatedTrpcCall(
+      "mastra.unlinkProjectFromGoal",
+      { goalId: inputData.goalId, projectId: inputData.projectId },
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [unlinkProjectFromGoal] Success`);
+    return data;
+  },
+});

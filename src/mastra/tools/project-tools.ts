@@ -128,3 +128,43 @@ export const updateActionTool = createTool({
     }
   },
 });
+
+export const deleteProjectTool = createTool({
+  id: "delete-project",
+  description:
+    "Permanently delete a project. This action cannot be undone — all project data will be lost. Always confirm with the user before deleting. Ask the user to confirm by name before proceeding.",
+  inputSchema: z.object({
+    projectId: z.string().describe("The ID of the project to delete"),
+    confirmDeletion: z.boolean().describe("Must be explicitly true to proceed — confirm with the user before setting this"),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    projectId: z.string(),
+    name: z.string(),
+  }),
+  async execute(inputData, { requestContext }) {
+    if (!inputData.confirmDeletion) throw new Error("Deletion not confirmed — set confirmDeletion to true after getting user confirmation");
+
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`🗑️ [deleteProject] Deleting project ${inputData.projectId}`);
+
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "mastra.deleteProject",
+        { projectId: inputData.projectId },
+        { authToken, sessionId, userId }
+      );
+
+      console.log(`✅ [deleteProject] SUCCESS: deleted project ${inputData.projectId}`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [deleteProject] FAILED:`, error);
+      throw error;
+    }
+  },
+});
