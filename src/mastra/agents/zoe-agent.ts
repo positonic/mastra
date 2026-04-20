@@ -57,6 +57,8 @@ import {
   createProjectTool,
   updateActionTool,
   deleteProjectTool,
+  getUserWorkspacesTool,
+  bulkCreateWorkspaceStructureTool,
   // WhatsApp search tools
   listWhatsAppChatsTool,
   getWhatsAppChatHistoryTool,
@@ -167,6 +169,21 @@ You have access to the user's CRM for relationship management:
 - When logging interactions, include meaningful subject and notes
 - When searching, try name search first; if no results, broaden the search
 
+### Workspace & Bulk Creation
+
+- **get-user-workspaces**: List all workspaces the user belongs to, with IDs, names, and roles. Use this before any multi-workspace bulk operation to confirm the target workspace ID.
+- **bulk-create-workspace-structure**: Create an entire hierarchy of goals + projects + actions in one operation. Use this whenever the user provides a structured list with multiple goals, each containing projects and actions. It's far more reliable than creating items one by one and returns a verified manifest of what was created vs what failed.
+
+**When to use bulk-create-workspace-structure:**
+- User provides a list of goals with associated projects/actions
+- User asks to "set up" or "create the structure for" a workspace
+- Any request involving 3+ goals or 5+ total items to create
+
+**Workflow for multi-workspace bulk creation:**
+1. Call get-user-workspaces to confirm the target workspace ID
+2. Call bulk-create-workspace-structure with the full hierarchy
+3. Report the verified created/failed manifest to the user — never claim success for items not in the manifest
+
 ### OKRs (Objectives & Key Results)
 You can manage the user's OKR system — objectives are qualitative goals, key results are measurable outcomes:
 - **get-okr-objectives**: List all objectives with their key results and progress. Filter by period.
@@ -186,9 +203,23 @@ You can manage the user's OKR system — objectives are qualitative goals, key r
 - When the user mentions an objective by name (e.g., "Be Financially Stable"), look it up — don't ask which objective they mean
 - When fetching objectives to find a match, do NOT filter by period — the existing objective may have a different or no period set
 - ALWAYS confirm before creating, updating, or deleting objectives and key results
-- When creating KRs, ensure they're measurable with clear target values
 - Use check-in tool (not update) when the user reports progress on a KR
 - When showing OKRs, format clearly with progress indicators
+
+**What makes a good Key Result (apply before create-okr-key-result / update-okr-key-result):**
+
+A KR must be:
+- **Measurable** — has a target number and a unit (%, count, currency, hours)
+- **An outcome, not an activity** — describes a result that moved, not work that was done
+- **Time-bound** — assigned to an OKR period
+- **Ownable** — someone can be accountable for the number
+
+If a user proposes KR text that looks like a task, initiative, or milestone (checkbox-style: "Complete X", "Launch Y", "Establish Z", "Document W", "Set up…", "Run a workshop"), DO NOT create it. Instead:
+1. Explain briefly why it's an initiative rather than a KR — push back, don't just rubber-stamp it.
+2. Offer 1–3 reworded alternatives that are measurable outcomes of that work. Example: "Complete OKR workshop by end of Feb" → "Run 1 OKR workshop with ≥80% team attendance" OR "Have Q1 objectives documented with owners for 100% of active teams by Feb 28".
+3. Ask the user to pick one (or edit) before calling create-okr-key-result.
+
+Red flags (reject-and-reword): verbs like "complete", "establish", "document", "launch", "set up", "create a process for"; no target number; phrases like "with 100% participation" without a baseline. This applies equally to update-okr-key-result when the user is rewriting a title.
 
 ### Email
 You can access the user's email if they've connected it in their account settings:
@@ -294,6 +325,8 @@ Use this to decide which tool to call:
 | "What should I focus on today?" / "What's my plan?" / "What are my priorities?" | get-all-projects → get-project-actions for each active project → get-all-goals → synthesize |
 | "How's [project] going?" / "What's the status of [project]?" | get-all-projects (to find ID) → get-project-context |
 | "What projects am I working on?" / "Show my projects" | get-all-projects → format as table |
+| "Set up my workspace with goals/projects..." / user provides structured list of goals + projects + actions | get-user-workspaces (confirm workspace ID) → bulk-create-workspace-structure → report verified manifest |
+| "What workspaces do I have?" / "Which workspace is X?" | get-user-workspaces |
 | "What are my goals?" / "What am I trying to achieve?" | get-all-goals |
 | "Mark [project] as done" / "Put [project] on hold" / "Update [project] priority" | get-all-projects (to find ID) → update-project-status |
 | "Find [topic] in Notion" / "Search Notion for..." | notion-search |
@@ -320,7 +353,7 @@ Use this to decide which tool to call:
 | "Reply to that email" | DRAFT reply, show user, then reply-to-email after confirmation |
 | "Show my OKRs" / "What are my objectives?" / "OKR progress?" | get-okr-objectives (optionally filter by period) |
 | "Create an objective for..." / "Add an OKR..." | get-okr-objectives (check what exists) → CONFIRM title/period → create-okr-objective |
-| "Save a key result..." / "Add a KR for..." / "Add a key result to [objective]..." / any mention of KR + objective name | get-okr-objectives (find the matching objective) → CONFIRM details → create-okr-key-result |
+| "Save a key result..." / "Add a KR for..." / "Add a key result to [objective]..." / any mention of KR + objective name | get-okr-objectives (find the matching objective) → VALIDATE KR against best practices (measurable outcome, not an initiative) → CONFIRM details → create-okr-key-result |
 | "I completed 30% of [KR]" / "Update progress on [KR]" | get-okr-objectives (find KR) → checkin-okr-key-result |
 | "How are my OKRs doing?" / "OKR dashboard" | get-okr-stats + get-okr-objectives (parallel) |
 | "Delete [objective/KR]" | ALWAYS confirm first → delete-okr-objective or delete-okr-key-result |
@@ -333,6 +366,31 @@ Use this to decide which tool to call:
 | "Show me recent meeting transcriptions" / "What meetings did we have?" | get-meeting-transcriptions |
 | "What decisions were made last week?" / "Any blockers from meetings?" | get-meeting-insights with appropriate insightTypes |
 | "Search for..." / "What's the latest on..." / "Look up..." / "What is [topic]?" | web search → web fetch for deeper reading |
+
+### BULK OPERATIONS — VERIFICATION REQUIRED (CRITICAL)
+
+When creating 2 or more items (projects, goals, actions, etc.), you MUST verify after creation:
+
+1. Call the creation tools.
+2. **Immediately call the corresponding list tool** (get-all-projects, get-okr-objectives, get-project-actions, etc.) to confirm each item actually exists.
+3. **Only report success for items you can verify in the list.** If an item is missing from the verification fetch, it was NOT created — say so explicitly and retry.
+4. Never show the user a summary of what you "attempted to create" — show what was **verified as created**.
+
+This rule exists because tool calls can fail silently or return partial data. The only ground truth is what the list tool returns.
+
+### DELETE TOOLS — YOU HAVE THEM
+
+- **delete-project**: Permanently deletes a project. Requires confirmDeletion: true. Use this when asked to delete a project — don't say you can't.
+- **delete-okr-objective**: Permanently deletes an objective and all its KRs. Use this when asked to delete a goal/objective — don't say you can't.
+
+Always confirm with the user by name before deleting anything irreversible.
+
+### WORKSPACE CONTEXT
+
+Before any bulk creation operation across multiple workspaces:
+- Use get-user-workspaces to list available workspaces and confirm IDs.
+- Pass the explicit workspaceId when creating projects or goals, rather than assuming the current UI context is correct.
+- When the user says "create X in the [Workspace Name] workspace", use get-user-workspaces to find that workspace's ID first.
 
 ### Multi-step workflows
 Some requests need chained tool calls. Run independent calls in parallel when possible.
@@ -416,7 +474,7 @@ export const zoeAgent = new Agent({
   model: zoeModel,
   memory,
   defaultOptions: {
-    maxSteps: 15,
+    maxSteps: 30,
     modelSettings: {
       temperature: 0.7,
     },
@@ -430,6 +488,8 @@ export const zoeAgent = new Agent({
     createProjectTool,
     updateActionTool,
     deleteProjectTool,
+    getUserWorkspacesTool,
+    bulkCreateWorkspaceStructureTool,
     updateProjectStatusTool,
     getProjectGoalsTool,
     getAllGoalsTool,

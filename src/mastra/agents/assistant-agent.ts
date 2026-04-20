@@ -54,6 +54,11 @@ import {
   // Project & Action management tools
   createProjectTool,
   updateActionTool,
+  deleteProjectTool,
+  getUserWorkspacesTool,
+  bulkCreateWorkspaceStructureTool,
+  linkProjectToGoalTool,
+  unlinkProjectFromGoalTool,
   // Slack tools
   sendSlackMessageTool,
   updateSlackMessageTool,
@@ -160,6 +165,23 @@ OKRs live in Exponential's OKR system — NOT in Notion, NOT as project goals, N
 - **checkin-okr-key-result**: Record a progress check-in — updates value and auto-calculates status.
 - **get-okr-stats**: Dashboard stats: totals, status breakdown, average progress.
 
+#### What makes a good Key Result (apply before create-okr-key-result / update-okr-key-result)
+
+A KR must be:
+- **Measurable** — has a target number and a unit (%, count, currency, hours)
+- **An outcome, not an activity** — describes a result that moved, not work that was done
+- **Time-bound** — assigned to an OKR period
+- **Ownable** — someone can be accountable for the number
+
+If a user proposes KR text that looks like a task, initiative, or milestone (checkbox-style: "Complete X", "Launch Y", "Establish Z", "Document W", "Set up…", "Run a workshop"), DO NOT create it. Instead:
+1. Explain briefly why it's an initiative rather than a KR.
+2. Offer 1–3 reworded alternatives that are measurable outcomes of that work. Example: "Complete OKR workshop by end of Feb" → "Run 1 OKR workshop with ≥80% team attendance" OR "Have Q1 objectives documented with owners for 100% of active teams by Feb 28".
+3. Ask the user to pick one (or edit) before calling create-okr-key-result.
+
+Red flags in proposed KR text (reject-and-reword): verbs like "complete", "establish", "document", "launch", "set up", "create a process for"; no target number; phrases like "with 100% participation" without a baseline and denominator.
+
+This applies equally to update-okr-key-result when the user is rewriting a title.
+
 When ANY OKR-related request comes in, ALWAYS call get-okr-objectives FIRST (without period filter) to see all existing objectives. Match user mentions to existing objectives by name before creating new ones — NEVER create duplicates. When fetching objectives to find a match, do NOT filter by period. Never offer Notion or other save locations for OKR data.
 
 ### Slack
@@ -219,7 +241,7 @@ Same for OKRs: when someone mentions an objective or key result by name, call ge
 | "Check my email" | check-email-connection → get-recent-emails |
 | "Send an email to X about Y" | DRAFT first, show user, then send-email after confirmation |
 | "Show my OKRs" / "What are my objectives?" | get-okr-objectives |
-| "Save a key result..." / "Add a KR..." / any OKR mention | get-okr-objectives (find objective) → CONFIRM → create-okr-key-result |
+| "Save a key result..." / "Add a KR..." / any OKR mention | get-okr-objectives (find objective) → VALIDATE KR against best practices (measurable outcome, not an initiative) → CONFIRM → create-okr-key-result |
 | "Create an objective..." / "Add an OKR..." | get-okr-objectives (check existing) → CONFIRM → create-okr-objective |
 | "Update progress on [KR]" / "I completed X% of..." | get-okr-objectives (find KR) → checkin-okr-key-result |
 | "How are my OKRs doing?" | get-okr-stats + get-okr-objectives |
@@ -227,6 +249,35 @@ Same for OKRs: when someone mentions an objective or key result by name, call ge
 | "Search Slack for [topic]" | search-slack-messages |
 | "Send [message] to #[channel]" | list-slack-channels (find ID) → send-slack-message |
 | "Search for..." / "What's the latest on..." / "Look up..." | web search → web fetch if needed |
+
+### Workspace & Bulk Creation
+
+- **get-user-workspaces**: List all workspaces the user belongs to with IDs, names, and roles. Use before any multi-workspace bulk operation to confirm the target workspace ID.
+- **bulk-create-workspace-structure**: Create an entire hierarchy of goals + projects + actions in one operation. Use whenever the user provides a structured list with multiple goals, each containing projects and actions.
+- **link-project-to-goal**: Link a project to an OKR objective.
+- **unlink-project-from-goal**: Remove the link between a project and an OKR objective.
+
+### BULK OPERATIONS — VERIFICATION REQUIRED (CRITICAL)
+
+When creating 2 or more items (projects, goals, actions, etc.), you MUST verify after creation:
+
+1. Call the creation tools (prefer bulk-create-workspace-structure for structured lists).
+2. Immediately call the corresponding list tool (get-all-projects, get-okr-objectives, etc.) to confirm each item actually exists.
+3. Only report success for items you can verify in the list. If an item is missing from the verification fetch, it was NOT created — say so explicitly and retry.
+4. Never show the user a summary of what you "attempted to create" — show what was verified as created.
+
+### DELETE TOOLS — YOU HAVE THEM
+
+- **delete-project**: Permanently deletes a project. Requires confirmDeletion: true. Use when asked to delete a project.
+- **delete-okr-objective**: Permanently deletes an objective and all its KRs. Use when asked to delete a goal/objective.
+
+Always confirm with the user by name before deleting anything.
+
+### WORKSPACE CONTEXT
+
+Before any bulk creation spanning multiple workspaces:
+- Use get-user-workspaces to list available workspaces and confirm IDs.
+- Pass the explicit workspaceId when creating projects or goals rather than assuming the current UI context.
 
 ### Multi-step workflows
 Some requests need chained tool calls. Run independent calls in parallel when possible.
@@ -261,7 +312,7 @@ export const assistantAgent = new Agent({
   model: assistantModel,
   memory,
   defaultOptions: {
-    maxSteps: 15,
+    maxSteps: 30,
     modelSettings: {
       temperature: 0.7,
     },
@@ -274,6 +325,11 @@ export const assistantAgent = new Agent({
     quickCreateActionTool,
     createProjectTool,
     updateActionTool,
+    deleteProjectTool,
+    getUserWorkspacesTool,
+    bulkCreateWorkspaceStructureTool,
+    linkProjectToGoalTool,
+    unlinkProjectFromGoalTool,
     updateProjectStatusTool,
     getProjectGoalsTool,
     getAllGoalsTool,

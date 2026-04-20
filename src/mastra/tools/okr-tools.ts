@@ -176,7 +176,7 @@ export const deleteOkrObjectiveTool = createTool({
 export const createOkrKeyResultTool = createTool({
   id: "create-okr-key-result",
   description:
-    "Create a new Key Result linked to an Objective. Key results are measurable outcomes that indicate progress toward the objective. Always confirm details with the user before creating.",
+    "Create a new Key Result linked to an Objective. A Key Result is a MEASURABLE OUTCOME (e.g., 'Increase MRR from $10k to $20k', 'Reach 500 active users'), NOT an initiative or task (e.g., 'Complete workshop', 'Establish cadence', 'Document Q1 objectives', 'Launch X'). Before calling this tool, verify the title describes a result with a target number — not an activity. If the user's proposed text is an initiative, activity, or checkbox-style milestone, DO NOT call this tool. Instead, explain why it isn't a KR, propose 1–3 measurable reworded alternatives (outcomes of that work), and get the user's explicit confirmation on one before creating.",
   inputSchema: z.object({
     goalId: z.number().describe("The parent objective (goal) ID"),
     title: z.string().describe("The key result title - should be specific and measurable"),
@@ -226,7 +226,7 @@ export const createOkrKeyResultTool = createTool({
 export const updateOkrKeyResultTool = createTool({
   id: "update-okr-key-result",
   description:
-    "Update an existing Key Result. Only include fields you want to change. To update progress, prefer using the check-in tool instead.",
+    "Update an existing Key Result. Only include fields you want to change. To update progress, prefer using the check-in tool instead. If you are rewriting the title, the new title must still be a measurable outcome (has a target number, is not an initiative/task) — apply the same KR best-practice check as create-okr-key-result and push back with reworded alternatives if the user proposes initiative-style text.",
   inputSchema: z.object({
     id: z.string().describe("The key result ID to update"),
     title: z.string().optional().describe("Updated title"),
