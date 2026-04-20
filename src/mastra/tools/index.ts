@@ -2418,7 +2418,7 @@ export { checkEmailConnectionTool, getRecentEmailsTool, getEmailByIdTool, search
 export { getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, linkProjectToGoalTool, unlinkProjectFromGoalTool } from "./okr-tools.js";
 
 // Project & Action management tools
-export { createProjectTool, updateActionTool, deleteProjectTool } from "./project-tools.js";
+export { createProjectTool, updateActionTool, deleteProjectTool, getUserWorkspacesTool, bulkCreateWorkspaceStructureTool } from "./project-tools.js";
 
 // WhatsApp search tools
 export { listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool } from "./whatsapp-tools.js";

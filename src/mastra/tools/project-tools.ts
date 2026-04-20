@@ -168,3 +168,106 @@ export const deleteProjectTool = createTool({
     }
   },
 });
+
+export const getUserWorkspacesTool = createTool({
+  id: "get-user-workspaces",
+  description:
+    "List all workspaces the user belongs to, with their IDs, names, slugs, and the user's role. Use this before bulk creation operations that span multiple workspaces — confirm the target workspace ID before creating goals or projects in it.",
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    workspaces: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      slug: z.string(),
+      type: z.string(),
+      role: z.string(),
+    })),
+  }),
+  async execute(_inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`🏢 [getUserWorkspaces] Fetching workspaces for user`);
+
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "mastra.getUserWorkspaces",
+        {},
+        { authToken, sessionId, userId }
+      );
+
+      console.log(`✅ [getUserWorkspaces] Found ${(data as any)?.workspaces?.length ?? 0} workspaces`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [getUserWorkspaces] FAILED:`, error);
+      throw error;
+    }
+  },
+});
+
+export const bulkCreateWorkspaceStructureTool = createTool({
+  id: "bulk-create-workspace-structure",
+  description:
+    "Create a complete hierarchy of goals, projects, and actions in a single atomic operation. Use this when the user provides a structured list of goals with associated projects and actions — it's far more reliable than creating items one by one. Returns a manifest of everything created and anything that failed, so you can give the user an accurate verified summary.",
+  inputSchema: z.object({
+    workspaceId: z.string().describe("The ID of the workspace to create items in — use get-user-workspaces to find it"),
+    goals: z.array(z.object({
+      title: z.string().describe("Goal/objective title"),
+      description: z.string().optional().describe("Goal description"),
+      projects: z.array(z.object({
+        name: z.string().describe("Project name"),
+        description: z.string().optional().describe("Project description"),
+        priority: z.enum(["HIGH", "MEDIUM", "LOW", "NONE"]).optional().describe("Project priority (defaults to MEDIUM)"),
+        actions: z.array(z.object({
+          name: z.string().describe("Action/task name"),
+        })).optional().describe("Actions to create under this project"),
+      })).optional().describe("Projects to create under this goal"),
+    })).describe("Goals to create, each with their projects and actions"),
+  }),
+  outputSchema: z.object({
+    created: z.array(z.object({
+      type: z.string(),
+      name: z.string(),
+      id: z.union([z.string(), z.number()]),
+    })),
+    failed: z.array(z.object({
+      type: z.string(),
+      name: z.string(),
+      error: z.string(),
+    })),
+    totalCreated: z.number(),
+    totalFailed: z.number(),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    const goalCount = inputData.goals.length;
+    const projectCount = inputData.goals.reduce((sum, g) => sum + (g.projects?.length ?? 0), 0);
+    const actionCount = inputData.goals.reduce((sum, g) =>
+      sum + (g.projects ?? []).reduce((ps, p) => ps + (p.actions?.length ?? 0), 0), 0);
+
+    console.log(`🏗️ [bulkCreate] Creating ${goalCount} goals, ${projectCount} projects, ${actionCount} actions in workspace ${inputData.workspaceId}`);
+
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "mastra.bulkCreateStructure",
+        inputData,
+        { authToken, sessionId, userId }
+      );
+
+      const result = data as { created: any[]; failed: any[]; totalCreated: number; totalFailed: number };
+      console.log(`✅ [bulkCreate] Done: ${result.totalCreated} created, ${result.totalFailed} failed`);
+      return result;
+    } catch (error) {
+      console.error(`❌ [bulkCreate] FAILED:`, error);
+      throw error;
+    }
+  },
+});

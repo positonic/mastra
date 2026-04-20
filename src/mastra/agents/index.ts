@@ -14,7 +14,7 @@ export { assistantAgent } from './assistant-agent.js';
 export { platformAgent } from './platform-agent.js';
 // Export One2b agent (CRM onboarding via voice and text)
 export { one2bAgent } from './one2b-agent.js';
-import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, listSlackChannelsTool, getSlackChannelHistoryTool, getSlackThreadRepliesTool, searchSlackMessagesTool, getSlackMentionsTool, getSlackUnreadsTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateActionTool, listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool, getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from '../tools';
+import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, listSlackChannelsTool, getSlackChannelHistoryTool, getSlackThreadRepliesTool, searchSlackMessagesTool, getSlackMentionsTool, getSlackUnreadsTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateActionTool, deleteProjectTool, getUserWorkspacesTool, bulkCreateWorkspaceStructureTool, linkProjectToGoalTool, unlinkProjectFromGoalTool, listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool, getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
 export const weatherAgent = new Agent({
@@ -294,6 +294,28 @@ export const projectManagerAgent = new Agent({
     - Match mentions to existing objectives by name — NEVER create duplicates
     - ALWAYS confirm before creating, updating, or deleting objectives/KRs
     - Use check-in tool (not update) when user reports KR progress
+
+    ## BULK OPERATIONS — VERIFICATION REQUIRED (CRITICAL)
+
+    When creating 2 or more items (projects, goals, actions, etc.), you MUST verify after creation:
+    1. Call the creation tools (prefer bulk-create-workspace-structure for structured lists of goals/projects/actions).
+    2. Immediately call the corresponding list tool (get-all-projects, get-okr-objectives, etc.) to confirm each item actually exists.
+    3. Only report success for items you can verify in the list. If an item is missing, it was NOT created — say so and retry.
+    4. Never report "X was created successfully" without verification. Show the verified list, not what you attempted.
+
+    ## DELETE TOOLS — YOU HAVE THEM
+
+    - delete-project: Permanently deletes a project. Requires confirmDeletion: true. Use it when asked — don't say you can't.
+    - delete-okr-objective: Permanently deletes an objective and all its KRs. Use it when asked — don't say you can't.
+
+    Always confirm with the user by name before deleting.
+
+    ## WORKSPACE TOOLS
+
+    - get-user-workspaces: List all workspaces the user belongs to with IDs. Use before bulk creation across multiple workspaces to confirm the target workspace ID.
+    - bulk-create-workspace-structure: Create a full hierarchy of goals + projects + actions atomically. Use for any request involving 3+ goals or a structured setup list.
+    - link-project-to-goal: Link a project to an OKR objective.
+    - unlink-project-from-goal: Remove a project-goal link.
 
     ## ENHANCED QUESTION HANDLING:
     
@@ -590,7 +612,7 @@ export const projectManagerAgent = new Agent({
 `,
   model: openai('gpt-4o'),
   defaultOptions: {
-    maxSteps: 20,
+    maxSteps: 30,
   },
   tools: {
     getProjectContextTool,
@@ -598,6 +620,11 @@ export const projectManagerAgent = new Agent({
     quickCreateActionTool,
     createProjectTool,
     updateActionTool,
+    deleteProjectTool,
+    getUserWorkspacesTool,
+    bulkCreateWorkspaceStructureTool,
+    linkProjectToGoalTool,
+    unlinkProjectFromGoalTool,
     updateProjectStatusTool,
     getProjectGoalsTool,
     getAllGoalsTool,
