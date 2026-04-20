@@ -2,6 +2,7 @@ import { anthropic } from '@ai-sdk/anthropic';
 import { wrapLanguageModel } from 'ai';
 import { Agent } from '@mastra/core/agent';
 import { memory } from '../memory/index.js';
+import { cachedSystemPrompt } from '../utils/anthropic-cache.js';
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
 import { SECURITY_POLICY } from './security-policy.js';
 import {
@@ -470,7 +471,7 @@ const zoeModel = wrapLanguageModel({
 export const zoeAgent = new Agent({
   id: 'zoeAgent',
   name: 'Zoe',
-  instructions: SOUL,
+  instructions: cachedSystemPrompt(SOUL),
   model: zoeModel,
   memory,
   defaultOptions: {
