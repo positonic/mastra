@@ -10,7 +10,7 @@ export const memory = new Memory({
   options: {
     observationalMemory: {
       scope: 'resource',
-      model: 'openai/gpt-4o-mini',
+      model: 'anthropic/claude-haiku-4-5-20251001',
       observation: {
         messageTokens: 30_000,
       },
