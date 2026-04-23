@@ -1,8 +1,7 @@
 import { anthropic } from '@ai-sdk/anthropic';
-import { wrapLanguageModel } from 'ai';
 import { Agent } from '@mastra/core/agent';
 import { memory } from '../memory/index.js';
-import { cachedSystemPrompt } from '../utils/anthropic-cache.js';
+import { withAnthropicPromptCache } from '../utils/anthropic-prompt-cache.js';
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
 import { SECURITY_POLICY } from './security-policy.js';
 import {
@@ -292,24 +291,12 @@ When listing projects, use a table sorted by priority (HIGH > MEDIUM > LOW > NON
 When listing actions, group by project and sort by due date.
 `;
 
-// Wrap model to strip topP when temperature is set (Anthropic rejects both together)
-const assistantModel = wrapLanguageModel({
-  model: anthropic('claude-sonnet-4-5-20250929'),
-  middleware: {
-    transformParams: async ({ params }) => {
-      if (params.temperature != null && params.topP != null) {
-        const { topP, ...rest } = params;
-        return rest;
-      }
-      return params;
-    },
-  },
-});
+const assistantModel = withAnthropicPromptCache(anthropic('claude-sonnet-4-5-20250929'));
 
 export const assistantAgent = new Agent({
   id: 'assistantAgent',
   name: 'Assistant',
-  instructions: cachedSystemPrompt(INSTRUCTIONS),
+  instructions: INSTRUCTIONS,
   model: assistantModel,
   memory,
   defaultOptions: {

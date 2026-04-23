@@ -1,8 +1,7 @@
 import { anthropic } from '@ai-sdk/anthropic';
-import { wrapLanguageModel } from 'ai';
 import { Agent } from '@mastra/core/agent';
 import { memory } from '../memory/index.js';
-import { cachedSystemPrompt } from '../utils/anthropic-cache.js';
+import { withAnthropicPromptCache } from '../utils/anthropic-prompt-cache.js';
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
 import { SECURITY_POLICY } from './security-policy.js';
 import {
@@ -453,25 +452,12 @@ You're the friend who remembers what they said they wanted and gently asks "hey,
 🔮
 `;
 
-// Wrap model to strip topP when temperature is set (Anthropic rejects both together,
-// and the Mastra playground sends both by default)
-const zoeModel = wrapLanguageModel({
-  model: anthropic('claude-sonnet-4-5-20250929'),
-  middleware: {
-    transformParams: async ({ params }) => {
-      if (params.temperature != null && params.topP != null) {
-        const { topP, ...rest } = params;
-        return rest;
-      }
-      return params;
-    },
-  },
-});
+const zoeModel = withAnthropicPromptCache(anthropic('claude-sonnet-4-5-20250929'));
 
 export const zoeAgent = new Agent({
   id: 'zoeAgent',
   name: 'Zoe',
-  instructions: cachedSystemPrompt(SOUL),
+  instructions: SOUL,
   model: zoeModel,
   memory,
   defaultOptions: {

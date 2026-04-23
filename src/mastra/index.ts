@@ -8,6 +8,7 @@ import { createWhatsAppGateway, cleanupWhatsAppGateway } from './bots/whatsapp-g
 import { startSignalGateway, getSignalGateway } from './bots/signal-gateway.js';
 import { startVoiceGateway, cleanupVoiceGateway } from './bots/voice-gateway.js';
 import { initSentry, captureException, flushSentry } from './utils/sentry.js';
+import { assertAgentsValid } from './utils/validate-agents.js';
 import { startScheduler, stopScheduler, triggerCheck, deliverWhatsAppBriefings } from './proactive/index.js';
 import jwt from 'jsonwebtoken';
 import { createHmac, timingSafeEqual } from 'crypto';
@@ -22,8 +23,15 @@ const logger = createLogger({
 
 const isDev = process.env.NODE_ENV !== 'production';
 
+const agents = { zoeAgent, weatherAgent, ashAgent, pierreAgent, projectManagerAgent, expoAgent, assistantAgent, platformAgent, one2bAgent };
+
+// Fail fast if any agent's system prompt is missing or malformed.
+// Protects against the class of bug where instructions are assigned a
+// non-string value and silently break downstream consumers.
+assertAgentsValid(agents, logger);
+
 export const mastra = new Mastra({
-  agents: { zoeAgent, weatherAgent, ashAgent, pierreAgent, projectManagerAgent, expoAgent, assistantAgent, platformAgent, one2bAgent },
+  agents,
   memory,
   logger,
   server: {
