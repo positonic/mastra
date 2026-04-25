@@ -11,7 +11,7 @@
  * prevent other checks from completing.
  */
 
-import { createLogger } from '@mastra/core/logger';
+import { createLogger } from '../utils/logger.js';
 import { authenticatedTrpcCall, authenticatedTrpcQuery } from '../utils/authenticated-fetch.js';
 import { captureException } from '../utils/sentry.js';
 import type {
@@ -69,21 +69,21 @@ export async function checkUser(ctx: UserContext): Promise<ProactiveCheckResult>
     result.staleProjects = staleProjects.value;
   } else {
     logger.error(`❌ [ProactiveChecker] Stale projects check failed for user ${userId}:`, staleProjects.reason);
-    captureException(staleProjects.reason, { userId, check: 'staleProjects' });
+    captureException(staleProjects.reason, { userId, operation: 'staleProjects', extra: { check: 'staleProjects' } });
   }
 
   if (overdueActions.status === 'fulfilled') {
     result.overdueActions = overdueActions.value;
   } else {
     logger.error(`❌ [ProactiveChecker] Overdue actions check failed for user ${userId}:`, overdueActions.reason);
-    captureException(overdueActions.reason, { userId, check: 'overdueActions' });
+    captureException(overdueActions.reason, { userId, operation: 'overdueActions', extra: { check: 'overdueActions' } });
   }
 
   if (atRiskGoals.status === 'fulfilled') {
     result.atRiskGoals = atRiskGoals.value;
   } else {
     logger.error(`❌ [ProactiveChecker] At-risk goals check failed for user ${userId}:`, atRiskGoals.reason);
-    captureException(atRiskGoals.reason, { userId, check: 'atRiskGoals' });
+    captureException(atRiskGoals.reason, { userId, operation: 'atRiskGoals', extra: { check: 'atRiskGoals' } });
   }
 
   if (riskSignals.status === 'fulfilled') {

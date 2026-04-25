@@ -673,12 +673,15 @@ export const projectManagerAgent = new Agent({
 });
 
 // Debug logging for tool registration
-console.log('🔧 [AGENT DEBUG] Project Manager Agent (Paddy) tools registered:', {
-  toolNames: Object.keys(projectManagerAgent.tools || {}),
-  totalTools: Object.keys(projectManagerAgent.tools || {}).length,
-  hasGetAllProjectsTool: 'getAllProjectsTool' in (projectManagerAgent.tools || {}),
-  hasGetAllGoalsTool: 'getAllGoalsTool' in (projectManagerAgent.tools || {}),
-  timestamp: new Date().toISOString()
+void Promise.resolve(projectManagerAgent.listTools()).then((registeredTools: Record<string, unknown>) => {
+  const tools = registeredTools ?? {};
+  console.log('🔧 [AGENT DEBUG] Project Manager Agent (Paddy) tools registered:', {
+    toolNames: Object.keys(tools),
+    totalTools: Object.keys(tools).length,
+    hasGetAllProjectsTool: 'getAllProjectsTool' in tools,
+    hasGetAllGoalsTool: 'getAllGoalsTool' in tools,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Export Curation agent - temporarily disabled due to MCP server down

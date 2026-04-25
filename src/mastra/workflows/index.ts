@@ -1,11 +1,12 @@
 import { openai } from '@ai-sdk/openai';
 import { Agent } from '@mastra/core/agent';
-import { Workflow } from '@mastra/core/workflows';
+import { createWorkflow, createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
 
 const llm = openai('gpt-4o');
 
 const agent = new Agent({
+  id: 'weather-agent',
   name: 'Weather Agent',
   model: llm,
   instructions: `
@@ -64,28 +65,26 @@ const forecastSchema = z.array(
   }),
 );
 
-const fetchWeather = {
+const fetchWeather = createStep({
   id: 'fetch-weather',
   description: 'Fetches weather forecast for a given city',
   inputSchema: z.object({
     city: z.string().describe('The city to get the weather for'),
   }),
-  outputSchema: forecastSchema,
-  execute: async ({ context }: any) => {
-    const triggerData = context?.getStepResult<{ city: string }>('trigger');
+  outputSchema: z.object({
+    forecast: forecastSchema,
+  }),
+  execute: async ({ inputData }) => {
+    const { city } = inputData;
 
-    if (!triggerData) {
-      throw new Error('Trigger data not found');
-    }
-
-    const geocodingUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(triggerData.city)}&count=1`;
+    const geocodingUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`;
     const geocodingResponse = await fetch(geocodingUrl);
     const geocodingData = (await geocodingResponse.json()) as {
       results: { latitude: number; longitude: number; name: string }[];
     };
 
     if (!geocodingData.results?.[0]) {
-      throw new Error(`Location '${triggerData.city}' not found`);
+      throw new Error(`Location '${city}' not found`);
     }
 
     const { latitude, longitude, name } = geocodingData.results[0];
@@ -104,22 +103,28 @@ const fetchWeather = {
 
     const forecast = data.daily.time.map((date: string, index: number) => ({
       date,
-      maxTemp: data.daily.temperature_2m_max[index],
-      minTemp: data.daily.temperature_2m_min[index],
-      precipitationChance: data.daily.precipitation_probability_mean[index],
+      maxTemp: data.daily.temperature_2m_max[index]!,
+      minTemp: data.daily.temperature_2m_min[index]!,
+      precipitationChance: data.daily.precipitation_probability_mean[index]!,
       condition: getWeatherCondition(data.daily.weathercode[index]!),
       location: name,
     }));
 
-    return forecast;
+    return { forecast };
   },
-};
+});
 
-const planActivities = {
+const planActivities = createStep({
   id: 'plan-activities',
   description: 'Suggests activities based on weather conditions',
-  execute: async ({ context, mastra }: any) => {
-    const forecast = context?.getStepResult(fetchWeather);
+  inputSchema: z.object({
+    forecast: forecastSchema,
+  }),
+  outputSchema: z.object({
+    activities: z.string(),
+  }),
+  execute: async ({ inputData }) => {
+    const { forecast } = inputData;
 
     if (!forecast || forecast.length === 0) {
       throw new Error('Forecast data not found');
@@ -147,7 +152,7 @@ const planActivities = {
       activities: activitiesText,
     };
   },
-};
+});
 
 function getWeatherCondition(code: number): string {
   const conditions: Record<number, string> = {
@@ -168,19 +173,18 @@ function getWeatherCondition(code: number): string {
     75: 'Heavy snow fall',
     95: 'Thunderstorm',
   };
-  return conditions[code] || 'Unknown';
+  return conditions[code] ?? 'Unknown';
 }
 
-const weatherWorkflow = new Workflow({
-  name: 'weather-workflow',
-  triggerSchema: z.object({
+export const weatherWorkflow = createWorkflow({
+  id: 'weather-workflow',
+  inputSchema: z.object({
     city: z.string().describe('The city to get the weather for'),
   }),
+  outputSchema: z.object({
+    activities: z.string(),
+  }),
 })
-  .step(fetchWeather)
-  .then(planActivities);
-
-weatherWorkflow.commit();
-
-export { weatherWorkflow };
-// export { slackWebhookWorkflow } from './slack-webhook';
+  .then(fetchWeather)
+  .then(planActivities)
+  .commit();

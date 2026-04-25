@@ -65,7 +65,7 @@ export function validateAgentInstructions(
  */
 export function assertAgentsValid(
   agents: Record<string, Agent>,
-  logger: { error: (msg: string, meta?: unknown) => void },
+  logger: { error: (msg: string, meta?: any) => void },
 ): void {
   const issues = validateAgentInstructions(agents);
   if (issues.length === 0) return;

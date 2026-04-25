@@ -11,16 +11,17 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   DisconnectReason,
   WASocket,
+  WAMessage,
   BaileysEventMap,
   proto,
   isLidUser,
   jidNormalizedUser,
 } from '@whiskeysockets/baileys';
 import QRCode from 'qrcode';
-import { createLogger } from '@mastra/core/logger';
+import { createLogger } from '../utils/logger.js';
 import { Boom } from '@hapi/boom';
 
-import { RequestContext } from '@mastra/core/di';
+import { RequestContext } from '@mastra/core/request-context';
 import {
   weatherAgent,
   pierreAgent,
@@ -985,13 +986,13 @@ Example format for lists:
 
       logger.debug(`📝 [${INSTANCE_ID}] Sending ${history.length} history messages to agent`);
 
+      const memoryScope = {
+        resource: session.userId,
+        thread: `wa-${session.userId}-${jid}`,
+      };
+
       try {
         // First attempt with current token
-        const memoryScope = {
-          resource: session.userId,
-          thread: `wa-${session.userId}-${jid}`,
-        };
-
         response = await agent.generate(
           messages,
           { requestContext: createRequestContext(authToken), memory: memoryScope }
@@ -1039,7 +1040,7 @@ Example format for lists:
         // Update conversation with agent's message ID and updated history
         const conversationState = session.conversations.get(jid);
         if (conversationState) {
-          conversationState.lastAgentMessageId = sentMsg?.key?.id;
+          conversationState.lastAgentMessageId = sentMsg?.key?.id ?? undefined;
           conversationState.history = history;
           conversationState.lastInteraction = Date.now();
         }
@@ -1074,7 +1075,7 @@ Example format for lists:
     session: WhatsAppSession,
     jid: string,
     message: string
-  ): Promise<proto.WebMessageInfo | undefined> {
+  ): Promise<WAMessage | undefined> {
     // Add invisible bot signature to all outgoing messages for cross-instance deduplication
     const signedMessage = message + BOT_SIGNATURE;
 
@@ -1093,7 +1094,7 @@ Example format for lists:
     }
 
     const chunks = this.splitMessage(message, MAX_MESSAGE_LENGTH - BOT_SIGNATURE.length);
-    let lastSentMessage: proto.WebMessageInfo | undefined;
+    let lastSentMessage: WAMessage | undefined;
 
     for (let i = 0; i < chunks.length; i++) {
       const prefix = i === 0 ? '' : `(${i + 1}/${chunks.length}) `;
@@ -1595,9 +1596,11 @@ Example format for lists:
   }
 
   /**
-   * Get a session by ID (for use by tools)
+   * Get a session by ID without auth verification (for use by trusted internal tools).
+   * Renamed from `getSession` to avoid duplicate-method collision with the
+   * auth-verified `getSession(sessionId, authToken)` overload above.
    */
-  getSession(sessionId: string): WhatsAppSession | undefined {
+  getSessionRaw(sessionId: string): WhatsAppSession | undefined {
     return this.sessions.get(sessionId);
   }
 

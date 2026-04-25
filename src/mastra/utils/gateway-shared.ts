@@ -1,8 +1,8 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import { createLogger } from '@mastra/core/logger';
+import { PinoLogger } from '@mastra/loggers';
 
-const logger = createLogger({
+const logger = new PinoLogger({
   name: 'GatewayShared',
   level: 'info',
 });
@@ -215,7 +215,7 @@ export function setCorsHeaders(req: any, res: any, methods = 'GET, POST, PUT, DE
     const existing = res.getHeader?.('Vary');
     if (existing) {
       // Normalize and check for existing 'Origin' to avoid duplicates
-      const varyValues = existing.toString().split(',').map(v => v.trim().toLowerCase());
+      const varyValues = existing.toString().split(',').map((v: string) => v.trim().toLowerCase());
       if (!varyValues.includes('origin')) {
         res.setHeader('Vary', `${existing}, Origin`);
       }

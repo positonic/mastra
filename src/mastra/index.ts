@@ -1,7 +1,8 @@
 import { Mastra } from '@mastra/core/mastra';
-import { createLogger } from '@mastra/core/logger';
+import { MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-context';
 import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent, zoeAgent, expoAgent, assistantAgent, platformAgent, one2bAgent } from './agents';
 import { memory } from './memory/index.js';
+import { createLogger } from './utils/logger.js';
 import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js';
 import { createTelegramGateway, cleanupTelegramGateway } from './bots/telegram-gateway.js';
 import { createWhatsAppGateway, cleanupWhatsAppGateway } from './bots/whatsapp-gateway.js';
@@ -32,8 +33,8 @@ assertAgentsValid(agents, logger);
 
 export const mastra = new Mastra({
   agents,
-  memory,
-  logger,
+  memory: { default: memory },
+  logger: logger.raw,
   server: {
     port: parseInt(process.env.PORT || '4111', 10),
     host: '0.0.0.0', // Required for Railway deployment
@@ -113,6 +114,7 @@ export const mastra = new Mastra({
                 const userId = payload.userId || payload.sub;
                 if (userId) {
                   requestContext.set('userId', userId);
+                  requestContext.set(MASTRA_RESOURCE_ID_KEY, userId);
                 }
               } else {
                 // No AUTH_SECRET — decode without verification (dev/legacy fallback)
@@ -121,8 +123,10 @@ export const mastra = new Mastra({
                   { env: process.env.NODE_ENV, hasToken: true }
                 );
                 const payload = JSON.parse(atob(token.split('.')[1]));
-                if (payload.userId || payload.sub) {
-                  requestContext.set('userId', payload.userId || payload.sub);
+                const fallbackUserId = payload.userId || payload.sub;
+                if (fallbackUserId) {
+                  requestContext.set('userId', fallbackUserId);
+                  requestContext.set(MASTRA_RESOURCE_ID_KEY, fallbackUserId);
                 }
               }
             } catch {
@@ -237,7 +241,7 @@ process.on('uncaughtException', (error) => {
   shutdown('UNCAUGHT_EXCEPTION', error);
 });
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('🚨 [MAIN] Unhandled rejection at:', promise, 'reason:', reason);
+  logger.error('🚨 [MAIN] Unhandled rejection', { promise, reason });
   const error = reason instanceof Error ? reason : new Error(String(reason));
   captureException(error, { operation: 'unhandledRejection' });
   shutdown('UNHANDLED_REJECTION', error);

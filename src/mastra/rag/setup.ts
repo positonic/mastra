@@ -18,6 +18,7 @@ interface ChunkData {
 
 export async function setupPierreRAG() {
   const vectorStore = new PgVector({
+    id: 'pierre-rag-setup',
     connectionString: process.env.DATABASE_URL!,
     schemaName: 'pierre_docs',
   });

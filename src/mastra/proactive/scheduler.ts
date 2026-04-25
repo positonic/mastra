@@ -6,11 +6,11 @@
  * Also delivers WhatsApp morning briefings to connected users.
  */
 
-import cron from 'node-cron';
+import cron, { type ScheduledTask } from 'node-cron';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
-import { createLogger } from '@mastra/core/logger';
+import { createLogger } from '../utils/logger.js';
 import { checkUser } from './checker.js';
 import { initNotifier, notifyUser, formatDailyDigest } from './notifier.js';
 import { deliverWhatsAppBriefings } from './whatsapp-briefing.js';
@@ -32,8 +32,8 @@ const MORNING_SCHEDULE = process.env.PROACTIVE_MORNING_CRON || '0 9 * * 1-5';  /
 const EVENING_SCHEDULE = process.env.PROACTIVE_EVENING_CRON || '0 18 * * 1-5'; // 6pm weekdays
 
 // Track scheduled tasks for cleanup
-let morningTask: cron.ScheduledTask | null = null;
-let eveningTask: cron.ScheduledTask | null = null;
+let morningTask: ScheduledTask | null = null;
+let eveningTask: ScheduledTask | null = null;
 
 /**
  * Load all paired users from Telegram mappings
@@ -53,6 +53,10 @@ async function loadPairedUsers(): Promise<UserContext[]> {
       if (mapping.encryptedAuthToken && mapping.workspaceId) {
         try {
           const authToken = decryptToken(mapping.encryptedAuthToken, AUTH_SECRET);
+          if (!authToken) {
+            logger.warn(`⚠️ Failed to decrypt token for chat ${chatId}: returned null`);
+            continue;
+          }
           users.push({
             userId: mapping.userId,
             authToken,

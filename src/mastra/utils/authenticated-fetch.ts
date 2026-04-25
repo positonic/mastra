@@ -152,7 +152,8 @@ export async function authenticatedFetch<T>(
  * Convenience wrapper for tRPC POST endpoints (the most common pattern in tools).
  * Handles the tRPC response structure automatically.
  */
-export async function authenticatedTrpcCall<T>(
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function authenticatedTrpcCall<T = any>(
   endpoint: string,
   input: unknown,
   options: {
@@ -189,7 +190,8 @@ export async function authenticatedTrpcCall<T>(
 /**
  * Convenience wrapper for tRPC GET endpoints.
  */
-export async function authenticatedTrpcQuery<T>(
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function authenticatedTrpcQuery<T = any>(
   endpoint: string,
   options: {
     authToken: string;
