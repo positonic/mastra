@@ -29,7 +29,8 @@ const agents = { zoeAgent, weatherAgent, ashAgent, pierreAgent, projectManagerAg
 // Fail fast if any agent's system prompt is missing or malformed.
 // Protects against the class of bug where instructions are assigned a
 // non-string value and silently break downstream consumers.
-assertAgentsValid(agents, logger);
+// Top-level await is supported in this ESM module.
+await assertAgentsValid(agents, logger);
 
 export const mastra = new Mastra({
   agents,
