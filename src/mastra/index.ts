@@ -1,6 +1,6 @@
 import { Mastra } from '@mastra/core/mastra';
 import { MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-context';
-import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent, zoeAgent, expoAgent, assistantAgent, platformAgent, one2bAgent } from './agents';
+import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent, zoeAgent, expoAgent, assistantAgent, platformAgent, one2bAgent, actionItemsAgent } from './agents';
 import { memory } from './memory/index.js';
 import { createLogger } from './utils/logger.js';
 import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js';
@@ -24,7 +24,7 @@ const logger = createLogger({
 
 const isDev = process.env.NODE_ENV !== 'production';
 
-const agents = { zoeAgent, weatherAgent, ashAgent, pierreAgent, projectManagerAgent, expoAgent, assistantAgent, platformAgent, one2bAgent };
+const agents = { zoeAgent, weatherAgent, ashAgent, pierreAgent, projectManagerAgent, expoAgent, assistantAgent, platformAgent, one2bAgent, actionItemsAgent };
 
 // Fail fast if any agent's system prompt is missing or malformed.
 // Protects against the class of bug where instructions are assigned a
