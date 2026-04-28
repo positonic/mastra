@@ -1,6 +1,11 @@
 import { openai } from '@ai-sdk/openai';
 import { Agent } from '@mastra/core/agent';
 
+// NOTE: The `mcpServers` field on AgentConfig was removed in Mastra 1.x.
+// This agent is currently disabled (not exported from agents/index.ts) pending
+// the MCP server being brought back online. When re-enabling, switch to the
+// MCPClient pattern (https://mastra.ai/docs/integrations/mcp). For now we
+// preserve the original config shape via a cast so the data is not lost.
 export const curationAgent = new Agent({
   name: 'Lin',
   instructions: `
@@ -77,6 +82,8 @@ export const curationAgent = new Agent({
     Always provide context and interpretation, not just raw data.
 `,
   model: openai('gpt-4o'),
+  // @ts-expect-error: `mcpServers` was removed from AgentConfig in Mastra 1.x.
+  // Preserved here so behavior can be restored once MCPClient is wired up.
   mcpServers: [{
     name: 'curation-platform',
     url: 'https://ftc-platform-mcp-production.up.railway.app/mcp',

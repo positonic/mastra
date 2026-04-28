@@ -8,7 +8,7 @@
  * All user-controlled strings are sanitized before interpolation.
  */
 
-import { createLogger } from '@mastra/core/logger';
+import { createLogger } from '../utils/logger.js';
 import { sanitizeForPrompt } from '../utils/content-safety.js';
 import { decryptToken } from '../utils/gateway-shared.js';
 import { authenticatedTrpcQuery } from '../utils/authenticated-fetch.js';

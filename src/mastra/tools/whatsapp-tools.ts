@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { prepareUntrustedContent } from "../utils/content-safety.js";
+import { asAppContext } from "../types/request-context.js";
 /**
  * Normalizes a phone number or JID string to a WhatsApp JID.
  * If the input already contains '@', it's returned as-is.
@@ -50,7 +51,8 @@ export const listWhatsAppChatsTool = createTool({
     ),
     total: z.number(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const userId = requestContext?.get("userId");
     if (!userId) throw new Error("No userId available");
 
@@ -106,7 +108,8 @@ export const getWhatsAppChatHistoryTool = createTool({
     }),
     hasMore: z.boolean(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const userId = requestContext?.get("userId");
     if (!userId) throw new Error("No userId available");
 
@@ -176,7 +179,8 @@ export const searchWhatsAppChatsTool = createTool({
     ),
     totalResults: z.number(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const userId = requestContext?.get("userId");
     if (!userId) throw new Error("No userId available");
 

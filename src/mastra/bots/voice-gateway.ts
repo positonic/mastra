@@ -16,8 +16,7 @@
 
 import { createServer, IncomingMessage, ServerResponse, Server } from 'http';
 import { randomUUID } from 'crypto';
-import { createLogger } from '@mastra/core/logger';
-import { RequestContext } from '@mastra/core/di';
+import { RequestContext } from '@mastra/core/request-context';
 
 import {
   GatewayError,
@@ -28,6 +27,7 @@ import {
 } from '../utils/gateway-shared.js';
 import { one2bAgent } from '../agents/one2b-agent.js';
 import { captureException } from '../utils/sentry.js';
+import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger({
   name: 'VoiceGateway',

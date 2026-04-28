@@ -20,8 +20,8 @@ import os from 'os';
 import crypto from 'crypto';
 import http from 'http';
 
-import { createLogger } from '@mastra/core/logger';
-import { RequestContext } from '@mastra/core/di';
+import { createLogger } from '../utils/logger.js';
+import { RequestContext } from '@mastra/core/request-context';
 
 import {
   GatewayError,

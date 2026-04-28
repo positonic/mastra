@@ -1,6 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { curationAgent } from '../agents/ostrom-agent.js';
-import { createLogger } from '@mastra/core/logger';
+import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger({
   name: 'TelegramBot',

@@ -9,7 +9,7 @@
  */
 
 import TelegramBot from 'node-telegram-bot-api';
-import { createLogger } from '@mastra/core/logger';
+import { createLogger } from '../utils/logger.js';
 import { sanitizeForPrompt } from '../utils/content-safety.js';
 import type { ProactiveCheckResult } from './types.js';
 

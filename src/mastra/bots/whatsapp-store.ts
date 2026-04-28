@@ -2,7 +2,7 @@ import { PgVector } from '@mastra/pg';
 import { openai } from '@ai-sdk/openai';
 import { embed } from 'ai';
 import pg from 'pg';
-import { createLogger } from '@mastra/core/logger';
+import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger({
   name: 'WhatsAppStore',
@@ -350,7 +350,7 @@ export class WhatsAppMessageStore {
     `, [userId, limit, offset]);
 
     return {
-      chats: result.rows.map(row => ({
+      chats: result.rows.map((row: any) => ({
         jid: row.jid,
         phoneNumber: row.phone_number,
         contactName: row.contact_name,
@@ -406,7 +406,7 @@ export class WhatsAppMessageStore {
     `, params);
 
     const hasMore = result.rows.length > limit;
-    const messages = result.rows.slice(0, limit).reverse().map(row => ({
+    const messages = result.rows.slice(0, limit).reverse().map((row: any) => ({
       messageId: row.message_id,
       fromMe: row.from_me,
       text: row.text,
@@ -451,7 +451,7 @@ export class WhatsAppMessageStore {
       LIMIT $${params.length}
     `, params);
 
-    return result.rows.map(row => ({
+    return result.rows.map((row: any) => ({
       messageId: row.message_id,
       fromMe: row.from_me,
       text: row.text,

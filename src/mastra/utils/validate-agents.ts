@@ -26,14 +26,29 @@ export type AgentValidationIssue = {
  * field. Returns a list of issues; empty means all good.
  *
  * Kept pure so it can be unit-tested without booting the full server.
+ *
+ * In Mastra 1.x, `instructions` is no longer a public string property —
+ * it's resolved via the async `getInstructions()` method, which handles
+ * both static strings and dynamic (function-based) instructions.
  */
-export function validateAgentInstructions(
+export async function validateAgentInstructions(
   agents: Record<string, Agent>,
-): AgentValidationIssue[] {
+): Promise<AgentValidationIssue[]> {
   const issues: AgentValidationIssue[] = [];
 
   for (const [agentId, agent] of Object.entries(agents)) {
-    const raw = (agent as unknown as { instructions?: unknown }).instructions;
+    let raw: unknown;
+    try {
+      raw = await agent.getInstructions();
+    } catch (err) {
+      issues.push({
+        agentId,
+        reason: `getInstructions() threw: ${err instanceof Error ? err.message : String(err)}`,
+        actualType: 'error',
+      });
+      continue;
+    }
+
     const actualType = Array.isArray(raw) ? 'array' : typeof raw;
 
     if (typeof raw !== 'string') {
@@ -63,11 +78,11 @@ export function validateAgentInstructions(
  * agent is broken, so a bad deploy dies during startup rather than
  * silently serving empty agents.
  */
-export function assertAgentsValid(
+export async function assertAgentsValid(
   agents: Record<string, Agent>,
-  logger: { error: (msg: string, meta?: unknown) => void },
-): void {
-  const issues = validateAgentInstructions(agents);
+  logger: { error: (msg: string, meta?: any) => void },
+): Promise<void> {
+  const issues = await validateAgentInstructions(agents);
   if (issues.length === 0) return;
 
   for (const issue of issues) {

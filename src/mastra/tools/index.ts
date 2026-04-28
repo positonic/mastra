@@ -8,6 +8,7 @@ import {
   authenticatedTrpcQuery,
 } from "../utils/authenticated-fetch.js";
 import { prepareUntrustedContent, auditWriteAction } from "../utils/content-safety.js";
+import { asAppContext } from "../types/request-context.js";
 
 interface GeocodingResponse {
   results: {
@@ -311,6 +312,7 @@ export const pierreTradingQueryTool = createTool({
 
 const queryPierreTradingSystem = async (query: string) => {
   const vectorStore = new PgVector({
+    id: 'pierre-rag-query',
     connectionString: process.env.DATABASE_URL!,
     schemaName: "pierre_docs",
   });
@@ -322,7 +324,7 @@ const queryPierreTradingSystem = async (query: string) => {
     });
 
     const results = await vectorStore.query({
-      vectors: [embedding],
+      queryVector: embedding,
       topK: 5,
       indexName: "pierre_trading_system",
     });
@@ -491,7 +493,8 @@ export const getProjectContextTool = createTool({
       })
     ),
   }),
-  async execute(inputData, { requestContext }) {
+  async execute(inputData, ctx) {
+    const requestContext = asAppContext(ctx.requestContext);
     const { projectId } = inputData;
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
@@ -548,7 +551,8 @@ export const getProjectActionsTool = createTool({
       })
     ),
   }),
-  async execute(inputData, { requestContext }) {
+  async execute(inputData, ctx) {
+    const requestContext = asAppContext(ctx.requestContext);
     const { projectId, status } = inputData;
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
@@ -605,7 +609,8 @@ export const createProjectActionTool = createTool({
       projectId: z.string(),
     }),
   }),
-  async execute(inputData, { requestContext }) {
+  async execute(inputData, ctx) {
+    const requestContext = asAppContext(ctx.requestContext);
     const { projectId, name, description, priority, dueDate } = inputData;
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
@@ -675,7 +680,8 @@ export const quickCreateActionTool = createTool({
       })
       .optional(),
   }),
-  async execute(inputData, { requestContext }) {
+  async execute(inputData, ctx) {
+    const requestContext = asAppContext(ctx.requestContext);
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
@@ -744,7 +750,8 @@ export const updateProjectStatusTool = createTool({
       nextActionDate: z.string().optional(),
     }),
   }),
-  async execute(inputData, { requestContext }) {
+  async execute(inputData, ctx) {
+    const requestContext = asAppContext(ctx.requestContext);
     const {
       projectId,
       status,
@@ -801,7 +808,8 @@ export const getProjectGoalsTool = createTool({
       })
     ),
   }),
-  async execute(inputData, { requestContext }) {
+  async execute(inputData, ctx) {
+    const requestContext = asAppContext(ctx.requestContext);
     const { projectId } = inputData;
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
@@ -868,7 +876,8 @@ export const getAllGoalsTool = createTool({
     ),
     total: z.number(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     console.log("🔍 [DEBUG] getAllGoalsTool execution started");
 
     const authToken = requestContext?.get("authToken");
@@ -935,7 +944,8 @@ export const getAllProjectsTool = createTool({
     total: z.number(),
     filtered: z.boolean().describe("True if results were filtered to ACTIVE projects only"),
   }),
-  async execute(inputData, { requestContext }) {
+  async execute(inputData, ctx) {
+    const requestContext = asAppContext(ctx.requestContext);
     console.log("🚀 [getAllProjectsTool] Starting execution");
 
     const authToken = requestContext?.get("authToken");
@@ -1062,9 +1072,10 @@ export const getMeetingTranscriptionsTool = createTool({
     ),
     total: z.number(),
   }),
-  execute: async (inputData, { requestContext }) => {
-    const { projectId, startDate, endDate, participants, meetingType, limit, truncateTranscript, maxTranscriptLength } =
-      inputData;
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
+    const { projectId, startDate, endDate, participants, meetingType, limit, truncateTranscript } = inputData;
+    const maxTranscriptLength = inputData.maxTranscriptLength ?? 5000;
 
     console.log("🔍 [getMeetingTranscriptions] Starting execution");
 
@@ -1160,7 +1171,8 @@ export const queryMeetingContextTool = createTool({
     ),
     aiContext: z.string().optional(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const { query, projectId, dateRange, topK } = inputData;
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
@@ -1291,7 +1303,8 @@ export const getMeetingInsightsTool = createTool({
       activeBlockers: z.number(),
     }),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const { projectId, timeframe, startDate, endDate, insightTypes } = inputData;
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
@@ -1403,7 +1416,8 @@ export const getCalendarEventsTool = createTool({
     calendarConnected: z.boolean(),
     error: z.string().optional(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const { timeframe, days, timeMin, timeMax } = inputData;
 
     console.log("📅 [getCalendarEvents] Starting execution");
@@ -1452,7 +1466,8 @@ export const getTodayCalendarEventsTool = createTool({
     })),
     date: z.string(),
   }),
-  execute: async (_inputData, { requestContext }) => {
+  execute: async (_inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
@@ -1494,7 +1509,8 @@ export const getUpcomingCalendarEventsTool = createTool({
     })),
     days: z.number(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
@@ -1541,7 +1557,8 @@ export const getCalendarEventsInRangeTool = createTool({
       provider: z.enum(['google', 'microsoft']).optional(),
     })),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
@@ -1585,7 +1602,8 @@ export const findAvailableTimeSlotsTool = createTool({
       summary: z.string(),
     })),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
@@ -1595,12 +1613,15 @@ export const findAvailableTimeSlotsTool = createTool({
     }
 
     // Get events for the specified date
+    const startHour = inputData.startHour ?? 9;
+    const endHour = inputData.endHour ?? 17;
+    const slotDurationMinutes = inputData.slotDurationMinutes ?? 30;
     const dateObj = new Date(inputData.date);
     const startOfDay = new Date(dateObj);
-    startOfDay.setHours(inputData.startHour, 0, 0, 0);
+    startOfDay.setHours(startHour, 0, 0, 0);
 
     const endOfDay = new Date(dateObj);
-    endOfDay.setHours(inputData.endHour, 0, 0, 0);
+    endOfDay.setHours(endHour, 0, 0, 0);
 
     const { data } = await authenticatedTrpcCall(
       "mastra.getCalendarEventsInRange",
@@ -1634,7 +1655,7 @@ export const findAvailableTimeSlotsTool = createTool({
 
       // Check gap before this event
       const gapMinutes = (eventStart.getTime() - currentTime.getTime()) / 60000;
-      if (gapMinutes >= inputData.slotDurationMinutes) {
+      if (gapMinutes >= slotDurationMinutes) {
         availableSlots.push({
           start: currentTime.toISOString(),
           end: eventStart.toISOString(),
@@ -1647,7 +1668,7 @@ export const findAvailableTimeSlotsTool = createTool({
 
     // Check gap after last event
     const finalGapMinutes = (endOfDay.getTime() - currentTime.getTime()) / 60000;
-    if (finalGapMinutes >= inputData.slotDurationMinutes) {
+    if (finalGapMinutes >= slotDurationMinutes) {
       availableSlots.push({
         start: currentTime.toISOString(),
         end: endOfDay.toISOString(),
@@ -1686,7 +1707,8 @@ export const createCalendarEventTool = createTool({
     provider: z.string(),
     error: z.string().optional(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     if (!inputData.userConfirmed) {
       return { event: { id: '', summary: '', htmlLink: '' }, provider: '', error: 'You must show the event details to the user and get their confirmation before creating. Set userConfirmed to true after receiving confirmation.' };
     }
@@ -1744,7 +1766,8 @@ export const checkCalendarConnectionTool = createTool({
     }),
     hasAnyConnected: z.boolean(),
   }),
-  execute: async (_inputData, { requestContext }) => {
+  execute: async (_inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
@@ -1782,7 +1805,8 @@ export const lookupContactByEmailTool = createTool({
       })
       .optional(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const { email } = inputData;
 
     console.log(`🔍 [lookupContactByEmail] Looking up contact for: ${email}`);
@@ -1842,7 +1866,8 @@ export const getWhatsAppContextTool = createTool({
       .optional(),
     error: z.string().optional(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const { phoneNumber, contactName, limit } = inputData;
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
@@ -1927,7 +1952,8 @@ export const createCrmContactTool = createTool({
     contactId: z.string().optional(),
     error: z.string().optional(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const { email, phone, firstName, lastName } = inputData;
 
     console.log(`💾 [createCrmContact] Saving contact: ${firstName} ${lastName} (${email}, ${phone})`);
@@ -2002,7 +2028,8 @@ export const searchCrmContactsTool = createTool({
     })),
     nextCursor: z.string().optional(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
@@ -2077,7 +2104,8 @@ export const getCrmContactTool = createTool({
       createdAt: z.string(),
     })),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
@@ -2123,7 +2151,8 @@ export const createFullCrmContactTool = createTool({
     lastName: z.string().nullable(),
     email: z.string().nullable(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
@@ -2176,7 +2205,8 @@ export const updateCrmContactTool = createTool({
     email: z.string().nullable(),
     updated: z.boolean(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
@@ -2222,7 +2252,8 @@ export const addCrmInteractionTool = createTool({
     subject: z.string().nullable(),
     createdAt: z.string(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
@@ -2271,7 +2302,8 @@ export const searchCrmOrganizationsTool = createTool({
     })),
     nextCursor: z.string().optional(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
@@ -2320,7 +2352,8 @@ export const createCrmOrganizationTool = createTool({
     name: z.string(),
     industry: z.string().nullable(),
   }),
-  execute: async (inputData, { requestContext }) => {
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
@@ -2386,7 +2419,7 @@ const queryExponentialDocs = async (query: string) => {
     });
 
     const results = await vectorStore.query({
-      vectors: [embedding],
+      queryVector: embedding,
       topK: 5,
       indexName: "exponential_knowledge",
     });

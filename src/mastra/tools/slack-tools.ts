@@ -540,7 +540,10 @@ export const getSlackMentionsTool = createTool({
     timeWindow: z.string(),
   }),
   execute: async (inputData, { requestContext }) => {
-    const { since, includeGroupMentions, limit, maxChannels } = inputData;
+    const since = inputData.since ?? "24h";
+    const includeGroupMentions = inputData.includeGroupMentions ?? true;
+    const limit = inputData.limit ?? 25;
+    const maxChannels = inputData.maxChannels ?? 20;
     console.log(`🔔 [getSlackMentions] Searching mentions (since: ${since}, limit: ${limit})`);
 
     const userId = resolveSlackUserId(requestContext);
@@ -708,7 +711,10 @@ export const getSlackUnreadsTool = createTool({
     timeWindow: z.string().nullable(),
   }),
   execute: async (inputData) => {
-    const { since, includeMessages, messagesPerChannel, maxChannels } = inputData;
+    const since = inputData.since ?? "24h";
+    const includeMessages = inputData.includeMessages ?? false;
+    const messagesPerChannel = inputData.messagesPerChannel ?? 3;
+    const maxChannels = inputData.maxChannels ?? 30;
     console.log(`📬 [getSlackUnreads] Checking unreads (since: ${since}, includeMessages: ${includeMessages})`);
 
     // Path 1: User token — use actual unread counts
