@@ -24,7 +24,25 @@ const logger = createLogger({
 
 const isDev = process.env.NODE_ENV !== 'production';
 
-const agents = { zoeAgent, weatherAgent, ashAgent, pierreAgent, projectManagerAgent, expoAgent, assistantAgent, platformAgent, one2bAgent, actionItemsAgent };
+// One2b agents are gated behind MASTRA_ONE2B_AGENTS_ENABLED so the merge
+// PR can land while one2b-internal-agent is still the live processor.
+// During cutover: migrate data + activate exponential webhooks first,
+// then flip this flag to retire one2b-internal-agent. Disabled agents
+// are not registered with Mastra at all (no /api/agents/* exposure,
+// no risk of accidental invocation).
+const oneTwoBAgentsEnabled = process.env.MASTRA_ONE2B_AGENTS_ENABLED === 'true';
+
+const agents = {
+  zoeAgent, weatherAgent, ashAgent, pierreAgent, projectManagerAgent,
+  expoAgent, assistantAgent, platformAgent, one2bAgent,
+  ...(oneTwoBAgentsEnabled ? { actionItemsAgent } : {}),
+};
+
+if (!oneTwoBAgentsEnabled) {
+  logger.info(
+    '🚧 [MAIN] One2b agents disabled — set MASTRA_ONE2B_AGENTS_ENABLED=true to activate',
+  );
+}
 
 // Fail fast if any agent's system prompt is missing or malformed.
 // Protects against the class of bug where instructions are assigned a

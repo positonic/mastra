@@ -6,6 +6,12 @@
 // and the **Name** action_items format). A workspace allowlist / route guard
 // will be wired up in Phase 3g — until then, restrict invocation at the
 // caller layer.
+//
+// Activation: registered in mastra/index.ts ONLY when
+// MASTRA_ONE2B_AGENTS_ENABLED=true. Default off so this PR can land while
+// one2b-internal-agent is still the live processor; flip the env var during
+// cutover after data migration + webhooks are in place. See
+// docs/one2b-cutover.md for the full sequence.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { anthropic } from '@ai-sdk/anthropic';
