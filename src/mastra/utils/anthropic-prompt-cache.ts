@@ -63,6 +63,8 @@ export const anthropicPromptCacheMiddleware = {
     );
 
     let tools = params.tools;
+    let providerOptions = (params as { providerOptions?: Record<string, unknown> })
+      .providerOptions;
     if (Array.isArray(tools) && tools.length > 0) {
       // Only defer custom tools when the agent ALSO registers an
       // Anthropic tool-search provider tool. Without one, deferred tools
@@ -81,10 +83,32 @@ export const anthropicPromptCacheMiddleware = {
             ? withAnthropicProviderOption(tool, 'deferLoading', true)
             : tool,
         );
+
+        // tool_search_bm25/regex requires the `advanced-tool-use-2025-11-20`
+        // beta header. As of @ai-sdk/anthropic 3.0.71 the provider does NOT
+        // auto-add this beta (compare web_search_*, which does). Without it
+        // Anthropic 400s the request server-side; Mastra surfaces no error
+        // and the client stream stalls until idle timeout.
+        // See: https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool
+        const existingTop = providerOptions ?? {};
+        const existingAnthropic =
+          (existingTop.anthropic as Record<string, unknown> | undefined) ?? {};
+        const existingBetas =
+          (existingAnthropic.anthropicBeta as string[] | undefined) ?? [];
+        const required = 'advanced-tool-use-2025-11-20';
+        if (!existingBetas.includes(required)) {
+          providerOptions = {
+            ...existingTop,
+            anthropic: {
+              ...existingAnthropic,
+              anthropicBeta: [...existingBetas, required],
+            },
+          };
+        }
       }
     }
 
-    return { ...params, prompt, tools };
+    return { ...params, prompt, tools, providerOptions };
   },
 };
 
