@@ -461,7 +461,15 @@ export const zoeAgent = new Agent({
   model: zoeModel,
   memory,
   defaultOptions: {
-    maxSteps: 30,
+    // Cap was 30. Reduced to 12 after observing ~60s response times on
+    // simple turns: the model can take many internal steps even for a "hi",
+    // and each step is a full Anthropic round-trip on a ~65K prompt. 12
+    // still leaves headroom for legitimate multi-tool flows (create
+    // project + N actions + schedule + notify Slack ≈ 7-10 calls). If we
+    // see `lastStepFinishReason: 'tool-calls'` regularly in
+    // [chat/stream Stream complete] logs, the cap is biting and should be
+    // raised — that signal is already captured per-request.
+    maxSteps: 12,
     modelSettings: {
       temperature: 0.7,
     },

@@ -300,7 +300,10 @@ export const assistantAgent = new Agent({
   model: assistantModel,
   memory,
   defaultOptions: {
-    maxSteps: 30,
+    // See zoe-agent.ts for the rationale. Cap was 30, reduced to 12 to
+    // bound worst-case latency on simple turns; raise if we see frequent
+    // `finishReason: 'tool-calls'` in chat/stream "Stream complete" logs.
+    maxSteps: 12,
     modelSettings: {
       temperature: 0.7,
     },
