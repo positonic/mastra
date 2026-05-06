@@ -1,24 +1,33 @@
 import { wrapLanguageModel } from 'ai';
 
 /**
- * Applies Anthropic ephemeral prompt-cache breakpoints on every request.
+ * Applies Anthropic prompt-cache breakpoints AND defers loading of custom
+ * tool schemas on every request.
  *
- * Anthropic caches the request prefix up to each `cache_control` marker.
- * In canonical request order Anthropic processes tools → system → messages,
- * so a single marker on system *should* cover tools too — but in practice
- * we observed cache hit rates of only ~37% on Zoe (Sonnet 4.5), with tools
- * (~25K tokens, 63 schemas) sitting outside the cached prefix and
- * `cache_creation_input_tokens` reported as 0. To force tools into the
- * cache, we also tag the last tool with cache_control, which creates a
- * second breakpoint that explicitly covers the full tool array.
+ * Two independent optimisations:
  *
- * Anthropic supports up to 4 cache_control breakpoints per request; we use
- * 2 here (tools + system), leaving headroom.
+ * 1. **`cacheControl: ephemeral` on every system message.** Mastra's memory
+ *    layer injects additional system messages (observational memory,
+ *    working memory) after the initial agent instructions, so we tag all of
+ *    them rather than only the first. Anthropic supports up to 4 cache
+ *    breakpoints per request — system messages are typically far fewer.
+ *
+ * 2. **`deferLoading: true` on every custom (function) tool.** Anthropic's
+ *    deferred-loading feature keeps tool definitions out of the prompt
+ *    until the model retrieves them via the `tool_search_tool_bm25` (or
+ *    `_regex`) provider tool. With ~63 tools (~25K tokens of schemas) on
+ *    Zoe, deferring drops a "hi" turn from ~80K to ~15-20K input tokens.
+ *    Provider tools (`anthropic.tool_search_bm25_*`,
+ *    `anthropic.web_search_*`, etc.) are NOT deferred — `tool.type ===
+ *    "function"` is the discriminator. The agent must include
+ *    `anthropic.tools.toolSearchBm25_20251119()` in its tools so the model
+ *    can discover deferred tools at runtime.
  *
  * Implemented as middleware (rather than stashing message objects in
- * Agent.instructions) so that Agent.instructions remains a plain string —
- * keeping agent listing, similarity-based routing, and every other
- * consumer of the field working correctly.
+ * Agent.instructions or per-tool overrides) so that Agent.instructions
+ * remains a plain string — keeping agent listing, similarity-based
+ * routing, and every other consumer of the field working correctly — and
+ * so that no tool definition file needs editing.
  */
 export const anthropicPromptCacheMiddleware = {
   specificationVersion: 'v3' as const,
@@ -27,8 +36,10 @@ export const anthropicPromptCacheMiddleware = {
   }: {
     params: { prompt: readonly unknown[]; tools?: readonly unknown[] };
   }) => {
-    const withAnthropicCacheControl = (
+    const withAnthropicProviderOption = <K extends string, V>(
       msg: Record<string, unknown>,
+      key: K,
+      value: V,
     ): Record<string, unknown> => {
       const existing = (msg.providerOptions as Record<string, unknown> | undefined) ?? {};
       const existingAnthropic =
@@ -39,29 +50,38 @@ export const anthropicPromptCacheMiddleware = {
           ...existing,
           anthropic: {
             ...existingAnthropic,
-            cacheControl: { type: 'ephemeral' as const },
+            [key]: value,
           },
         },
       };
     };
 
-    // Tag every system message. Mastra's memory layer can inject additional
-    // system messages (observational memory, working memory) after the
-    // initial instructions, so we mark all of them rather than only the
-    // first.
     const prompt = (params.prompt as Array<Record<string, unknown>>).map((msg) =>
-      (msg as { role?: string }).role === 'system' ? withAnthropicCacheControl(msg) : msg,
+      (msg as { role?: string }).role === 'system'
+        ? withAnthropicProviderOption(msg, 'cacheControl', { type: 'ephemeral' as const })
+        : msg,
     );
 
-    // Tag the LAST tool to create a cache breakpoint that covers the full
-    // tool array. Marking only the last tool uses one breakpoint regardless
-    // of tool count.
     let tools = params.tools;
     if (Array.isArray(tools) && tools.length > 0) {
-      const next = (tools as Array<Record<string, unknown>>).slice();
-      const lastIdx = next.length - 1;
-      next[lastIdx] = withAnthropicCacheControl(next[lastIdx]!);
-      tools = next;
+      // Only defer custom tools when the agent ALSO registers an
+      // Anthropic tool-search provider tool. Without one, deferred tools
+      // are unfindable and the agent breaks. This makes the middleware
+      // safe to apply to agents with no tool-search wiring.
+      const hasToolSearch = (tools as Array<Record<string, unknown>>).some(
+        (t) =>
+          (t as { type?: string }).type === 'provider' &&
+          typeof (t as { id?: string }).id === 'string' &&
+          ((t as { id: string }).id.includes('tool_search_bm25') ||
+            (t as { id: string }).id.includes('tool_search_regex')),
+      );
+      if (hasToolSearch) {
+        tools = (tools as Array<Record<string, unknown>>).map((tool) =>
+          (tool as { type?: string }).type === 'function'
+            ? withAnthropicProviderOption(tool, 'deferLoading', true)
+            : tool,
+        );
+      }
     }
 
     return { ...params, prompt, tools };

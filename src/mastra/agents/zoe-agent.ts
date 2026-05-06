@@ -542,6 +542,13 @@ export const zoeAgent = new Agent({
     // Web search & fetch (Anthropic provider tools)
     webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),
+    // Tool search — discovers deferred custom tools at runtime. The
+    // middleware in utils/anthropic-prompt-cache.ts marks every custom
+    // tool with `deferLoading: true` whenever this provider tool is
+    // present, so their schemas don't ship in the prompt. The model uses
+    // BM25 search to find the right tool for the user's request and then
+    // invokes it normally.
+    toolSearch: anthropic.tools.toolSearchBm25_20251119(),
   },
 });
 

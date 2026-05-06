@@ -113,5 +113,11 @@ export const actionItemsAgent = new Agent({
     parseActionItemsTool,
     getActionItemsTool,
     updateActionItemTool,
+    // Tool search — discovers deferred custom tools at runtime. The
+    // middleware in utils/anthropic-prompt-cache.ts marks every custom
+    // tool with `deferLoading: true` whenever this provider tool is
+    // present. With only 3 tools the saved schema bytes are modest, but
+    // we add it for consistency with the other Anthropic-backed agents.
+    toolSearch: anthropic.tools.toolSearchBm25_20251119(),
   },
 });
