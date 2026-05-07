@@ -56,11 +56,23 @@ export const anthropicPromptCacheMiddleware = {
       };
     };
 
-    const prompt = (params.prompt as Array<Record<string, unknown>>).map((msg) =>
-      (msg as { role?: string }).role === 'system'
-        ? withAnthropicProviderOption(msg, 'cacheControl', { type: 'ephemeral' as const })
-        : msg,
-    );
+    // Tag ONLY the first system message. Mastra's memory layer
+    // (@mastra/core: messageList.addSystem(..., 'memory')) injects
+    // additional system messages every turn with semantic-recall results
+    // — those are volatile per turn. If we mark them with cache_control,
+    // the cached prefix includes volatile content and busts on every
+    // turn (observed in production: cache_creation = 11,815 on every
+    // turn, cache_read = 0). Marking only the first system message
+    // (agent SOUL — static const string) keeps the cached prefix stable.
+    // Memory-injected system messages still ship in the prompt; they
+    // just sit after the cache breakpoint and don't affect matching.
+    let firstSystemTagged = false;
+    const prompt = (params.prompt as Array<Record<string, unknown>>).map((msg) => {
+      if ((msg as { role?: string }).role !== 'system') return msg;
+      if (firstSystemTagged) return msg;
+      firstSystemTagged = true;
+      return withAnthropicProviderOption(msg, 'cacheControl', { type: 'ephemeral' as const });
+    });
 
     let tools = params.tools;
     let providerOptions = (params as { providerOptions?: Record<string, unknown> })
