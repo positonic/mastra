@@ -4,12 +4,13 @@ import { Agent } from '@mastra/core/agent';
 
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
 import { SECURITY_POLICY } from './security-policy.js';
-// Export Zoe agent
-export { zoeAgent } from './zoe-agent.js';
+// Export Zoe agent (and Haiku 4.5 tier variant for tiered routing)
+export { zoeAgent, zoeAgentHaiku } from './zoe-agent.js';
 // Export Expo agent (Exponential app knowledge)
 export { expoAgent } from './expo-agent.js';
-// Export Assistant agent (blank canvas for user-customized personalities)
-export { assistantAgent } from './assistant-agent.js';
+// Export Assistant agent (blank canvas for user-customized personalities) +
+// its Haiku 4.5 tier variant
+export { assistantAgent, assistantAgentHaiku } from './assistant-agent.js';
 // Export Platform agent (FtC platform navigation assistant)
 export { platformAgent } from './platform-agent.js';
 // Export One2b agent (CRM onboarding via voice and text)

@@ -453,28 +453,9 @@ You're the friend who remembers what they said they wanted and gently asks "hey,
 `;
 
 const zoeModel = withAnthropicPromptCache(anthropic('claude-sonnet-4-5-20250929'));
+const zoeHaikuModel = withAnthropicPromptCache(anthropic('claude-haiku-4-5-20251001'));
 
-export const zoeAgent = new Agent({
-  id: 'zoeAgent',
-  name: 'Zoe',
-  instructions: SOUL,
-  model: zoeModel,
-  memory,
-  defaultOptions: {
-    // Cap was 30. Reduced to 12 after observing ~60s response times on
-    // simple turns: the model can take many internal steps even for a "hi",
-    // and each step is a full Anthropic round-trip on a ~65K prompt. 12
-    // still leaves headroom for legitimate multi-tool flows (create
-    // project + N actions + schedule + notify Slack ≈ 7-10 calls). If we
-    // see `lastStepFinishReason: 'tool-calls'` regularly in
-    // [chat/stream Stream complete] logs, the cap is biting and should be
-    // raised — that signal is already captured per-request.
-    maxSteps: 12,
-    modelSettings: {
-      temperature: 0.7,
-    },
-  },
-  tools: {
+const zoeTools = {
     // Exponential tools
     getProjectContextTool,
     getProjectActionsTool,
@@ -557,7 +538,48 @@ export const zoeAgent = new Agent({
     // BM25 search to find the right tool for the user's request and then
     // invokes it normally.
     toolSearch: anthropic.tools.toolSearchBm25_20251119(),
+};
+
+// Cap was 30. Reduced to 12 after observing ~60s response times on
+// simple turns: the model can take many internal steps even for a "hi",
+// and each step is a full Anthropic round-trip on a ~65K prompt. 12
+// still leaves headroom for legitimate multi-tool flows (create
+// project + N actions + schedule + notify Slack ≈ 7-10 calls). If we
+// see `lastStepFinishReason: 'tool-calls'` regularly in
+// [chat/stream Stream complete] logs, the cap is biting and should be
+// raised — that signal is already captured per-request.
+const zoeDefaultOptions = {
+  maxSteps: 12,
+  modelSettings: {
+    temperature: 0.7,
   },
+};
+
+export const zoeAgent = new Agent({
+  id: 'zoeAgent',
+  name: 'Zoe',
+  instructions: SOUL,
+  model: zoeModel,
+  memory,
+  defaultOptions: zoeDefaultOptions,
+  tools: zoeTools,
+});
+
+// Haiku 4.5 variant of Zoe. Identical SOUL prompt + tools + memory + cap so
+// the cache prefix bytes match the Sonnet variant's shape — Anthropic caches
+// are model-scoped so they're separate caches, but identical prefix shape
+// means both tiers cache reliably. Routed to from chat/stream by
+// pickModelTier when the turn looks trivial (greetings, short queries,
+// obvious lookups). Sub-2s first-token latency on simple turns; ~12× cheaper
+// than Sonnet.
+export const zoeAgentHaiku = new Agent({
+  id: 'zoeAgentHaiku',
+  name: 'Zoe',
+  instructions: SOUL,
+  model: zoeHaikuModel,
+  memory,
+  defaultOptions: zoeDefaultOptions,
+  tools: zoeTools,
 });
 
 // For reference: tool usage patterns

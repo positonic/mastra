@@ -1,6 +1,6 @@
 import { Mastra } from '@mastra/core/mastra';
 import { MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-context';
-import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent, zoeAgent, expoAgent, assistantAgent, platformAgent, one2bAgent, actionItemsAgent } from './agents';
+import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent, zoeAgent, zoeAgentHaiku, expoAgent, assistantAgent, assistantAgentHaiku, platformAgent, one2bAgent, actionItemsAgent } from './agents';
 import { memory } from './memory/index.js';
 import { createLogger } from './utils/logger.js';
 import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js';
@@ -33,8 +33,8 @@ const isDev = process.env.NODE_ENV !== 'production';
 const oneTwoBAgentsEnabled = process.env.MASTRA_ONE2B_AGENTS_ENABLED === 'true';
 
 const agents = {
-  zoeAgent, weatherAgent, ashAgent, pierreAgent, projectManagerAgent,
-  expoAgent, assistantAgent, platformAgent, one2bAgent,
+  zoeAgent, zoeAgentHaiku, weatherAgent, ashAgent, pierreAgent, projectManagerAgent,
+  expoAgent, assistantAgent, assistantAgentHaiku, platformAgent, one2bAgent,
   ...(oneTwoBAgentsEnabled ? { actionItemsAgent } : {}),
 };
 

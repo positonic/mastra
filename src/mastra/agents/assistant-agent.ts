@@ -292,23 +292,19 @@ When listing actions, group by project and sort by due date.
 `;
 
 const assistantModel = withAnthropicPromptCache(anthropic('claude-sonnet-4-5-20250929'));
+const assistantHaikuModel = withAnthropicPromptCache(anthropic('claude-haiku-4-5-20251001'));
 
-export const assistantAgent = new Agent({
-  id: 'assistantAgent',
-  name: 'Assistant',
-  instructions: INSTRUCTIONS,
-  model: assistantModel,
-  memory,
-  defaultOptions: {
-    // See zoe-agent.ts for the rationale. Cap was 30, reduced to 12 to
-    // bound worst-case latency on simple turns; raise if we see frequent
-    // `finishReason: 'tool-calls'` in chat/stream "Stream complete" logs.
-    maxSteps: 12,
-    modelSettings: {
-      temperature: 0.7,
-    },
+// See zoe-agent.ts for the rationale. Cap was 30, reduced to 12 to
+// bound worst-case latency on simple turns; raise if we see frequent
+// `finishReason: 'tool-calls'` in chat/stream "Stream complete" logs.
+const assistantDefaultOptions = {
+  maxSteps: 12,
+  modelSettings: {
+    temperature: 0.7,
   },
-  tools: {
+};
+
+const assistantTools = {
     // Exponential tools
     getProjectContextTool,
     getProjectActionsTool,
@@ -387,5 +383,27 @@ export const assistantAgent = new Agent({
     // BM25 search to find the right tool for the user's request and then
     // invokes it normally.
     toolSearch: anthropic.tools.toolSearchBm25_20251119(),
-  },
+};
+
+export const assistantAgent = new Agent({
+  id: 'assistantAgent',
+  name: 'Assistant',
+  instructions: INSTRUCTIONS,
+  model: assistantModel,
+  memory,
+  defaultOptions: assistantDefaultOptions,
+  tools: assistantTools,
+});
+
+// Haiku 4.5 variant of Assistant. Identical instructions + tools + memory +
+// cap so the cache prefix shape matches the Sonnet variant. Used by
+// pickModelTier for trivial turns. See zoe-agent.ts for the rationale.
+export const assistantAgentHaiku = new Agent({
+  id: 'assistantAgentHaiku',
+  name: 'Assistant',
+  instructions: INSTRUCTIONS,
+  model: assistantHaikuModel,
+  memory,
+  defaultOptions: assistantDefaultOptions,
+  tools: assistantTools,
 });
