@@ -3,6 +3,9 @@ import { verifyAndExtractUserId } from './gateway-shared.js';
 
 const TODO_APP_BASE_URL = process.env.TODO_APP_BASE_URL || 'http://localhost:3000';
 const WHATSAPP_GATEWAY_SECRET = process.env.WHATSAPP_GATEWAY_SECRET;
+const GATEWAY_SECRET = process.env.GATEWAY_SECRET ?? WHATSAPP_GATEWAY_SECRET;
+
+export type TokenKind = 'whatsapp-gateway' | 'telegram-gateway';
 
 export interface AuthenticatedFetchOptions {
   url: string;
@@ -11,6 +14,13 @@ export interface AuthenticatedFetchOptions {
   authToken: string;
   sessionId?: string;
   userId?: string;
+  /**
+   * Which refresh endpoint to call on 401. WhatsApp uses sessionId-based
+   * refresh (per-session DB record). Telegram uses userId-based refresh
+   * (no sessionId required). Defaults to 'whatsapp-gateway' for backwards
+   * compatibility — pre-existing callers all passed sessionId.
+   */
+  tokenKind?: TokenKind;
 }
 
 export interface AuthenticatedFetchResult<T> {
@@ -22,7 +32,7 @@ export interface AuthenticatedFetchResult<T> {
  * Attempt to refresh an auth token via the WhatsApp gateway refresh endpoint.
  * Returns the new token or null if refresh fails.
  */
-async function refreshToken(sessionId: string, expectedUserId?: string): Promise<string | null> {
+async function refreshWhatsappToken(sessionId: string, expectedUserId?: string): Promise<string | null> {
   if (!WHATSAPP_GATEWAY_SECRET) {
     console.warn('[authenticated-fetch] Cannot refresh token: WHATSAPP_GATEWAY_SECRET not configured');
     return null;
@@ -34,7 +44,7 @@ async function refreshToken(sessionId: string, expectedUserId?: string): Promise
   }
 
   try {
-    console.log(`[authenticated-fetch] Attempting token refresh for session ${sessionId}`);
+    console.log(`[authenticated-fetch] Attempting WhatsApp token refresh for session ${sessionId}`);
 
     const response = await fetch(`${TODO_APP_BASE_URL}/api/whatsapp-gateway/refresh-token`, {
       method: 'POST',
@@ -47,13 +57,12 @@ async function refreshToken(sessionId: string, expectedUserId?: string): Promise
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[authenticated-fetch] Token refresh failed: ${response.status} - ${errorText}`);
+      console.error(`[authenticated-fetch] WhatsApp token refresh failed: ${response.status} - ${errorText}`);
       return null;
     }
 
     const data = (await response.json()) as { token: string; expiresAt: string };
 
-    // Verify the refreshed token belongs to the expected user (prevents identity leak)
     if (expectedUserId) {
       try {
         const refreshedUserId = verifyAndExtractUserId(data.token, { audience: 'whatsapp-gateway' });
@@ -67,10 +76,66 @@ async function refreshToken(sessionId: string, expectedUserId?: string): Promise
       }
     }
 
-    console.log(`[authenticated-fetch] Token refreshed successfully, expires at ${data.expiresAt}`);
+    console.log(`[authenticated-fetch] WhatsApp token refreshed successfully, expires at ${data.expiresAt}`);
     return data.token;
   } catch (error) {
-    console.error('[authenticated-fetch] Token refresh error:', error);
+    console.error('[authenticated-fetch] WhatsApp token refresh error:', error);
+    return null;
+  }
+}
+
+/**
+ * Attempt to refresh a Telegram gateway auth token.
+ * Telegram refresh takes only userId — there's no per-session DB record,
+ * so it works even when a stored token (e.g. in telegram-mappings.json)
+ * has expired and we have no sessionId to pass.
+ */
+async function refreshTelegramToken(userId: string): Promise<string | null> {
+  if (!GATEWAY_SECRET) {
+    console.warn('[authenticated-fetch] Cannot refresh telegram token: GATEWAY_SECRET not configured');
+    return null;
+  }
+
+  if (!userId) {
+    console.warn('[authenticated-fetch] Cannot refresh telegram token: No userId provided');
+    return null;
+  }
+
+  try {
+    console.log(`[authenticated-fetch] Attempting Telegram token refresh for user ${userId}`);
+
+    const response = await fetch(`${TODO_APP_BASE_URL}/api/telegram-gateway/refresh-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Gateway-Secret': GATEWAY_SECRET,
+      },
+      body: JSON.stringify({ userId }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[authenticated-fetch] Telegram token refresh failed: ${response.status} - ${errorText}`);
+      return null;
+    }
+
+    const data = (await response.json()) as { token: string; expiresAt: string };
+
+    try {
+      const refreshedUserId = verifyAndExtractUserId(data.token, { audience: 'telegram-gateway' });
+      if (refreshedUserId !== userId) {
+        console.error(`[authenticated-fetch] SECURITY: Telegram refresh returned userId ${refreshedUserId} but expected ${userId}. Rejecting.`);
+        return null;
+      }
+    } catch (verifyError) {
+      console.error('[authenticated-fetch] SECURITY: Failed to verify refreshed Telegram token:', verifyError);
+      return null;
+    }
+
+    console.log(`[authenticated-fetch] Telegram token refreshed successfully, expires at ${data.expiresAt}`);
+    return data.token;
+  } catch (error) {
+    console.error('[authenticated-fetch] Telegram token refresh error:', error);
     return null;
   }
 }
@@ -85,7 +150,7 @@ async function refreshToken(sessionId: string, expectedUserId?: string): Promise
 export async function authenticatedFetch<T>(
   options: AuthenticatedFetchOptions
 ): Promise<AuthenticatedFetchResult<T>> {
-  const { url, method = 'GET', body, authToken, sessionId, userId } = options;
+  const { url, method = 'GET', body, authToken, sessionId, userId, tokenKind = 'whatsapp-gateway' } = options;
 
   const makeRequest = async (token: string): Promise<Response> => {
     const headers: Record<string, string> = {
@@ -106,14 +171,25 @@ export async function authenticatedFetch<T>(
   // First attempt
   let response = await makeRequest(authToken);
 
-  // Check for 401 and attempt refresh
-  if (response.status === 401 && sessionId) {
-    console.log(`[authenticated-fetch] Got 401 from ${url}, attempting token refresh...`);
+  // Refresh routing: telegram needs only userId, whatsapp needs sessionId.
+  // Pre-existing whatsapp callers (gateway-shared encryptedAuthToken flows)
+  // continue to work because tokenKind defaults to 'whatsapp-gateway'.
+  const canRefresh =
+    response.status === 401 &&
+    (
+      (tokenKind === 'whatsapp-gateway' && Boolean(sessionId)) ||
+      (tokenKind === 'telegram-gateway' && Boolean(userId))
+    );
 
-    const newToken = await refreshToken(sessionId, userId);
+  if (canRefresh) {
+    console.log(`[authenticated-fetch] Got 401 from ${url}, attempting ${tokenKind} token refresh...`);
+
+    const newToken =
+      tokenKind === 'telegram-gateway'
+        ? await refreshTelegramToken(userId!)
+        : await refreshWhatsappToken(sessionId!, userId);
 
     if (newToken) {
-      // Retry with new token
       console.log(`[authenticated-fetch] Retrying request with refreshed token...`);
       response = await makeRequest(newToken);
 
@@ -122,7 +198,6 @@ export async function authenticatedFetch<T>(
         return { data, refreshedToken: newToken };
       }
 
-      // Log the actual error for debugging
       const retryErrorText = await response.text().catch(() => 'Could not read response body');
       console.error(`[authenticated-fetch] Retry failed with status ${response.status}: ${retryErrorText}`);
     }
@@ -160,6 +235,7 @@ export async function authenticatedTrpcCall<T = any>(
     authToken: string;
     sessionId?: string;
     userId?: string;
+    tokenKind?: TokenKind;
   }
 ): Promise<AuthenticatedFetchResult<T>> {
   const url = `${TODO_APP_BASE_URL}/api/trpc/${endpoint}`;
@@ -197,6 +273,7 @@ export async function authenticatedTrpcQuery<T = any>(
     authToken: string;
     sessionId?: string;
     userId?: string;
+    tokenKind?: TokenKind;
   }
 ): Promise<AuthenticatedFetchResult<T>> {
   const url = `${TODO_APP_BASE_URL}/api/trpc/${endpoint}`;

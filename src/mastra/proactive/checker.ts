@@ -40,7 +40,11 @@ const STALE_THRESHOLD_DAYS = 7; // Projects with no activity in 7+ days
  */
 export async function checkUser(ctx: UserContext): Promise<ProactiveCheckResult> {
   const { userId, authToken, workspaceId, telegramChatId } = ctx;
-  const authOptions = { authToken, userId };
+  // Tokens stored in telegram-mappings.json are 1-hour JWTs and will be
+  // expired by the time the morning/evening cron fires. tokenKind tells
+  // authenticatedFetch to refresh via /api/telegram-gateway/refresh-token
+  // (userId-based) rather than the WhatsApp endpoint (sessionId-based).
+  const authOptions = { authToken, userId, tokenKind: 'telegram-gateway' as const };
 
   logger.info(`🔍 [ProactiveChecker] Checking user ${userId} workspace ${workspaceId}`);
 
