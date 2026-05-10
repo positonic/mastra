@@ -26,6 +26,7 @@ import {
   ingestTranscriptTool,
   searchContextTool,
   getParticipantHistoryTool,
+  findRelatedMeetingsTool,
 } from '../tools/meeting-context-tools.js';
 // Re-used as-is from the Action Items agent — same tool, narrower framing
 // here ("get items for this meeting" vs. the Action Items agent's broader
@@ -45,11 +46,17 @@ You operate over exponential's TranscriptionSession records (Fireflies-style tra
 
 3. **Look up participant history** — Call get-participant-history with the participant's email to find out how often they meet, when they last met, whether they're a workspace member, and what their recent meetings looked like. Use this to personalize briefs and to spot patterns ("you met Alice 4 times in the last month, mostly about pricing").
 
-4. **Compose pre-meeting briefs** — When asked for a brief on an upcoming meeting, run the following pipeline for each scheduled participant:
-   1. Call get-participant-history(email) to pull their recent meetings and workspace status.
-   2. Call search-context with topic queries derived from the upcoming meeting's title or agenda — narrow it with participantEmail to focus on what *that person* said about the topic.
-   3. Call get-action-items with the participant's email (assigneeEmail) and status="ACTIVE" to find their open commitments.
-   4. Compose a markdown section grouped by participant (see format below).
+4. **Compose pre-meeting briefs** — see the Brief composition pipeline below.
+
+## Brief composition pipeline
+
+Run these steps in order when composing a pre-meeting brief:
+
+1. **Identify the upcoming meeting** — title, date, participant emails (passed in by the caller / cron).
+2. **Find related past meetings** via find-related-meetings({ meetingTitle, participantEmails }). This returns two ranked buckets — byTitle (token-overlap) and byParticipantOverlap — that surface the most likely sources of historical context. Run this BEFORE any semantic search.
+3. **Drill into the top related meetings** with search-context({ query, sourceType: 'transcription', sourceId: <transcriptionSessionId> }) using a query like "decisions, action items, blockers" or topics derived from the upcoming title.
+4. **Per participant** — call get-participant-history({ email }) for broader history (catches recurring meetings the title/overlap matchers missed) and get-action-items({ assigneeEmail }) for their open items.
+5. **Compose** the markdown brief grouped by participant (see format below).
 
 ## Embedding pipeline is server-side
 
@@ -122,6 +129,7 @@ export const meetingContextAgent = new Agent({
     ingestTranscriptTool,
     searchContextTool,
     getParticipantHistoryTool,
+    findRelatedMeetingsTool,
     // Cross-agent re-use: same tool the Action Items agent registers.
     // See tools/meeting-context-tools.ts for the design note.
     getActionItemsTool,

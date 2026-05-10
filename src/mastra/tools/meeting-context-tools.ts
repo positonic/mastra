@@ -316,3 +316,151 @@ export const getParticipantHistoryTool = createTool({
 // directly (see meeting-context-agent.ts). Keeping this comment as a
 // breadcrumb for future maintainers — there's no fourth tool object in
 // this file by design.
+
+// ─── Tool E: Find Related Meetings ────────────────────────────────
+
+interface RelatedMeetingByTitle {
+  transcriptionSessionId: string;
+  title: string | null;
+  meetingDate: string | Date | null;
+  summary: string | null;
+  matchedTokens: string[];
+  titleScore: number;
+}
+
+interface RelatedMeetingByParticipantOverlap {
+  transcriptionSessionId: string;
+  title: string | null;
+  meetingDate: string | Date | null;
+  summary: string | null;
+  matchedEmails: string[];
+  overlapRatio: number;
+}
+
+interface FindRelatedMeetingsResponse {
+  byTitle: RelatedMeetingByTitle[];
+  byParticipantOverlap: RelatedMeetingByParticipantOverlap[];
+}
+
+export const findRelatedMeetingsTool = createTool({
+  id: "find-related-meetings",
+  description:
+    "Find past meetings related to an upcoming meeting via deterministic title token matching and participant overlap. Returns two ranked buckets — byTitle (meetings whose titles share substantive tokens with the upcoming title) and byParticipantOverlap (meetings whose attendee set overlaps with the upcoming participants). Call this BEFORE search-context when composing pre-meeting briefs to identify the most likely sources of relevant historical context.",
+  inputSchema: z.object({
+    meetingTitle: z
+      .string()
+      .min(1)
+      .describe("Title of the upcoming meeting to match against past titles"),
+    participantEmails: z
+      .array(z.string().email())
+      .default([])
+      .describe(
+        "Attendee emails for the upcoming meeting; used for participant-overlap scoring",
+      ),
+    matchThreshold: z
+      .number()
+      .min(0)
+      .max(1)
+      .default(0.5)
+      .describe("Minimum score (0-1) required to include a match"),
+    lookbackDays: z
+      .number()
+      .min(1)
+      .max(365)
+      .default(90)
+      .describe("How many days back to search for related meetings"),
+    limit: z
+      .number()
+      .min(1)
+      .max(50)
+      .default(10)
+      .describe("Maximum number of results per bucket"),
+  }),
+  outputSchema: z.object({
+    byTitle: z.array(
+      z.object({
+        transcriptionSessionId: z.string(),
+        title: z.string().nullable(),
+        meetingDate: z.string().nullable(),
+        summary: z.string().nullable(),
+        matchedTokens: z.array(z.string()),
+        titleScore: z.number(),
+      }),
+    ),
+    byParticipantOverlap: z.array(
+      z.object({
+        transcriptionSessionId: z.string(),
+        title: z.string().nullable(),
+        meetingDate: z.string().nullable(),
+        summary: z.string().nullable(),
+        matchedEmails: z.array(z.string()),
+        overlapRatio: z.number(),
+      }),
+    ),
+  }),
+  execute: async (inputData, ctx) => {
+    const requestContext = asAppContext(ctx.requestContext);
+    const authToken = requestContext?.get("authToken");
+    const sessionId = requestContext?.get("whatsappSession");
+    const userId = requestContext?.get("userId");
+    const workspaceId = requestContext?.get("workspaceId");
+
+    if (!authToken) {
+      throw new Error("No authentication token available in request context");
+    }
+    if (!workspaceId) {
+      throw new Error("No workspaceId available in request context");
+    }
+
+    const { data } = await authenticatedTrpcCall<FindRelatedMeetingsResponse>(
+      "transcription.findRelated",
+      {
+        workspaceId,
+        meetingTitle: inputData.meetingTitle,
+        participantEmails: inputData.participantEmails ?? [],
+        matchThreshold: inputData.matchThreshold,
+        lookbackDays: inputData.lookbackDays,
+        limit: inputData.limit,
+      },
+      { authToken, sessionId, userId },
+    );
+
+    const byTitleRaw = Array.isArray(data?.byTitle) ? data.byTitle : [];
+    const byOverlapRaw = Array.isArray(data?.byParticipantOverlap)
+      ? data.byParticipantOverlap
+      : [];
+
+    return {
+      byTitle: byTitleRaw.map((m) => {
+        const meetingDate: string | null =
+          m.meetingDate instanceof Date
+            ? m.meetingDate.toISOString()
+            : ((m.meetingDate as string | null | undefined) ?? null);
+
+        return {
+          transcriptionSessionId: m.transcriptionSessionId,
+          title: m.title ?? null,
+          meetingDate,
+          summary: m.summary ?? null,
+          matchedTokens: Array.isArray(m.matchedTokens) ? m.matchedTokens : [],
+          titleScore: Number(m.titleScore ?? 0),
+        };
+      }),
+      byParticipantOverlap: byOverlapRaw.map((m) => {
+        const meetingDate: string | null =
+          m.meetingDate instanceof Date
+            ? m.meetingDate.toISOString()
+            : ((m.meetingDate as string | null | undefined) ?? null);
+
+        return {
+          transcriptionSessionId: m.transcriptionSessionId,
+          title: m.title ?? null,
+          meetingDate,
+          summary: m.summary ?? null,
+          matchedEmails: Array.isArray(m.matchedEmails) ? m.matchedEmails : [],
+          overlapRatio: Number(m.overlapRatio ?? 0),
+        };
+      }),
+    };
+  },
+});
