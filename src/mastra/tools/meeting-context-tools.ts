@@ -125,7 +125,7 @@ export const searchContextTool = createTool({
       .email()
       .optional()
       .describe(
-        "Filter results to chunks where this email was the speaker. Applied client-side until the tRPC procedure exposes a participant filter.",
+        "Filter results to chunks from meetings this email attended. Note: this is a 'transcript-attended' filter (passes if the participant attended the meeting), not a 'speaker-spoke' filter (chunks where they specifically spoke).",
       ),
     sourceType: z
       .enum(["transcription", "document", "resource"])
@@ -162,41 +162,26 @@ export const searchContextTool = createTool({
     // rest of the function can rely on a concrete number.
     const requestedLimit = inputData.limit ?? 10;
 
-    // TEMPORARY WORKAROUND: knowledgeChunk.semanticSearch does not yet
-    // accept a participantEmail filter. To honor the agent's requested
-    // filter, we over-fetch (4x the requested limit, capped at 50) and
-    // then filter client-side by speakerEmail. Once the tRPC procedure
-    // gains native participant filtering, drop this block and pass
-    // participantEmail straight through.
-    const wantsParticipantFilter = Boolean(inputData.participantEmail);
-    const fetchLimit = wantsParticipantFilter
-      ? Math.min(requestedLimit * 4, 50)
-      : requestedLimit;
-
+    // Note: the server-side participantEmail filter is "transcript-attended"
+    // (passes chunks from meetings the participant attended via a workspace-
+    // scoped EXISTS join), not "speaker-spoke" (chunks where they specifically
+    // spoke). This matches the documented semantic of
+    // knowledgeChunk.semanticSearch.
     const { data } = await authenticatedTrpcCall<SemanticSearchResult[]>(
       "knowledgeChunk.semanticSearch",
       {
         query: inputData.query,
         workspaceId,
         sourceType: inputData.sourceType,
-        limit: fetchLimit,
+        participantEmail: inputData.participantEmail,
+        limit: requestedLimit,
       },
       { authToken, sessionId, userId },
     );
 
     const records = Array.isArray(data) ? data : [];
 
-    const filtered = wantsParticipantFilter
-      ? records.filter(
-          (r) =>
-            r.speakerEmail?.toLowerCase() ===
-            inputData.participantEmail!.toLowerCase(),
-        )
-      : records;
-
-    const trimmed = filtered.slice(0, requestedLimit);
-
-    return trimmed.map((r) => {
+    return records.map((r) => {
       const meetingDate: string | null =
         r.meetingDate instanceof Date
           ? r.meetingDate.toISOString()
