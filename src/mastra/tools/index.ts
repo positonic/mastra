@@ -1024,7 +1024,7 @@ export const getAllProjectsTool = createTool({
 export const getMeetingTranscriptionsTool = createTool({
   id: "get-meeting-transcriptions",
   description:
-    "Get meeting and call transcriptions. Use this for any request about calls, meetings, phone conversations, or video calls. Supports filtering by project, date range, participants, or meeting type.",
+    "Get meeting and call transcriptions. Use this for any request about calls, meetings, phone conversations, or video calls. Supports filtering by project, date range, participants, or meeting type. Set `includeTranscript: false` for list-style queries (titles + dates only); leave true when you need to read or summarize content. The active workspaceId is injected automatically from request context — meetings are scoped to that workspace.",
   inputSchema: z.object({
     projectId: z.string().optional().describe("Filter by specific project ID"),
     startDate: z
@@ -1045,6 +1045,13 @@ export const getMeetingTranscriptionsTool = createTool({
       .optional()
       .default(5)
       .describe("Maximum number of transcriptions to return (default: 5)"),
+    includeTranscript: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe(
+        "Whether to fetch the full transcript text. Set false for list-style queries (titles + dates only) — much faster. Default: true."
+      ),
     truncateTranscript: z
       .boolean()
       .optional()
@@ -1074,14 +1081,24 @@ export const getMeetingTranscriptionsTool = createTool({
   }),
   execute: async (inputData, ctx) => {
     const requestContext = asAppContext(ctx.requestContext);
-    const { projectId, startDate, endDate, participants, meetingType, limit, truncateTranscript } = inputData;
-    const maxTranscriptLength = inputData.maxTranscriptLength ?? 5000;
+    const {
+      projectId,
+      startDate,
+      endDate,
+      participants,
+      meetingType,
+      limit,
+      includeTranscript,
+      truncateTranscript,
+    } = inputData;
+    const maxTranscriptLength = inputData.maxTranscriptLength ?? 2000;
 
     console.log("🔍 [getMeetingTranscriptions] Starting execution");
 
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
+    const workspaceId = requestContext?.get("workspaceId");
 
     if (!authToken) {
       console.error("❌ [getMeetingTranscriptions] No authentication token available");
@@ -1090,7 +1107,16 @@ export const getMeetingTranscriptionsTool = createTool({
 
     const { data: result } = await authenticatedTrpcCall(
       "mastra.getMeetingTranscriptions",
-      { projectId, startDate, endDate, participants, meetingType, limit },
+      {
+        ...(workspaceId ? { workspaceId } : {}),
+        projectId,
+        startDate,
+        endDate,
+        participants,
+        meetingType,
+        limit,
+        includeTranscript,
+      },
       { authToken, sessionId, userId }
     );
 

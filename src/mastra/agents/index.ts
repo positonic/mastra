@@ -324,15 +324,17 @@ export const projectManagerAgent = new Agent({
     
     ### Meeting and Call Queries:
     For questions about meetings, calls, or project history:
-    - "List my last calls" or "Show my recent meetings" → Use 'get-meeting-transcriptions' to fetch recent calls/meetings
-    - "What happened in the last meeting/call?" → Use 'get-meeting-transcriptions' + 'get-meeting-insights'
-    - "What did I discuss in my last call?" → Use 'get-meeting-transcriptions' + 'get-meeting-insights'
-    - "What was the meeting/call [name] about?" → Use 'get-meeting-transcriptions' or 'query-meeting-context'
-    - "Tell me about the meeting/call with [participants]?" → Use 'get-meeting-transcriptions' with participants filter
+    - "List my last calls" / "Show my recent meetings" / "What meetings have I had?" → 'get-meeting-transcriptions' with `includeTranscript: false` (titles + dates only — fast)
+    - "What happened in the last meeting/call?" → 'get-meeting-transcriptions' (default `includeTranscript: true`) + 'get-meeting-insights'
+    - "What did I discuss in my last call?" → 'get-meeting-transcriptions' (default `includeTranscript: true`) + 'get-meeting-insights'
+    - "What was the meeting/call [name] about?" → 'get-meeting-transcriptions' (default `includeTranscript: true`) or 'query-meeting-context'
+    - "Tell me about the meeting/call with [participants]?" → 'get-meeting-transcriptions' with participants filter (default `includeTranscript: true`)
     - "What are upcoming deadlines mentioned in meetings/calls?" → Use 'query-meeting-context' for deadline searches
     - "What decisions were made about project X?" → Use 'query-meeting-context' with decision filtering
     - "What blockers were discussed recently?" → Use 'get-meeting-insights' focusing on blockers
-    - "Show me project evolution over time" → Use 'get-meeting-transcriptions' with date filtering
+    - "Show me project evolution over time" → 'get-meeting-transcriptions' with date filtering, `includeTranscript: false` if only dates are needed
+
+    Workspace scoping: the active workspace is auto-injected from request context — never include workspace data from other contexts.
 
     **IMPORTANT**: For ANY question about specific meetings, calls, meeting/call content, or participants, ALWAYS use the meeting transcription tools first before responding. "Calls" and "meetings" refer to the same transcription data from Fireflies.
 
