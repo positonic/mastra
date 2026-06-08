@@ -59,6 +59,9 @@ import {
   deleteProjectTool,
   getUserWorkspacesTool,
   bulkCreateWorkspaceStructureTool,
+  // Product pipeline ticket tools
+  listProductsTool,
+  createTicketTool,
   // WhatsApp search tools
   listWhatsAppChatsTool,
   getWhatsAppChatHistoryTool,
@@ -468,6 +471,9 @@ const zoeTools = {
     deleteProjectTool,
     getUserWorkspacesTool,
     bulkCreateWorkspaceStructureTool,
+    // Product pipeline ticket tools
+    listProductsTool,
+    createTicketTool,
     updateProjectStatusTool,
     getProjectGoalsTool,
     getAllGoalsTool,

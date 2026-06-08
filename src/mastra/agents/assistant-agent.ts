@@ -57,6 +57,9 @@ import {
   deleteProjectTool,
   getUserWorkspacesTool,
   bulkCreateWorkspaceStructureTool,
+  // Product pipeline ticket tools
+  listProductsTool,
+  createTicketTool,
   linkProjectToGoalTool,
   unlinkProjectFromGoalTool,
   // Slack tools
@@ -315,6 +318,9 @@ const assistantTools = {
     deleteProjectTool,
     getUserWorkspacesTool,
     bulkCreateWorkspaceStructureTool,
+    // Product pipeline ticket tools
+    listProductsTool,
+    createTicketTool,
     linkProjectToGoalTool,
     unlinkProjectFromGoalTool,
     updateProjectStatusTool,

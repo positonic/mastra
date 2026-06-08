@@ -152,6 +152,10 @@ export async function authenticatedFetch<T>(
 ): Promise<AuthenticatedFetchResult<T>> {
   const { url, method = 'GET', body, authToken, sessionId, userId, tokenKind = 'whatsapp-gateway' } = options;
 
+  // [DIAGNOSTIC] Per-call timing — revert after Zoe hang investigation.
+  const t0 = Date.now();
+  const endpointLabel = url.split('/api/trpc/')[1] ?? url;
+
   const makeRequest = async (token: string): Promise<Response> => {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
@@ -195,6 +199,7 @@ export async function authenticatedFetch<T>(
 
       if (response.ok) {
         const data = (await response.json()) as T;
+        console.log(`⏱️ [tool-timing] ${endpointLabel} ${Date.now() - t0}ms (200, after-refresh)`);
         return { data, refreshedToken: newToken };
       }
 
@@ -220,6 +225,7 @@ export async function authenticatedFetch<T>(
   }
 
   const data = (await response.json()) as T;
+  console.log(`⏱️ [tool-timing] ${endpointLabel} ${Date.now() - t0}ms (${response.status})`);
   return { data };
 }
 

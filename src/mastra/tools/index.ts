@@ -2479,6 +2479,9 @@ export { getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, d
 // Project & Action management tools
 export { createProjectTool, updateActionTool, deleteProjectTool, getUserWorkspacesTool, bulkCreateWorkspaceStructureTool } from "./project-tools.js";
 
+// Product pipeline ticket tools
+export { listProductsTool, createTicketTool } from "./ticket-tools.js";
+
 // WhatsApp search tools
 export { listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool } from "./whatsapp-tools.js";
 
