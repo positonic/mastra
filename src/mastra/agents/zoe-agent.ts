@@ -62,6 +62,7 @@ import {
   // Product pipeline ticket tools
   listProductsTool,
   createTicketTool,
+  bulkCreateTicketsTool,
   // WhatsApp search tools
   listWhatsAppChatsTool,
   getWhatsAppChatHistoryTool,
@@ -474,6 +475,7 @@ const zoeTools = {
     // Product pipeline ticket tools
     listProductsTool,
     createTicketTool,
+    bulkCreateTicketsTool,
     updateProjectStatusTool,
     getProjectGoalsTool,
     getAllGoalsTool,

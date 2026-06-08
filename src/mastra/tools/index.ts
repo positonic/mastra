@@ -9,6 +9,7 @@ import {
 } from "../utils/authenticated-fetch.js";
 import { prepareUntrustedContent, auditWriteAction } from "../utils/content-safety.js";
 import { asAppContext } from "../types/request-context.js";
+import { looseBoolean, looseNumber } from "./zod-loose.js";
 
 interface GeocodingResponse {
   results: {
@@ -906,7 +907,7 @@ export const getAllProjectsTool = createTool({
   description:
     "Get all user projects with their status, priority, goals, and outcomes",
   inputSchema: z.object({
-    includeAll: z.boolean().optional().default(false).describe(
+    includeAll: looseBoolean().optional().default(false).describe(
       "When false (default), only returns ACTIVE projects. When true, returns all projects regardless of status."
     ),
   }),
@@ -1409,10 +1410,7 @@ export const getCalendarEventsTool = createTool({
       .describe(
         "'today' for today's events, 'upcoming' for next N days, 'custom' for specific date range"
       ),
-    days: z
-      .number()
-      .min(1)
-      .max(30)
+    days: looseNumber(z.number().min(1).max(30))
       .optional()
       .default(7)
       .describe("Number of days to look ahead (only used when timeframe='upcoming')"),
@@ -1516,7 +1514,7 @@ export const getUpcomingCalendarEventsTool = createTool({
   id: "get-upcoming-calendar-events",
   description: "Get upcoming calendar events for the next N days (default 7) from all connected providers. Useful for weekly planning.",
   inputSchema: z.object({
-    days: z.number().min(1).max(30).default(7).describe("Number of days to look ahead (1-30)"),
+    days: looseNumber(z.number().min(1).max(30)).default(7).describe("Number of days to look ahead (1-30)"),
   }),
   outputSchema: z.object({
     events: z.array(z.object({
@@ -2480,7 +2478,7 @@ export { getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, d
 export { createProjectTool, updateActionTool, deleteProjectTool, getUserWorkspacesTool, bulkCreateWorkspaceStructureTool } from "./project-tools.js";
 
 // Product pipeline ticket tools
-export { listProductsTool, createTicketTool } from "./ticket-tools.js";
+export { listProductsTool, createTicketTool, bulkCreateTicketsTool } from "./ticket-tools.js";
 
 // WhatsApp search tools
 export { listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool } from "./whatsapp-tools.js";

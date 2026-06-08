@@ -60,6 +60,7 @@ import {
   // Product pipeline ticket tools
   listProductsTool,
   createTicketTool,
+  bulkCreateTicketsTool,
   linkProjectToGoalTool,
   unlinkProjectFromGoalTool,
   // Slack tools
@@ -321,6 +322,7 @@ const assistantTools = {
     // Product pipeline ticket tools
     listProductsTool,
     createTicketTool,
+    bulkCreateTicketsTool,
     linkProjectToGoalTool,
     unlinkProjectFromGoalTool,
     updateProjectStatusTool,

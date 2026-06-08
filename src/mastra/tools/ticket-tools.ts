@@ -137,3 +137,102 @@ export const createTicketTool = createTool({
     }
   },
 });
+
+export const bulkCreateTicketsTool = createTool({
+  id: "bulk-create-tickets",
+  description:
+    "File MULTIPLE tickets into one product's pipeline in a single call — far more reliable than calling create-ticket repeatedly. Use this whenever the user provides a list/table of tickets (e.g. a cycle's worth of work). Resolve the product with list-products first to get the productId. Cycle and owner are resolved server-side BY NAME (pass cycleName / assigneeName as written, e.g. \"Cycle 8\", \"James\") — anything that can't be resolved is reported in the per-ticket warnings, not silently dropped. Returns a manifest of created vs failed tickets so you can report an accurate summary.",
+  inputSchema: z.object({
+    productId: z
+      .string()
+      .describe("The ID of the product to file the tickets under — use list-products to resolve it"),
+    tickets: z
+      .array(
+        z.object({
+          title: z.string().min(1).max(300).describe("Short, descriptive ticket title"),
+          body: z.string().optional().describe("Optional details. Put unmappable columns (e.g. Area) here."),
+          type: z
+            .enum(["BUG", "FEATURE", "CHORE", "IMPROVEMENT", "SPIKE", "RESEARCH"])
+            .optional()
+            .describe("Ticket type (defaults to FEATURE)"),
+          status: z
+            .enum([
+              "BACKLOG",
+              "NEEDS_REFINEMENT",
+              "READY_TO_PLAN",
+              "COMMITTED",
+              "IN_PROGRESS",
+              "BLOCKED",
+              "QA",
+              "DONE",
+              "DEPLOYED",
+              "ARCHIVED",
+            ])
+            .optional()
+            .describe("Pipeline status. Map e.g. 'In progress'→IN_PROGRESS, 'Committed'→COMMITTED (defaults to BACKLOG)"),
+          priority: z
+            .number()
+            .int()
+            .min(0)
+            .max(4)
+            .optional()
+            .describe("Priority 0-4. Map High→1, Medium→2, Low→3 (reserve 0 for critical)"),
+          points: z
+            .number()
+            .optional()
+            .describe("Estimate in points. Map T-shirt sizes XS/S/M/L/XL → 1/2/3/5/8"),
+          cycleName: z
+            .string()
+            .optional()
+            .describe("Cycle/sprint name as written (e.g. 'Cycle 8') — resolved to a cycle server-side"),
+          assigneeName: z
+            .string()
+            .optional()
+            .describe("Owner name or email as written (e.g. 'James') — resolved to a workspace member server-side"),
+        }),
+      )
+      .min(1)
+      .max(100)
+      .describe("The tickets to create"),
+  }),
+  outputSchema: z.object({
+    created: z.array(
+      z.object({
+        id: z.string(),
+        number: z.number(),
+        shortId: z.string().nullable(),
+        title: z.string(),
+        status: z.string(),
+        type: z.string(),
+        warnings: z.array(z.string()),
+      }),
+    ),
+    failed: z.array(z.object({ title: z.string(), error: z.string() })),
+    totalCreated: z.number(),
+    totalFailed: z.number(),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`🎫 [bulkCreateTickets] INPUT: productId=${inputData.productId}, count=${inputData.tickets.length}`);
+
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "mastra.bulkCreateTickets",
+        inputData,
+        { authToken, sessionId, userId },
+      );
+
+      const result = data as { totalCreated: number; totalFailed: number };
+      console.log(`✅ [bulkCreateTickets] Done: ${result.totalCreated} created, ${result.totalFailed} failed`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [bulkCreateTickets] FAILED:`, error);
+      throw error;
+    }
+  },
+});
