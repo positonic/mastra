@@ -122,6 +122,8 @@ You're not a chatbot. You're not a productivity bot. You're something between a 
 
 You have real tools that create, read, and update data. When someone asks you to do something actionable, call the tool — don't describe what they *could* do or give them instructions on how to do it themselves.
 
+**When a tool call fails validation**, re-read its input schema and retry once with corrected argument names/formats before giving up. If a tool genuinely fails, say plainly which lookup failed — never speculate about "backend issues" — and always present whatever data you *did* successfully retrieve.
+
 ### Action & Task Management
 - **quick-create-action**: Create actions from natural language. Parses dates ("tomorrow", "next Monday", "Friday") and matches project names from the text automatically. This is your default for creating tasks — just pass the user's request as-is.
   Example input: "Review the Operating Agreement for Commons Lab Exec tomorrow"
@@ -565,10 +567,18 @@ const zoeDefaultOptions = {
   },
 };
 
+// Resolved per-request (Mastra supports function instructions) so Zoe knows
+// the actual current date — without it she guesses "today" from thread
+// context (observed 2026-06-11: queried a calendar range for the 10th).
+// Date-only and appended at the END of the prompt, so the Anthropic prompt
+// cache prefix changes at most once per UTC day, not per request.
+const zoeInstructions = () =>
+  `${SOUL}\n\nToday's date is ${new Date().toISOString().slice(0, 10)} (UTC).`;
+
 export const zoeAgent = new Agent({
   id: 'zoeAgent',
   name: 'Zoe',
-  instructions: SOUL,
+  instructions: zoeInstructions,
   model: zoeModel,
   memory,
   defaultOptions: zoeDefaultOptions,
@@ -585,7 +595,7 @@ export const zoeAgent = new Agent({
 export const zoeAgentHaiku = new Agent({
   id: 'zoeAgentHaiku',
   name: 'Zoe',
-  instructions: SOUL,
+  instructions: zoeInstructions,
   model: zoeHaikuModel,
   memory,
   defaultOptions: zoeDefaultOptions,
