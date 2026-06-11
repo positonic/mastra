@@ -11,3 +11,4 @@ dist
 # Log files
 *.log
 mastra.log
+.exponential/
