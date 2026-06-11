@@ -10,6 +10,7 @@ import { startSignalGateway, getSignalGateway } from './bots/signal-gateway.js';
 import { startVoiceGateway, cleanupVoiceGateway } from './bots/voice-gateway.js';
 import { initSentry, captureException, flushSentry } from './utils/sentry.js';
 import { assertAgentsValid } from './utils/validate-agents.js';
+import { computeBrainVersions, agentIdFromPath, BRAIN_VERSION_HEADER } from './utils/brain-version.js';
 import { startScheduler, stopScheduler, triggerCheck, deliverWhatsAppBriefings } from './proactive/index.js';
 import jwt from 'jsonwebtoken';
 import { createHmac, timingSafeEqual } from 'crypto';
@@ -49,6 +50,12 @@ if (!oneTwoBAgentsEnabled) {
 // non-string value and silently break downstream consumers.
 // Top-level await is supported in this ESM module.
 await assertAgentsValid(agents, logger);
+
+// brain@<hash> per agent, computed once at boot. Served as the
+// x-brain-version response header so exponential can stamp the composite
+// promptVersion (router@X+brain@Y) on AiInteractionHistory (ADR-0013).
+const brainVersions = await computeBrainVersions(agents);
+logger.info('🧠 [MAIN] Brain prompt versions computed', brainVersions);
 
 export const mastra = new Mastra({
   agents,
@@ -164,6 +171,14 @@ export const mastra = new Mastra({
           }
 
           await next();
+
+          // Stamp agent responses with the serving agent's prompt hash so
+          // exponential can compose router@X+brain@Y (ADR-0013 decision 3).
+          const servingAgentId = agentIdFromPath(c.req.path);
+          const brainVersion = servingAgentId ? brainVersions[servingAgentId] : undefined;
+          if (brainVersion) {
+            c.res.headers.set(BRAIN_VERSION_HEADER, brainVersion);
+          }
       },
     ],
   },
