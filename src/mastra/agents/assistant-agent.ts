@@ -90,7 +90,11 @@ import {
  * supplies the identity.
  */
 
-const INSTRUCTIONS = `
+// Exported (with assistantModel/assistantDefaultOptions/assistantTools below)
+// for the eval-replay runner (src/mastra/evals/), which builds a memory-less
+// twin of this agent with intent-capturing no-op tools so a candidate prompt
+// can be scored offline (ADR-0013 in the exponential repo).
+export const INSTRUCTIONS = `
 You are a personal AI assistant integrated into Exponential — a life management system.
 
 ${SECURITY_POLICY}
@@ -295,20 +299,20 @@ When listing projects, use a table sorted by priority (HIGH > MEDIUM > LOW > NON
 When listing actions, group by project and sort by due date.
 `;
 
-const assistantModel = withAnthropicPromptCache(anthropic('claude-sonnet-4-5-20250929'));
+export const assistantModel = withAnthropicPromptCache(anthropic('claude-sonnet-4-5-20250929'));
 const assistantHaikuModel = withAnthropicPromptCache(anthropic('claude-haiku-4-5-20251001'));
 
 // See zoe-agent.ts for the rationale. Cap was 30, reduced to 12 to
 // bound worst-case latency on simple turns; raise if we see frequent
 // `finishReason: 'tool-calls'` in chat/stream "Stream complete" logs.
-const assistantDefaultOptions = {
+export const assistantDefaultOptions = {
   maxSteps: 12,
   modelSettings: {
     temperature: 0.7,
   },
 };
 
-const assistantTools = {
+export const assistantTools = {
     // Exponential tools
     getProjectContextTool,
     getProjectActionsTool,
