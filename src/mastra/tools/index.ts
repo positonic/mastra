@@ -9,7 +9,7 @@ import {
 } from "../utils/authenticated-fetch.js";
 import { prepareUntrustedContent, auditWriteAction } from "../utils/content-safety.js";
 import { asAppContext } from "../types/request-context.js";
-import { looseBoolean, looseNumber } from "./zod-loose.js";
+import { looseBoolean, looseNumber, resolveDateRange } from "./zod-loose.js";
 
 interface GeocodingResponse {
   results: {
@@ -1557,8 +1557,10 @@ export const getCalendarEventsInRangeTool = createTool({
   id: "get-calendar-events-in-range",
   description: "Get calendar events within a specific date range from all connected providers (Google + Microsoft). Use this to see what's scheduled in a custom time period.",
   inputSchema: z.object({
-    timeMin: z.string().describe("Start date/time in ISO 8601 format (e.g., '2024-02-12T00:00:00Z')"),
-    timeMax: z.string().describe("End date/time in ISO 8601 format (e.g., '2024-02-12T23:59:59Z')"),
+    timeMin: z.string().optional().describe("Start of range — ISO 8601 datetime (e.g. '2024-02-12T00:00:00Z') or date-only 'YYYY-MM-DD' (expands to start of day UTC)"),
+    timeMax: z.string().optional().describe("End of range — ISO 8601 datetime (e.g. '2024-02-12T23:59:59Z') or date-only 'YYYY-MM-DD' (expands to end of day UTC)"),
+    startDate: z.string().optional().describe("Alias for timeMin"),
+    endDate: z.string().optional().describe("Alias for timeMax"),
     provider: z.enum(['google', 'microsoft']).optional().describe("Optional: filter to specific provider"),
   }),
   outputSchema: z.object({
@@ -1591,11 +1593,13 @@ export const getCalendarEventsInRangeTool = createTool({
       throw new Error("No authentication token available");
     }
 
+    const { timeMin, timeMax } = resolveDateRange(inputData);
+
     const { data } = await authenticatedTrpcCall(
       "mastra.getCalendarEventsInRange",
       {
-        timeMin: inputData.timeMin,
-        timeMax: inputData.timeMax,
+        timeMin,
+        timeMax,
         provider: inputData.provider,
       },
       { authToken, sessionId, userId }
