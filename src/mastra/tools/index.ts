@@ -644,13 +644,21 @@ export const createProjectActionTool = createTool({
 export const quickCreateActionTool = createTool({
   id: "quick-create-action",
   description:
-    "Create a new action using natural language. Automatically parses dates like 'tomorrow' or 'next Monday' and matches project names from the text. Use this when the user wants to create an action without specifying project ID or priority explicitly.",
+    "Create a new action using natural language. Pass the action description in the `text` parameter — e.g. { \"text\": \"Call John tomorrow\" }. Automatically parses dates like 'tomorrow' or 'next Monday' and matches project names from the text. Use this when the user wants to create an action without specifying project ID or priority explicitly.",
   inputSchema: z.object({
     text: z
       .string()
+      .optional()
       .describe(
         "Natural language action description. Can include dates ('tomorrow', 'next week', 'today') and project names ('for Marketing project', 'add to Exercise'). Examples: 'Call John tomorrow', 'Review docs for Marketing project', 'Buy groceries next Monday'"
       ),
+    // Models calling via deferred tool-search regularly guess `input`
+    // instead of `text` (observed 2026-06-12: 8 wasted validation
+    // round-trips on one turn). Accept it as an alias.
+    input: z
+      .string()
+      .optional()
+      .describe("Alias for `text` — prefer `text`."),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -688,9 +696,16 @@ export const quickCreateActionTool = createTool({
     const userId = requestContext?.get("userId");
     const projectId = requestContext?.get("projectId");
 
-    console.log(`🎯 [quickCreateAction] INPUT: text="${inputData.text}"`);
+    const text = inputData.text ?? inputData.input;
+    if (!text) {
+      throw new Error(
+        'Missing action description: pass it in the `text` parameter, e.g. { "text": "Call John tomorrow" }'
+      );
+    }
+
+    console.log(`🎯 [quickCreateAction] INPUT: text="${text}"`);
     console.log(`🎯 [quickCreateAction] CONTEXT: authToken=${authToken ? "present" : "MISSING"}, userId=${userId || "none"}, projectId=${projectId || "none"}`);
-    console.log(`🎯 [quickCreateAction] SENDING TO TRPC: { text: "${inputData.text}", projectId: ${projectId ? `"${projectId}"` : "undefined"} }`);
+    console.log(`🎯 [quickCreateAction] SENDING TO TRPC: { text: "${text}", projectId: ${projectId ? `"${projectId}"` : "undefined"} }`);
 
     if (!authToken) {
       throw new Error("No authentication token available");
@@ -699,7 +714,7 @@ export const quickCreateActionTool = createTool({
     try {
       const { data: result } = await authenticatedTrpcCall(
         "mastra.quickCreateAction",
-        { text: inputData.text, projectId: projectId || undefined },
+        { text, projectId: projectId || undefined },
         { authToken, sessionId, userId }
       );
 
