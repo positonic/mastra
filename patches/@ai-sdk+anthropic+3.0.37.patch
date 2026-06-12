@@ -1,0 +1,84 @@
+diff --git a/node_modules/@ai-sdk/anthropic/dist/index.js b/node_modules/@ai-sdk/anthropic/dist/index.js
+index f008a25..1567fad 100644
+--- a/node_modules/@ai-sdk/anthropic/dist/index.js
++++ b/node_modules/@ai-sdk/anthropic/dist/index.js
+@@ -2191,6 +2191,18 @@ async function convertToAnthropicMessagesPrompt({
+                     });
+                     break;
+                   }
++                  if (output.value && typeof output.value === "object" && output.value.type === "web_fetch_tool_result_error") {
++                    anthropicContent.push({
++                      type: "web_fetch_tool_result",
++                      tool_use_id: part.toolCallId,
++                      content: {
++                        type: "web_fetch_tool_result_error",
++                        error_code: typeof output.value.errorCode === "string" ? output.value.errorCode : "unavailable"
++                      },
++                      cache_control: cacheControl
++                    });
++                    break;
++                  }
+                   const webFetchOutput = await (0, import_provider_utils11.validateTypes)({
+                     value: output.value,
+                     schema: webFetch_20250910OutputSchema
+@@ -2226,6 +2238,18 @@ async function convertToAnthropicMessagesPrompt({
+                     });
+                     break;
+                   }
++                  if (output.value && typeof output.value === "object" && !Array.isArray(output.value) && output.value.type === "web_search_tool_result_error") {
++                    anthropicContent.push({
++                      type: "web_search_tool_result",
++                      tool_use_id: part.toolCallId,
++                      content: {
++                        type: "web_search_tool_result_error",
++                        error_code: typeof output.value.errorCode === "string" ? output.value.errorCode : "unavailable"
++                      },
++                      cache_control: cacheControl
++                    });
++                    break;
++                  }
+                   const webSearchOutput = await (0, import_provider_utils11.validateTypes)({
+                     value: output.value,
+                     schema: webSearch_20250305OutputSchema
+diff --git a/node_modules/@ai-sdk/anthropic/dist/index.mjs b/node_modules/@ai-sdk/anthropic/dist/index.mjs
+index 8320b5f..7ca20fa 100644
+--- a/node_modules/@ai-sdk/anthropic/dist/index.mjs
++++ b/node_modules/@ai-sdk/anthropic/dist/index.mjs
+@@ -2215,6 +2215,18 @@ async function convertToAnthropicMessagesPrompt({
+                     });
+                     break;
+                   }
++                  if (output.value && typeof output.value === "object" && output.value.type === "web_fetch_tool_result_error") {
++                    anthropicContent.push({
++                      type: "web_fetch_tool_result",
++                      tool_use_id: part.toolCallId,
++                      content: {
++                        type: "web_fetch_tool_result_error",
++                        error_code: typeof output.value.errorCode === "string" ? output.value.errorCode : "unavailable"
++                      },
++                      cache_control: cacheControl
++                    });
++                    break;
++                  }
+                   const webFetchOutput = await validateTypes2({
+                     value: output.value,
+                     schema: webFetch_20250910OutputSchema
+@@ -2250,6 +2262,18 @@ async function convertToAnthropicMessagesPrompt({
+                     });
+                     break;
+                   }
++                  if (output.value && typeof output.value === "object" && !Array.isArray(output.value) && output.value.type === "web_search_tool_result_error") {
++                    anthropicContent.push({
++                      type: "web_search_tool_result",
++                      tool_use_id: part.toolCallId,
++                      content: {
++                        type: "web_search_tool_result_error",
++                        error_code: typeof output.value.errorCode === "string" ? output.value.errorCode : "unavailable"
++                      },
++                      cache_control: cacheControl
++                    });
++                    break;
++                  }
+                   const webSearchOutput = await validateTypes2({
+                     value: output.value,
+                     schema: webSearch_20250305OutputSchema
