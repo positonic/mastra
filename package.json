@@ -9,7 +9,8 @@
     "logs": "tail -f mastra.log",
     "build": "mastra build",
     "start": "node .mastra/output/index.mjs",
-    "eval-replay": "tsx --env-file=.env src/mastra/evals/eval-replay.ts"
+    "eval-replay": "tsx --env-file=.env src/mastra/evals/eval-replay.ts",
+    "postinstall": "patch-package"
   },
   "keywords": [],
   "author": "",
@@ -48,6 +49,7 @@
     "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.20.0",
     "@types/qrcode": "^1.5.6",
+    "patch-package": "^8.0.1",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3",
     "vitest": "^4.1.8"
