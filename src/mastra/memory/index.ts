@@ -1,12 +1,17 @@
 import { Memory } from '@mastra/memory';
 import { PostgresStore } from '@mastra/pg';
 
+// Shared store: Memory persistence AND the Mastra instance's top-level
+// storage (required by the observability MastraStorageExporter so AI
+// tracing spans land in mastra.mastra_ai_spans).
+export const storage = new PostgresStore({
+  id: 'memory',
+  connectionString: process.env.DATABASE_URL!,
+  schemaName: 'mastra',
+});
+
 export const memory = new Memory({
-  storage: new PostgresStore({
-    id: 'memory',
-    connectionString: process.env.DATABASE_URL!,
-    schemaName: 'mastra',
-  }),
+  storage,
   options: {
     observationalMemory: {
       scope: 'resource',

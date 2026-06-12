@@ -25,6 +25,7 @@
     "@mastra/core": "^1.24.1",
     "@mastra/loggers": "^1.1.1",
     "@mastra/memory": "^1.15.0",
+    "@mastra/observability": "^1.14.1",
     "@mastra/pg": "^1.9.2",
     "@notionhq/client": "^5.9.0",
     "@sentry/node": "^10.36.0",
