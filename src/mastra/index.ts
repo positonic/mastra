@@ -1,6 +1,7 @@
 import { Mastra } from '@mastra/core/mastra';
 import { MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-context';
 import { Observability, MastraStorageExporter, SensitiveDataFilter } from '@mastra/observability';
+import { bulkyPayloadTruncator } from './utils/tracing.js';
 import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent, zoeAgent, zoeAgentHaiku, expoAgent, assistantAgent, assistantAgentHaiku, platformAgent, one2bAgent, actionItemsAgent, meetingContextAgent, documentTrackerAgent } from './agents';
 import { memory, storage } from './memory/index.js';
 import { createLogger } from './utils/logger.js';
@@ -67,16 +68,24 @@ export const mastra = new Mastra({
   // AI tracing: spans for every agent step + tool call (with inputs) land
   // in mastra.mastra_ai_spans. This is the signal that was missing during
   // the 2026-06-12 web_fetch incident — the table existed but stayed empty.
-  // SensitiveDataFilter redacts apiKey/token/secret-like fields in spans.
-  observability: new Observability({
-    configs: {
-      default: {
-        serviceName: 'mastra',
-        exporters: [new MastraStorageExporter()],
-        spanOutputProcessors: [new SensitiveDataFilter()],
-      },
-    },
-  }),
+  // SensitiveDataFilter redacts apiKey/token/secret-like fields;
+  // bulkyPayloadTruncator caps prompt-sized step/generation payloads while
+  // keeping tool-call inputs intact. Disabled in dev by default: local
+  // `mastra dev` shares the production DATABASE_URL, and dev spans would
+  // pollute the prod agent-quality signal. Opt in with MASTRA_TRACING=true.
+  ...(!isDev || process.env.MASTRA_TRACING === 'true'
+    ? {
+        observability: new Observability({
+          configs: {
+            default: {
+              serviceName: isDev ? 'mastra-dev' : 'mastra',
+              exporters: [new MastraStorageExporter()],
+              spanOutputProcessors: [new SensitiveDataFilter(), bulkyPayloadTruncator],
+            },
+          },
+        }),
+      }
+    : {}),
   logger: logger.raw,
   server: {
     port: parseInt(process.env.PORT || '4111', 10),
