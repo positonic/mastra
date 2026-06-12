@@ -26,6 +26,9 @@ const logger = createLogger({
 });
 
 const isDev = process.env.NODE_ENV !== 'production';
+// Railway injects this on deployed services; it is absent in local dev.
+// NODE_ENV is NOT set on Railway, so isDev cannot distinguish prod there.
+const isRailway = !!process.env.RAILWAY_ENVIRONMENT_NAME;
 
 // One2b agents are gated behind MASTRA_ONE2B_AGENTS_ENABLED so the merge
 // PR can land while one2b-internal-agent is still the live processor.
@@ -70,15 +73,22 @@ export const mastra = new Mastra({
   // the 2026-06-12 web_fetch incident — the table existed but stayed empty.
   // SensitiveDataFilter redacts apiKey/token/secret-like fields;
   // bulkyPayloadTruncator caps prompt-sized step/generation payloads while
-  // keeping tool-call inputs intact. Disabled in dev by default: local
-  // `mastra dev` shares the production DATABASE_URL, and dev spans would
-  // pollute the prod agent-quality signal. Opt in with MASTRA_TRACING=true.
-  ...(!isDev || process.env.MASTRA_TRACING === 'true'
+  // keeping tool-call inputs intact.
+  //
+  // Gate on RAILWAY_ENVIRONMENT_NAME, NOT NODE_ENV: Railway does not set
+  // NODE_ENV, so an isDev-based gate silently disabled tracing in prod
+  // (verified 2026-06-12 — deploy at 23:29 wrote zero spans for two live
+  // failures). Local `mastra dev` shares the production DATABASE_URL, so
+  // tracing stays off outside Railway unless MASTRA_TRACING=true opts in;
+  // dev spans are stamped with a distinct serviceName for filterability.
+  ...(isRailway || process.env.MASTRA_TRACING === 'true'
     ? {
         observability: new Observability({
           configs: {
             default: {
-              serviceName: isDev ? 'mastra-dev' : 'mastra',
+              serviceName: isRailway
+                ? `mastra-${process.env.RAILWAY_ENVIRONMENT_NAME}`
+                : 'mastra-local-dev',
               exporters: [new MastraStorageExporter()],
               spanOutputProcessors: [new SensitiveDataFilter(), bulkyPayloadTruncator],
             },
