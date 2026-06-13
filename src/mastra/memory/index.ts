@@ -13,6 +13,16 @@ export const storage = new PostgresStore({
 export const memory = new Memory({
   storage,
   options: {
+    // Conversational recall window. The exponential chat route
+    // (src/app/api/chat/stream/route.ts) now sends ONLY the latest user
+    // message and relies on thread memory to supply prior turns, replacing a
+    // client transcript that was trimmed to ~20k tokens. semanticRecall is NOT
+    // enabled here (no vector store/embedder), so `lastMessages` is the ONLY
+    // recall path — the Mastra default of 10 is too small to cover a multi-turn
+    // planning session and silently drops context the transcript used to carry.
+    // 40 restores parity with the prior working set. If this is lowered, the
+    // chat route's "prior turns come from thread memory" assumption breaks.
+    lastMessages: 40,
     observationalMemory: {
       // Thread scope, NOT resource scope. Async consolidation buffering
       // exists ONLY under thread scope — Mastra's validateBufferConfig throws
