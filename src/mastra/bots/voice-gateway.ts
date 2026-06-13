@@ -190,7 +190,19 @@ async function handleVapiWebhook(req: IncomingMessage, res: ServerResponse): Pro
           }
         }
 
-        const result = await one2bAgent.generate(agentMessages, { requestContext });
+        // Pin observational memory (thread-scoped) to the call so a call's
+        // turns share one thread instead of auto-generating a fresh thread per
+        // webhook (which would fragment write-only consolidation each turn).
+        // Tie the resource to the caller's userId when known, else the call.
+        const memoryUserId = payload.call?.metadata?.userId;
+        const memoryScope = callId
+          ? { resource: memoryUserId ?? callId, thread: `voice-${callId}` }
+          : undefined;
+
+        const result = await one2bAgent.generate(agentMessages, {
+          requestContext,
+          memory: memoryScope,
+        });
         const responseText = typeof result.text === 'string' ? result.text : '';
 
         // Update call record
