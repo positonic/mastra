@@ -14,6 +14,7 @@ import { initSentry, captureException, flushSentry } from './utils/sentry.js';
 import { assertAgentsValid } from './utils/validate-agents.js';
 import { computeBrainVersions, agentIdFromPath, BRAIN_VERSION_HEADER } from './utils/brain-version.js';
 import { startScheduler, stopScheduler, triggerCheck, deliverWhatsAppBriefings } from './proactive/index.js';
+import { startSpanRetention, stopSpanRetention } from './utils/span-retention.js';
 import jwt from 'jsonwebtoken';
 import { createHmac, timingSafeEqual } from 'crypto';
 
@@ -260,6 +261,12 @@ if (enableProactive) {
   logger.info('📵 [MAIN] Proactive scheduler disabled (set ENABLE_PROACTIVE_SCHEDULER=true to enable)');
 }
 
+// Daily prune of AI tracing spans (exponential-gnui). Railway-only: local
+// dev points at a shared DB it shouldn't be deleting from.
+if (isRailway) {
+  startSpanRetention(logger);
+}
+
 // Add graceful shutdown handling
 const shutdown = async (signal: string, error?: Error) => {
   logger.info(`🛑 [MAIN] Received ${signal}, starting graceful shutdown...`);
@@ -269,6 +276,8 @@ const shutdown = async (signal: string, error?: Error) => {
     if (error) {
       captureException(error, { operation: `shutdown:${signal}` });
     }
+
+    stopSpanRetention();
 
     // Cleanup bots and gateways
     if (enableTelegram) {
