@@ -526,8 +526,16 @@ async function routeToAgent(sender: string, text: string, mapping: SignalMapping
     requestContext.set('userId', mapping.userId);
     requestContext.set('channel', 'signal');
 
+    // Stable per user+sender so observational memory (thread-scoped) is
+    // recalled across turns. Mirrors the telegram/whatsapp gateways.
+    const memoryScope = {
+      resource: mapping.userId,
+      thread: `sig-${mapping.userId}-${sender}`,
+    };
+
     const result = await agent.generate(messages, {
       requestContext,
+      memory: memoryScope,
     });
 
     const responseText = result.text || '(No response)';
