@@ -57,6 +57,14 @@ describe('addObjectiveCommentTool', () => {
     ).rejects.toThrow(/authentication token/i);
     expect(authenticatedTrpcCall).not.toHaveBeenCalled();
   });
+
+  it('coerces a string goalId to a number (the model emits it as text)', () => {
+    const parsed = addObjectiveCommentTool.inputSchema!.parse({
+      goalId: '19',
+      content: 'Strategy summary',
+    });
+    expect(parsed.goalId).toBe(19);
+  });
 });
 
 describe('addObjectiveUpdateTool', () => {
@@ -97,5 +105,14 @@ describe('addObjectiveUpdateTool', () => {
       ),
     ).rejects.toThrow(/authentication token/i);
     expect(authenticatedTrpcCall).not.toHaveBeenCalled();
+  });
+
+  it('coerces a string goalId to a number (the model emits it as text)', () => {
+    const parsed = addObjectiveUpdateTool.inputSchema!.parse({
+      goalId: '19',
+      content: 'Slipping on the launch',
+      health: 'at-risk',
+    });
+    expect(parsed.goalId).toBe(19);
   });
 });

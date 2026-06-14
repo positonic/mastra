@@ -392,7 +392,7 @@ export const addObjectiveCommentTool = createTool({
   description:
     "Post a narrative comment to an Objective's (goal's) activity feed on the user's behalf. A comment is a NOTE with NO health — it never moves the Objective's status badge. Use this for narrative notes (a strategy summary, context, a recap of what was agreed), NOT for status/progress statements (use a check-in or an Objective update for those). The Objective the user is viewing is provided in the page context as goalId — use it directly; do not ask for the Objective name. CRITICAL: ALWAYS draft the comment text and show it to the user, then post ONLY after they explicitly confirm. After posting, tell the user it's done and which Objective it landed on.",
   inputSchema: z.object({
-    goalId: z.number().describe("The numeric ID of the Objective (goal) to comment on — from the page context"),
+    goalId: z.coerce.number().describe("The numeric ID of the Objective (goal) to comment on — from the page context. Coerced from string because the model often emits it as text lifted from the prompt."),
     content: z.string().min(1).max(10000).describe("The comment text to post (markdown). Draft this and get the user's explicit confirmation before calling the tool."),
   }),
   outputSchema: z.object({
@@ -432,7 +432,7 @@ export const addObjectiveUpdateTool = createTool({
   description:
     "Post a health-bearing update (check-in) to an Objective's (goal's) activity feed on the user's behalf. An update carries a HEALTH (on-track | at-risk | off-track) and MOVES the Objective's status badge — use it for status/progress statements (\"we're behind on this\", \"back on track\"), NOT for narrative notes (use add-objective-comment for those). The Objective the user is viewing is provided in the page context as goalId — use it directly. Infer the health from the conversation; when there is no clear signal, default to the Objective's CURRENT health (shown as \"Current health\" in your goal page context) so a narrative-ish update never silently flips the status. CRITICAL: ALWAYS draft both the update text AND the health value you will set, show them to the user, and post ONLY after they explicitly confirm. Never set a manual status override — that stays the user's \"Set status\" action. After posting, tell the user it's done, which Objective, and the health you set.",
   inputSchema: z.object({
-    goalId: z.number().describe("The numeric ID of the Objective (goal) to update — from the page context"),
+    goalId: z.coerce.number().describe("The numeric ID of the Objective (goal) to update — from the page context. Coerced from string because the model often emits it as text lifted from the prompt."),
     content: z.string().min(1).max(10000).describe("The update text (markdown). Draft this and get the user's explicit confirmation before calling the tool."),
     health: z.enum(["on-track", "at-risk", "off-track"]).describe("The health this check-in sets — moves the status badge. Infer from the conversation; default to the Objective's current health when unclear. Show it in the draft and confirm before posting."),
   }),
