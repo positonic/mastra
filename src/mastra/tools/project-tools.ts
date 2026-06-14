@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
+import { looseNumber } from "./zod-loose.js";
 
 // ==================== Project & Action Management Tools ====================
 // Tools for creating projects and updating actions (including moving between projects).
@@ -214,9 +215,11 @@ export const bulkCreateWorkspaceStructureTool = createTool({
     "Create a complete hierarchy of goals, projects, and actions in a single atomic operation. Use this when the user provides a structured list of goals with associated projects and actions — it's far more reliable than creating items one by one. Returns a manifest of everything created and anything that failed, so you can give the user an accurate verified summary.",
   inputSchema: z.object({
     workspaceId: z.string().describe("The ID of the workspace to create items in — use get-user-workspaces to find it"),
+    parentGoalId: looseNumber().optional().describe("Optional parent objective (goal) ID: nest EVERY created goal under this one unless a goal sets its own parentGoalId. When the user is viewing a goal and asks to build a structure 'under this goal' / as phases of it, pass that goal's ID (from the page context) here."),
     goals: z.array(z.object({
       title: z.string().describe("Goal/objective title"),
       description: z.string().optional().describe("Goal description"),
+      parentGoalId: looseNumber().optional().describe("Optional parent objective (goal) ID for THIS goal specifically; overrides the batch-level parentGoalId."),
       projects: z.array(z.object({
         name: z.string().describe("Project name"),
         description: z.string().optional().describe("Project description"),

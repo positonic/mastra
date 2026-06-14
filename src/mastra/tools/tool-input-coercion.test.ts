@@ -21,9 +21,15 @@ const parseInput = (
 ): Record<string, unknown> =>
   (tool.inputSchema as z.ZodTypeAny).parse(value) as Record<string, unknown>;
 
-const { createOkrKeyResultTool, updateOkrObjectiveTool, checkInOkrKeyResultTool } =
-  await import('./okr-tools.js');
+const {
+  createOkrKeyResultTool,
+  updateOkrObjectiveTool,
+  checkInOkrKeyResultTool,
+  createOkrObjectiveTool,
+  linkObjectiveToParentTool,
+} = await import('./okr-tools.js');
 const { getAllProjectsTool } = await import('./index.js');
+const { bulkCreateWorkspaceStructureTool } = await import('./project-tools.js');
 
 describe('tool input coercion — the model emits scalars as strings', () => {
   it('getAllProjectsTool.includeAll: string "false" stays false (NOT the z.coerce.boolean footgun)', () => {
@@ -61,5 +67,35 @@ describe('tool input coercion — the model emits scalars as strings', () => {
 
   it('still rejects genuine garbage (coercion is not blind acceptance)', () => {
     expect(() => parseInput(checkInOkrKeyResultTool, { keyResultId: 'kr_1', newValue: 'banana' })).toThrow();
+  });
+});
+
+describe('goal hierarchy — parentGoalId coercion', () => {
+  it('createOkrObjectiveTool coerces a string parentGoalId', () => {
+    const parsed = parseInput(createOkrObjectiveTool, { title: 'Phase 0', parentGoalId: '19' });
+    expect(parsed.parentGoalId).toBe(19);
+  });
+
+  it('createOkrObjectiveTool allows omitting parentGoalId (top-level goal)', () => {
+    const parsed = parseInput(createOkrObjectiveTool, { title: 'North star' });
+    expect(parsed.parentGoalId).toBeUndefined();
+  });
+
+  it('linkObjectiveToParentTool coerces a string parentGoalId and accepts null to detach', () => {
+    expect(parseInput(linkObjectiveToParentTool, { goalId: '70', parentGoalId: '19' })).toMatchObject({
+      goalId: 70,
+      parentGoalId: 19,
+    });
+    expect(parseInput(linkObjectiveToParentTool, { goalId: '70', parentGoalId: null }).parentGoalId).toBeNull();
+  });
+
+  it('bulkCreateWorkspaceStructureTool coerces parentGoalId at batch and per-goal level', () => {
+    const parsed = parseInput(bulkCreateWorkspaceStructureTool, {
+      workspaceId: 'ws_1',
+      parentGoalId: '19',
+      goals: [{ title: 'Phase 1', parentGoalId: '20' }],
+    });
+    expect(parsed.parentGoalId).toBe(19);
+    expect((parsed.goals as Array<{ parentGoalId: number }>)[0]!.parentGoalId).toBe(20);
   });
 });
