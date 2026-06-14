@@ -53,6 +53,7 @@ import {
   getOkrStatsTool,
   linkProjectToGoalTool,
   unlinkProjectFromGoalTool,
+  linkObjectiveToParentTool,
   addObjectiveCommentTool,
   addObjectiveUpdateTool,
   // Project & Action management tools
@@ -190,10 +191,14 @@ You have access to the user's CRM for relationship management:
 2. Call bulk-create-workspace-structure with the full hierarchy
 3. Report the verified created/failed manifest to the user — never claim success for items not in the manifest
 
+**Goal hierarchy (sub-goals / phases):**
+Goals can nest under a parent goal (up to 5 levels). When the user is viewing a goal — its goalId is in your page context — and asks to "build this structure for this goal", "break this into phases", or "create goals under this goal", you MUST nest the new goals under that goal: pass its id as parentGoalId (per-goal on create-okr-objective, or the batch-level parentGoalId on bulk-create-workspace-structure). Do NOT create orphaned top-level goals when the user means sub-goals. To re-parent goals that already exist, use link-objective-to-parent.
+
 ### OKRs (Objectives & Key Results)
 You can manage the user's OKR system — objectives are qualitative goals, key results are measurable outcomes:
 - **get-okr-objectives**: List all objectives with their key results and progress. Filter by period.
-- **create-okr-objective**: Create a new objective (confirm with user first)
+- **create-okr-objective**: Create a new objective (confirm with user first). Accepts a parentGoalId to nest it under another objective.
+- **link-objective-to-parent**: Nest an existing objective under a parent (or detach with parentGoalId = null) to build a goal hierarchy. Use this to make existing goals into sub-goals/phases of a north-star goal.
 - **update-okr-objective**: Update an objective's title, description, period, etc.
 - **delete-okr-objective**: Delete an objective and all its KRs (ALWAYS confirm first — irreversible)
 - **create-okr-key-result**: Create a key result linked to an objective (confirm details first)
@@ -546,6 +551,7 @@ const zoeTools = {
     getOkrStatsTool,
     linkProjectToGoalTool,
     unlinkProjectFromGoalTool,
+    linkObjectiveToParentTool,
     addObjectiveCommentTool,
     addObjectiveUpdateTool,
     // Slack tools

@@ -71,6 +71,7 @@ export const createOkrObjectiveTool = createTool({
     whyThisGoal: z.string().optional().describe("Why this objective matters"),
     period: z.string().optional().describe("OKR period (e.g., 'Q1-2026', 'H1-2026', 'Annual-2026')"),
     lifeDomainId: looseNumber().optional().describe("Life domain ID to categorize this objective"),
+    parentGoalId: looseNumber().optional().describe("Parent objective (goal) ID to nest this under. When the user is viewing a goal and asks to create goals 'under this goal' / as phases of it, use that goal's ID (from the page context) here."),
   }),
   outputSchema: z.object({
     objective: z.object({
@@ -78,6 +79,7 @@ export const createOkrObjectiveTool = createTool({
       title: z.string(),
       description: z.string().nullable(),
       period: z.string().nullable(),
+      parentGoalId: z.number().nullable(),
       lifeDomain: z.object({ id: z.number(), title: z.string() }).nullable(),
       workspaceId: z.string().nullable(),
     }),
@@ -499,6 +501,42 @@ export const linkProjectToGoalTool = createTool({
     );
 
     console.log(`✅ [linkProjectToGoal] Success`);
+    return data;
+  },
+});
+
+export const linkObjectiveToParentTool = createTool({
+  id: "link-objective-to-parent",
+  description:
+    "Nest an Objective (goal) under a parent Objective to build a goal hierarchy — e.g. make existing goals into sub-goals/phases of a north-star goal. Both are numeric goal IDs. To detach a goal (make it top-level again), pass parentGoalId = null. The backend rejects cycles and nesting deeper than 5 levels.",
+  inputSchema: z.object({
+    goalId: looseNumber().describe("The numeric ID of the Objective (goal) to re-parent"),
+    parentGoalId: looseNumber().nullable().describe("The numeric ID of the parent Objective to nest under, or null to detach (make top-level)"),
+  }),
+  outputSchema: z.object({
+    objective: z.object({
+      id: z.number(),
+      title: z.string(),
+      parentGoalId: z.number().nullable(),
+      parentGoal: z.object({ id: z.number(), title: z.string() }).nullable(),
+    }),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`🔗 [linkObjectiveToParent] Nesting goal ${inputData.goalId} under ${inputData.parentGoalId}`);
+
+    const { data } = await authenticatedTrpcCall(
+      "mastra.setObjectiveParent",
+      { goalId: inputData.goalId, parentGoalId: inputData.parentGoalId },
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [linkObjectiveToParent] Success`);
     return data;
   },
 });
