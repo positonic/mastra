@@ -8,7 +8,7 @@ vi.mock('../utils/authenticated-fetch.js', () => ({
   authenticatedTrpcCall: (...args: unknown[]) => authenticatedTrpcCall(...args),
 }));
 
-const { addObjectiveCommentTool } = await import('./okr-tools.js');
+const { addObjectiveCommentTool, addObjectiveUpdateTool } = await import('./okr-tools.js');
 
 function makeRequestContext(overrides: Record<string, string> = {}) {
   const map = new Map<string, string>([
@@ -52,6 +52,47 @@ describe('addObjectiveCommentTool', () => {
     await expect(
       addObjectiveCommentTool.execute!(
         { goalId: 42, content: 'x' },
+        { requestContext: new Map() } as never,
+      ),
+    ).rejects.toThrow(/authentication token/i);
+    expect(authenticatedTrpcCall).not.toHaveBeenCalled();
+  });
+});
+
+describe('addObjectiveUpdateTool', () => {
+  beforeEach(() => {
+    authenticatedTrpcCall.mockReset();
+  });
+
+  it('calls mastra.addGoalUpdate with the mapped arguments (incl. health)', async () => {
+    const created = {
+      id: 'u1',
+      goalId: 42,
+      authorId: 'user-1',
+      content: 'Slipping on the launch',
+      health: 'at-risk',
+      createdAt: '2026-06-14T00:00:00.000Z',
+    };
+    authenticatedTrpcCall.mockResolvedValue({ data: created });
+
+    const result = await addObjectiveUpdateTool.execute!(
+      { goalId: 42, content: 'Slipping on the launch', health: 'at-risk' },
+      { requestContext: makeRequestContext() } as never,
+    );
+
+    expect(authenticatedTrpcCall).toHaveBeenCalledTimes(1);
+    expect(authenticatedTrpcCall).toHaveBeenCalledWith(
+      'mastra.addGoalUpdate',
+      { goalId: 42, content: 'Slipping on the launch', health: 'at-risk' },
+      expect.objectContaining({ authToken: 'token-123', userId: 'user-1' }),
+    );
+    expect(result).toEqual(created);
+  });
+
+  it('throws when no auth token is present', async () => {
+    await expect(
+      addObjectiveUpdateTool.execute!(
+        { goalId: 42, content: 'x', health: 'off-track' },
         { requestContext: new Map() } as never,
       ),
     ).rejects.toThrow(/authentication token/i);
