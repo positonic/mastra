@@ -1,4 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { z } from 'zod';
+
+// Mastra exposes a tool's inputSchema as a StandardSchema wrapper; the underlying
+// zod schema still has .parse at runtime. This casts to exercise validation +
+// coercion (the layer the AI-SDK runs on the model's arguments) directly.
+const parseInput = (
+  tool: { inputSchema?: unknown },
+  value: unknown,
+): Record<string, unknown> =>
+  (tool.inputSchema as z.ZodTypeAny).parse(value) as Record<string, unknown>;
 
 // Mock the authenticated tRPC transport so the tool's execute can be exercised
 // without a running backend. We assert the tool maps its arguments onto the
@@ -59,7 +69,7 @@ describe('addObjectiveCommentTool', () => {
   });
 
   it('coerces a string goalId to a number (the model emits it as text)', () => {
-    const parsed = addObjectiveCommentTool.inputSchema!.parse({
+    const parsed = parseInput(addObjectiveCommentTool, {
       goalId: '19',
       content: 'Strategy summary',
     });
@@ -108,7 +118,7 @@ describe('addObjectiveUpdateTool', () => {
   });
 
   it('coerces a string goalId to a number (the model emits it as text)', () => {
-    const parsed = addObjectiveUpdateTool.inputSchema!.parse({
+    const parsed = parseInput(addObjectiveUpdateTool, {
       goalId: '19',
       content: 'Slipping on the launch',
       health: 'at-risk',
