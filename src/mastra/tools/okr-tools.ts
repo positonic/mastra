@@ -427,6 +427,48 @@ export const addObjectiveCommentTool = createTool({
   },
 });
 
+export const addObjectiveUpdateTool = createTool({
+  id: "add-objective-update",
+  description:
+    "Post a health-bearing update (check-in) to an Objective's (goal's) activity feed on the user's behalf. An update carries a HEALTH (on-track | at-risk | off-track) and MOVES the Objective's status badge — use it for status/progress statements (\"we're behind on this\", \"back on track\"), NOT for narrative notes (use add-objective-comment for those). The Objective the user is viewing is provided in the page context as goalId — use it directly. Infer the health from the conversation; when there is no clear signal, default to the Objective's CURRENT health (from page context / get-okr-objectives) so a narrative-ish update never silently flips the status. CRITICAL: ALWAYS draft both the update text AND the health value you will set, show them to the user, and post ONLY after they explicitly confirm. Never set a manual status override — that stays the user's \"Set status\" action. After posting, tell the user it's done, which Objective, and the health you set.",
+  inputSchema: z.object({
+    goalId: z.number().describe("The numeric ID of the Objective (goal) to update — from the page context"),
+    content: z.string().min(1).max(10000).describe("The update text (markdown). Draft this and get the user's explicit confirmation before calling the tool."),
+    health: z.enum(["on-track", "at-risk", "off-track"]).describe("The health this check-in sets — moves the status badge. Infer from the conversation; default to the Objective's current health when unclear. Show it in the draft and confirm before posting."),
+  }),
+  outputSchema: z.object({
+    id: z.string(),
+    goalId: z.number(),
+    authorId: z.string(),
+    content: z.string(),
+    health: z.string(),
+    createdAt: z.string(),
+    author: z.object({
+      id: z.string(),
+      name: z.string().nullable(),
+      image: z.string().nullable(),
+    }).nullable().optional(),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`📌 [addObjectiveUpdate] Posting ${inputData.health} update to objective ${inputData.goalId}`);
+
+    const { data } = await authenticatedTrpcCall(
+      "mastra.addGoalUpdate",
+      { goalId: inputData.goalId, content: inputData.content, health: inputData.health },
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [addObjectiveUpdate] Posted update ${(data as any)?.id} to objective ${inputData.goalId}`);
+    return data;
+  },
+});
+
 export const linkProjectToGoalTool = createTool({
   id: "link-project-to-goal",
   description:

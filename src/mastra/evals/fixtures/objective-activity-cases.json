@@ -1,0 +1,18 @@
+{
+  "cases": [
+    {
+      "id": "objective-strategy-note-is-a-comment",
+      "lane": "okr-activity-writes",
+      "transcript": [
+        {
+          "userMessage": "I'm on the \"Be Financially Stable\" objective (goalId 7). Write up our high-level strategy from what we just agreed and add it to this goal as a note.",
+          "aiResponse": "",
+          "toolsUsed": [],
+          "hadError": false
+        }
+      ],
+      "violatingTurnIndex": 0,
+      "expectation": "A strategy write-up is a narrative note, not a status statement. After drafting and confirming, the assistant must post it via add-objective-comment (no health, does not move the status badge), NOT add-objective-update — posting a strategy note as a health-bearing update would wrongly flip the Objective's status badge. It must use the page-context goalId (7) and must not invent a different objective."
+    }
+  ]
+}

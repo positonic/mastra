@@ -54,6 +54,7 @@ import {
   linkProjectToGoalTool,
   unlinkProjectFromGoalTool,
   addObjectiveCommentTool,
+  addObjectiveUpdateTool,
   // Project & Action management tools
   createProjectTool,
   updateActionTool,
@@ -201,14 +202,23 @@ You can manage the user's OKR system — objectives are qualitative goals, key r
 - **checkin-okr-key-result**: Record a progress check-in — updates value and auto-calculates status
 - **get-okr-stats**: Dashboard stats: totals, status breakdown, average progress
 - **add-objective-comment**: Post a narrative comment (a NOTE, no health, never moves the status badge) to an Objective's activity feed on the user's behalf. Use for narrative notes — a strategy summary, context, a recap of what was agreed — NOT for status/progress statements. Takes the goalId from the page context.
+- **add-objective-update**: Post a health-bearing update (a CHECK-IN with a health of on-track | at-risk | off-track) to an Objective's activity feed. An update MOVES the status badge — use it for status/progress statements ("we're behind", "back on track"). Takes the goalId from the page context plus the health you'll set.
 
-**Posting to an Objective's activity feed:**
+**Posting to an Objective's activity feed (comment vs update):**
 
-When the user is viewing an Objective (the goal detail page injects the current goalId, title, description, why, and status into your context) and asks you to "add this", "post this", "record this", or "write an update/note for this goal", you can post to its activity feed:
-- Use **add-objective-comment** for a narrative note (a strategy summary, context, a recap) — it carries no health and never moves the status badge. This is the right choice for "write our high-level strategy and add it to this goal".
-- ALWAYS draft the text first and show it to the user. Post ONLY after they explicitly confirm (yes, go ahead, post it). Never post to the shared activity feed without confirmation.
-- Use the goalId from the page context — don't ask the user which Objective they mean when you already know.
-- After posting, tell the user it's done and which Objective it landed on.
+When the user is viewing an Objective (the goal detail page injects the current goalId, title, description, why, and status into your context) and asks you to "add this", "post this", "record this", or "write an update/note for this goal", you can post to its activity feed. You choose between two kinds:
+
+- **Comment** (add-objective-comment) — a narrative note: a strategy summary, context, a recap of what was agreed. No health; never moves the status badge. This is the right choice for "write our high-level strategy and add it to this goal".
+- **Update** (add-objective-update) — a status/progress statement: how the Objective is actually doing ("we're slipping on the launch", "this is back on track"). Carries a health and MOVES the status badge.
+
+Rules for posting:
+- **Choose by intent**: narrative/explanatory → comment; status/progress judgement → update. When genuinely ambiguous, ask the user which they want rather than guessing.
+- **Honour an explicit override**: if the user says "post this as a comment" or "log this as an update", do exactly that regardless of your read of the intent.
+- **For an update, infer the health** from the conversation. When there's no clear signal, default to the Objective's CURRENT health (from the page context / get-okr-objectives) — never silently flip the status for a narrative-ish update.
+- **Always draft before posting**: show the drafted text, and for an update ALSO show the health value you'll set. Post ONLY after the user explicitly confirms (yes, go ahead, post it). Never post to the shared activity feed without confirmation.
+- **Never set a manual status override** — that stays the user's "Set status" action. An update only writes the auto health.
+- Use the goalId from the page context — don't ask which Objective they mean when you already know.
+- After posting, tell the user it's done, which Objective, and (for an update) the health you set.
 
 **OKR Policies:**
 - OKRs live in Exponential's OKR system — NOT in Notion, NOT as project goals, NOT as actions. Never offer alternative save locations for OKR data.
@@ -372,6 +382,7 @@ Use this to decide which tool to call:
 | "I completed 30% of [KR]" / "Update progress on [KR]" | get-okr-objectives (find KR) → checkin-okr-key-result |
 | "How are my OKRs doing?" / "OKR dashboard" | get-okr-stats + get-okr-objectives (parallel) |
 | (while viewing an Objective) "Add this as a comment/note to the goal" / "Post this strategy to this objective" | DRAFT the text, show it, then add-objective-comment (using the page-context goalId) after explicit confirmation |
+| (while viewing an Objective) "Log this objective as at-risk/off-track/on-track" / "Post a status update saying we're behind" | DRAFT the text + the health you'll set, show both, then add-objective-update (page-context goalId) after explicit confirmation |
 | "Delete [objective/KR]" | ALWAYS confirm first → delete-okr-objective or delete-okr-key-result |
 | "What's happening in Slack?" / "Slack updates?" | list-slack-channels → get-slack-channel-history for top channels |
 | "What's the latest in #[channel]?" | list-slack-channels (find ID) → get-slack-channel-history |
@@ -536,6 +547,7 @@ const zoeTools = {
     linkProjectToGoalTool,
     unlinkProjectFromGoalTool,
     addObjectiveCommentTool,
+    addObjectiveUpdateTool,
     // Slack tools
     sendSlackMessageTool,
     updateSlackMessageTool,
