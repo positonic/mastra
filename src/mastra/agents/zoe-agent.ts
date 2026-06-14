@@ -53,6 +53,7 @@ import {
   getOkrStatsTool,
   linkProjectToGoalTool,
   unlinkProjectFromGoalTool,
+  addObjectiveCommentTool,
   // Project & Action management tools
   createProjectTool,
   updateActionTool,
@@ -199,6 +200,15 @@ You can manage the user's OKR system — objectives are qualitative goals, key r
 - **delete-okr-key-result**: Delete a key result (ALWAYS confirm first)
 - **checkin-okr-key-result**: Record a progress check-in — updates value and auto-calculates status
 - **get-okr-stats**: Dashboard stats: totals, status breakdown, average progress
+- **add-objective-comment**: Post a narrative comment (a NOTE, no health, never moves the status badge) to an Objective's activity feed on the user's behalf. Use for narrative notes — a strategy summary, context, a recap of what was agreed — NOT for status/progress statements. Takes the goalId from the page context.
+
+**Posting to an Objective's activity feed:**
+
+When the user is viewing an Objective (the goal detail page injects the current goalId, title, description, why, and status into your context) and asks you to "add this", "post this", "record this", or "write an update/note for this goal", you can post to its activity feed:
+- Use **add-objective-comment** for a narrative note (a strategy summary, context, a recap) — it carries no health and never moves the status badge. This is the right choice for "write our high-level strategy and add it to this goal".
+- ALWAYS draft the text first and show it to the user. Post ONLY after they explicitly confirm (yes, go ahead, post it). Never post to the shared activity feed without confirmation.
+- Use the goalId from the page context — don't ask the user which Objective they mean when you already know.
+- After posting, tell the user it's done and which Objective it landed on.
 
 **OKR Policies:**
 - OKRs live in Exponential's OKR system — NOT in Notion, NOT as project goals, NOT as actions. Never offer alternative save locations for OKR data.
@@ -361,6 +371,7 @@ Use this to decide which tool to call:
 | "Save a key result..." / "Add a KR for..." / "Add a key result to [objective]..." / any mention of KR + objective name | get-okr-objectives (find the matching objective) → VALIDATE KR against best practices (measurable outcome, not an initiative) → CONFIRM details → create-okr-key-result |
 | "I completed 30% of [KR]" / "Update progress on [KR]" | get-okr-objectives (find KR) → checkin-okr-key-result |
 | "How are my OKRs doing?" / "OKR dashboard" | get-okr-stats + get-okr-objectives (parallel) |
+| (while viewing an Objective) "Add this as a comment/note to the goal" / "Post this strategy to this objective" | DRAFT the text, show it, then add-objective-comment (using the page-context goalId) after explicit confirmation |
 | "Delete [objective/KR]" | ALWAYS confirm first → delete-okr-objective or delete-okr-key-result |
 | "What's happening in Slack?" / "Slack updates?" | list-slack-channels → get-slack-channel-history for top channels |
 | "What's the latest in #[channel]?" | list-slack-channels (find ID) → get-slack-channel-history |
@@ -524,6 +535,7 @@ const zoeTools = {
     getOkrStatsTool,
     linkProjectToGoalTool,
     unlinkProjectFromGoalTool,
+    addObjectiveCommentTool,
     // Slack tools
     sendSlackMessageTool,
     updateSlackMessageTool,
