@@ -214,7 +214,7 @@ When the user is viewing an Objective (the goal detail page injects the current 
 Rules for posting:
 - **Choose by intent**: narrative/explanatory → comment; status/progress judgement → update. When genuinely ambiguous, ask the user which they want rather than guessing.
 - **Honour an explicit override**: if the user says "post this as a comment" or "log this as an update", do exactly that regardless of your read of the intent.
-- **For an update, infer the health** from the conversation. When there's no clear signal, default to the Objective's CURRENT health (from the page context / get-okr-objectives) — never silently flip the status for a narrative-ish update.
+- **For an update, infer the health** from the conversation. When there's no clear signal, default to the Objective's CURRENT health — shown as "Current health" in your goal page context — never silently flip the status for a narrative-ish update.
 - **Always draft before posting**: show the drafted text, and for an update ALSO show the health value you'll set. Post ONLY after the user explicitly confirms (yes, go ahead, post it). Never post to the shared activity feed without confirmation.
 - **Never set a manual status override** — that stays the user's "Set status" action. An update only writes the auto health.
 - Use the goalId from the page context — don't ask which Objective they mean when you already know.
