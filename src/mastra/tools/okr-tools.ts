@@ -387,6 +387,46 @@ export const getOkrStatsTool = createTool({
   },
 });
 
+export const addObjectiveCommentTool = createTool({
+  id: "add-objective-comment",
+  description:
+    "Post a narrative comment to an Objective's (goal's) activity feed on the user's behalf. A comment is a NOTE with NO health — it never moves the Objective's status badge. Use this for narrative notes (a strategy summary, context, a recap of what was agreed), NOT for status/progress statements (use a check-in or an Objective update for those). The Objective the user is viewing is provided in the page context as goalId — use it directly; do not ask for the Objective name. CRITICAL: ALWAYS draft the comment text and show it to the user, then post ONLY after they explicitly confirm. After posting, tell the user it's done and which Objective it landed on.",
+  inputSchema: z.object({
+    goalId: z.number().describe("The numeric ID of the Objective (goal) to comment on — from the page context"),
+    content: z.string().min(1).max(10000).describe("The comment text to post (markdown). Draft this and get the user's explicit confirmation before calling the tool."),
+  }),
+  outputSchema: z.object({
+    id: z.string(),
+    goalId: z.number(),
+    authorId: z.string(),
+    content: z.string(),
+    createdAt: z.string(),
+    author: z.object({
+      id: z.string(),
+      name: z.string().nullable(),
+      image: z.string().nullable(),
+    }).nullable().optional(),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`💬 [addObjectiveComment] Posting comment to objective ${inputData.goalId}`);
+
+    const { data } = await authenticatedTrpcCall(
+      "mastra.addGoalComment",
+      { goalId: inputData.goalId, content: inputData.content },
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [addObjectiveComment] Posted comment ${(data as any)?.id} to objective ${inputData.goalId}`);
+    return data;
+  },
+});
+
 export const linkProjectToGoalTool = createTool({
   id: "link-project-to-goal",
   description:
