@@ -1183,6 +1183,7 @@ Example format for lists:
       logger.info(`   GET  /login/{sessionId}/qr - Get QR code`);
       logger.info(`   GET  /login/{sessionId}/status - Get connection status`);
       logger.info(`   GET  /sessions - List your sessions`);
+      logger.info(`   GET  /sessions/{sessionId}/groups - List WhatsApp groups`);
       logger.info(`   DELETE /sessions/{sessionId} - Remove session`);
     });
   }
@@ -1212,6 +1213,9 @@ Example format for lists:
       await this.handleGetStatus(sessionId, authToken, res);
     } else if (req.method === 'GET' && pathname === '/sessions') {
       await this.handleListSessions(authToken, res);
+    } else if (req.method === 'GET' && pathname.match(/^\/sessions\/[^/]+\/groups$/)) {
+      const sessionId = pathname.split('/')[2];
+      await this.handleGetGroups(sessionId, authToken, res);
     } else if (req.method === 'DELETE' && pathname.match(/^\/sessions\/[^/]+$/)) {
       const sessionId = pathname.split('/')[2];
       await this.handleDeleteSession(sessionId, authToken, res);
@@ -1313,6 +1317,50 @@ Example format for lists:
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(status));
+  }
+
+  private async handleGetGroups(sessionId: string, authToken: string, res: ServerResponse): Promise<void> {
+    let session: WhatsAppSession | null;
+    try {
+      session = this.getSession(sessionId, authToken);
+    } catch (error: any) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: error.message }));
+      return;
+    }
+
+    if (!session) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Session not found or not authorized' }));
+      return;
+    }
+
+    if (!session.isConnected || !session.sock) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Session not connected to WhatsApp' }));
+      return;
+    }
+
+    try {
+      // Read-only: ask the live socket which groups this account belongs to.
+      // This is the authoritative source for group JIDs (the chats table only
+      // contains groups that happened to arrive via partial history sync).
+      const groups = await session.sock.groupFetchAllParticipating();
+      const groupList = Object.entries(groups)
+        .map(([jid, group]) => ({
+          jid,
+          subject: group.subject || '(no subject)',
+          participants: group.participants?.length ?? 0,
+        }))
+        .sort((a, b) => a.subject.localeCompare(b.subject));
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ groups: groupList }));
+    } catch (error: any) {
+      logger.error(`❌ [${INSTANCE_ID}] Error fetching groups for session ${sessionId}:`, error);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to fetch groups' }));
+    }
   }
 
   private async handleListSessions(authToken: string, res: ServerResponse): Promise<void> {
