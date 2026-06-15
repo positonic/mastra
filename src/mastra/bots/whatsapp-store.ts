@@ -24,6 +24,10 @@ export interface StoredMessage {
   text: string;
   timestamp: Date;
   senderName?: string;
+  /** For group messages, the actual author's JID (msg.key.participant). */
+  senderJid?: string;
+  /** Marks the chat as a group so chat metadata is correct. */
+  isGroup?: boolean;
 }
 
 export interface ChatSummary {
@@ -146,10 +150,16 @@ export class WhatsAppMessageStore {
         text          TEXT NOT NULL,
         timestamp     TIMESTAMPTZ NOT NULL,
         sender_name   TEXT,
+        sender_jid    TEXT,
         has_embedding BOOLEAN DEFAULT false,
         created_at    TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE(user_id, message_id)
       )
+    `);
+
+    // Add sender_jid to pre-existing tables (group sender attribution).
+    await this.pool.query(`
+      ALTER TABLE ${SCHEMA_NAME}.messages ADD COLUMN IF NOT EXISTS sender_jid TEXT
     `);
 
     await this.pool.query(`
@@ -215,13 +225,14 @@ export class WhatsAppMessageStore {
   async storeMessage(userId: string, msg: StoredMessage): Promise<void> {
     const chatId = await this.ensureChat(userId, msg.jid, {
       pushName: msg.senderName,
+      isGroup: msg.isGroup,
     });
 
     const msgId = `${userId}:${msg.messageId}`;
 
     await this.pool.query(`
-      INSERT INTO ${SCHEMA_NAME}.messages (id, user_id, chat_id, jid, message_id, from_me, text, timestamp, sender_name)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      INSERT INTO ${SCHEMA_NAME}.messages (id, user_id, chat_id, jid, message_id, from_me, text, timestamp, sender_name, sender_jid)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       ON CONFLICT (user_id, message_id) DO NOTHING
     `, [
       msgId,
@@ -233,6 +244,7 @@ export class WhatsAppMessageStore {
       msg.text,
       msg.timestamp,
       msg.senderName ?? null,
+      msg.senderJid ?? null,
     ]);
 
     // Update chat stats
@@ -272,6 +284,7 @@ export class WhatsAppMessageStore {
         const firstMsg = chunk.find(m => m.jid === jid);
         await this.ensureChat(userId, jid, {
           pushName: firstMsg?.senderName,
+          isGroup: firstMsg?.isGroup,
         });
       }
 
@@ -282,8 +295,8 @@ export class WhatsAppMessageStore {
 
         try {
           await this.pool.query(`
-            INSERT INTO ${SCHEMA_NAME}.messages (id, user_id, chat_id, jid, message_id, from_me, text, timestamp, sender_name)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            INSERT INTO ${SCHEMA_NAME}.messages (id, user_id, chat_id, jid, message_id, from_me, text, timestamp, sender_name, sender_jid)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (user_id, message_id) DO NOTHING
           `, [
             msgId,
@@ -295,6 +308,7 @@ export class WhatsAppMessageStore {
             msg.text,
             msg.timestamp,
             msg.senderName ?? null,
+            msg.senderJid ?? null,
           ]);
         } catch (err) {
           // Skip individual message failures during batch import

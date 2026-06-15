@@ -41,6 +41,7 @@ import {
   setCorsHeaders,
 } from '../utils/gateway-shared.js';
 import { WhatsAppMessageStore, getWhatsAppMessageStore } from './whatsapp-store.js';
+import { NotionCaptureSync } from './notion-capture.js';
 
 const logger = createLogger({
   name: 'WhatsAppGateway',
@@ -59,6 +60,16 @@ const MAX_SESSIONS = parseInt(process.env.WHATSAPP_MAX_SESSIONS || '10', 10);
 const MAX_MESSAGE_LENGTH = 4096;
 const CONVERSATION_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
 const PRIVATE_RESPONSE_MODE = process.env.WHATSAPP_PRIVATE_RESPONSES === 'true'; // Reply in self-chat only
+
+// Group JIDs (comma-separated `...@g.us`) whose messages we capture into the
+// store + Notion. Capture is read-only: the agent still only REPLIES in a group
+// when explicitly @mentioned (never auto-continues a group conversation).
+const CAPTURE_GROUP_JIDS = new Set(
+  (process.env.WHATSAPP_CAPTURE_GROUP_JIDS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean),
+);
 
 // Token refresh configuration
 const TODO_APP_BASE_URL = process.env.TODO_APP_BASE_URL || 'http://localhost:3000';
@@ -293,6 +304,7 @@ export class WhatsAppGateway {
   private httpServer: Server | null = null;
   private sessionsMetadata: SessionsFile = {};
   private messageStore: WhatsAppMessageStore | null = null;
+  private notionCapture: NotionCaptureSync | null = null;
 
   constructor() {
     logger.info(`🚀 [${INSTANCE_ID}] WhatsApp Gateway initializing...`);
@@ -313,6 +325,15 @@ export class WhatsAppGateway {
     } catch (error) {
       logger.error(`❌ [${INSTANCE_ID}] Failed to initialize message store (non-fatal):`, error);
       this.messageStore = null;
+    }
+
+    // Initialize Notion capture sync (no-op if env not configured)
+    this.notionCapture = NotionCaptureSync.fromEnv();
+    if (CAPTURE_GROUP_JIDS.size > 0) {
+      logger.info(
+        `📥 [${INSTANCE_ID}] Group capture enabled for: ${[...CAPTURE_GROUP_JIDS].join(', ')}` +
+        `${this.notionCapture ? ' → Notion' : ' (store only; Notion not configured)'}`,
+      );
     }
 
     // Reconnect existing sessions
@@ -664,15 +685,22 @@ export class WhatsAppGateway {
         // Skip status/broadcast
         if (remoteJid.endsWith('@status') || remoteJid.endsWith('@broadcast')) continue;
 
-        // Skip group messages for now
-        if (remoteJid.endsWith('@g.us')) continue;
+        // Groups: skip entirely unless this group is on the capture allowlist.
+        // Allowlisted groups are captured (store + Notion) but the agent still
+        // only REPLIES when explicitly @mentioned (see shouldProcess below).
+        const isGroup = remoteJid.endsWith('@g.us');
+        if (isGroup && !CAPTURE_GROUP_JIDS.has(remoteJid)) continue;
 
-        // Cache ALL messages from individual chats for context retrieval
-        // This happens before other filtering so we capture both incoming and outgoing messages
+        // Cache ALL messages (individual chats + allowlisted groups) for context.
+        // This happens before other filtering so we capture incoming and outgoing.
         const textForCache = extractText(msg.message);
         if (textForCache && msg.key.id) {
+          const msgTimestamp = new Date(msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now());
+          // In groups the author is key.participant, not remoteJid.
+          const senderJid = isGroup ? (msg.key.participant ?? undefined) : undefined;
+
           this.cacheMessage(session, remoteJid, {
-            timestamp: new Date(msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now()),
+            timestamp: msgTimestamp,
             fromMe: msg.key.fromMe ?? false,
             text: textForCache,
             messageId: msg.key.id,
@@ -685,10 +713,23 @@ export class WhatsAppGateway {
               messageId: msg.key.id,
               fromMe: msg.key.fromMe ?? false,
               text: textForCache,
-              timestamp: new Date(msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now()),
+              timestamp: msgTimestamp,
               senderName: msg.pushName || undefined,
+              senderJid,
+              isGroup,
             }).catch(err => {
               logger.error(`❌ [${INSTANCE_ID}] Error persisting message:`, err);
+            });
+          }
+
+          // Mirror allowlisted group messages into Notion (fire-and-forget).
+          if (isGroup && this.notionCapture) {
+            this.notionCapture.enqueue({
+              messageId: msg.key.id,
+              text: textForCache,
+              senderName: msg.pushName || senderJid || null,
+              timestamp: msgTimestamp,
+              fromMe: msg.key.fromMe ?? false,
             });
           }
         }
@@ -754,12 +795,14 @@ export class WhatsAppGateway {
           // Explicit @mention: always process
           shouldProcess = true;
           agentId = parsed.agent;
-        } else if (replyToAgent && activeConversation) {
-          // Reply to agent's message within active conversation
+        } else if (!isGroup && replyToAgent && activeConversation) {
+          // Reply to agent's message within active conversation (1:1 only)
           shouldProcess = true;
           agentId = activeConversation.agentId;
-        } else if (activeConversation) {
-          // Within active conversation window (no mention needed)
+        } else if (!isGroup && activeConversation) {
+          // Within active conversation window, no mention needed (1:1 only).
+          // In groups we deliberately require an explicit @mention every time,
+          // so the agent never auto-replies into a shared channel.
           shouldProcess = true;
           agentId = activeConversation.agentId;
         }
