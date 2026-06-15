@@ -944,7 +944,7 @@ export const getAllProjectsTool = createTool({
             title: z.string(),
             description: z.string().nullable(),
             dueDate: z.string().nullable(),
-            lifeDomainId: z.number(),
+            lifeDomainId: z.number().nullable(),
           })
         ),
         outcomes: z.array(
