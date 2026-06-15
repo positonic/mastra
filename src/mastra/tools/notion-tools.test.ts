@@ -9,7 +9,7 @@ vi.mock('../utils/authenticated-fetch.js', () => ({
   authenticatedTrpcCall: (...args: unknown[]) => authenticatedTrpcCall(...args),
 }));
 
-const { notionSearchTool } = await import('./notion-tools.js');
+const { notionSearchTool, notionQueryDatabaseTool } = await import('./notion-tools.js');
 
 function makeRequestContext(overrides: Record<string, string> = {}) {
   return new Map<string, string>([
@@ -82,5 +82,84 @@ describe('notionSearchTool', () => {
     );
 
     expect(result).toEqual({ error: 'boom' });
+  });
+});
+
+describe('notionQueryDatabaseTool', () => {
+  beforeEach(() => {
+    authenticatedTrpcCall.mockReset();
+  });
+
+  it('calls mastra.notionQueryDatabase with the mapped arguments + workspaceId', async () => {
+    authenticatedTrpcCall.mockResolvedValue({
+      data: { connected: true, total: 0, hasMore: false, nextCursor: null, rows: [] },
+    });
+
+    await notionQueryDatabaseTool.execute!(
+      {
+        databaseId: 'db-1',
+        sorts: [{ property: 'Due', direction: 'ascending' }],
+        startCursor: 'cur-1',
+      },
+      { requestContext: makeRequestContext() } as never,
+    );
+
+    expect(authenticatedTrpcCall).toHaveBeenCalledWith(
+      'mastra.notionQueryDatabase',
+      {
+        databaseId: 'db-1',
+        filter: undefined,
+        sorts: [{ property: 'Due', direction: 'ascending' }],
+        startCursor: 'cur-1',
+        workspaceId: 'ws-1',
+      },
+      expect.objectContaining({ authToken: 'token-123', userId: 'user-1' }),
+    );
+  });
+
+  it('wraps returned row content (untrusted) and preserves the lean shape', async () => {
+    authenticatedTrpcCall.mockResolvedValue({
+      data: {
+        connected: true,
+        total: 1,
+        hasMore: true,
+        nextCursor: 'cur-2',
+        rows: [{ id: 'r1', title: 'Rent', url: 'https://notion.so/r1', props: { Amount: 1200 } }],
+      },
+    });
+
+    const result = (await notionQueryDatabaseTool.execute!(
+      { databaseId: 'db-1' },
+      { requestContext: makeRequestContext() } as never,
+    )) as any;
+
+    expect(result.connected).toBe(true);
+    expect(result.hasMore).toBe(true);
+    expect(result.nextCursor).toBe('cur-2');
+    expect(result.rows[0].id).toBe('r1');
+    // title is a string (wrapped or not, the value still contains the text)
+    expect(String(result.rows[0].title)).toContain('Rent');
+    expect(result.rows[0].props.Amount).toBe(1200);
+  });
+
+  it('passes {connected:false} through untouched (no rows to wrap)', async () => {
+    authenticatedTrpcCall.mockResolvedValue({ data: { connected: false } });
+
+    const result = await notionQueryDatabaseTool.execute!(
+      { databaseId: 'db-1' },
+      { requestContext: makeRequestContext() } as never,
+    );
+
+    expect(result).toEqual({ connected: false });
+  });
+
+  it('throws when no auth token is present', async () => {
+    await expect(
+      notionQueryDatabaseTool.execute!(
+        { databaseId: 'db-1' },
+        { requestContext: new Map() } as never,
+      ),
+    ).rejects.toThrow(/authentication token/i);
+    expect(authenticatedTrpcCall).not.toHaveBeenCalled();
   });
 });

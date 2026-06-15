@@ -282,9 +282,13 @@ export const notionGetPageTool = createTool({
 export const notionQueryDatabaseTool = createTool({
   id: "notion-query-database",
   description:
-    "Query a Notion database with optional filters and sorts. Auto-paginates to fetch all matching results.",
+    "Query one of the user's Notion databases with optional filters and sorts. The Notion credential is resolved server-side — you never see it. " +
+    "Returns at most 25 rows (each {id, title, url, props}, scalar properties only — no long text blobs) plus `hasMore`/`nextCursor`. " +
+    "If `hasMore` is true there are more rows: either tighten the filter/sort, or page by calling again with `startCursor` set to the returned `nextCursor`. Don't try to slurp the whole database. " +
+    "If `{connected:false}`, the user hasn't connected Notion — tell them to connect it in Settings → Integrations. " +
+    "If `{connected:true, total:0}` (no rows), the most likely cause is that a Notion internal integration only sees databases explicitly SHARED with it — tell the user to share the database with the integration in Notion (open it → '•••' → 'Connections'), then retry.",
   inputSchema: z.object({
-    databaseId: z.string().describe("Notion database ID (UUID)"),
+    databaseId: z.string().describe("Notion database ID (UUID), e.g. from notion-search"),
     filter: z.any().optional().describe("Notion filter object — see https://developers.notion.com/reference/post-database-query-filter"),
     sorts: z
       .array(
@@ -295,55 +299,45 @@ export const notionQueryDatabaseTool = createTool({
       )
       .optional()
       .describe("Sort criteria"),
-    maxResults: z
-      .number()
+    startCursor: z
+      .string()
       .optional()
-      .default(200)
-      .describe("Max results to return (default 200). Set lower for faster responses."),
+      .describe("Pagination cursor — pass the `nextCursor` from a previous call to fetch the next page of up to 25 rows"),
   }),
   execute: async (inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const workspaceId = requestContext?.get("workspaceId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
     try {
-      const client = getClientFromRuntime(requestContext);
-      const { databaseId, filter, sorts, maxResults = 200 } = inputData;
+      const { data } = await authenticatedTrpcCall(
+        "mastra.notionQueryDatabase",
+        {
+          databaseId: inputData.databaseId,
+          filter: inputData.filter,
+          sorts: inputData.sorts,
+          startCursor: inputData.startCursor,
+          workspaceId: workspaceId || undefined,
+        },
+        { authToken, sessionId, userId },
+      );
 
-      const allResults: any[] = [];
-      let cursor: string | undefined;
+      // Wrap the returned row content — Notion database content is untrusted
+      // external content (content-injection posture, ADR-0020).
+      if (data && (data as any).connected && Array.isArray((data as any).rows)) {
+        (data as any).rows = (data as any).rows.map((row: any) => ({
+          ...row,
+          title: typeof row.title === "string"
+            ? prepareUntrustedContent(row.title, "notion_database")
+            : row.title,
+          props: wrapPropertyValue(row.props, "notion_database"),
+        }));
+      }
 
-      do {
-        const body: Parameters<typeof client.dataSources.query>[0] = {
-          data_source_id: databaseId,
-          page_size: Math.min(100, maxResults - allResults.length),
-          start_cursor: cursor,
-        };
-        if (filter) body.filter = filter;
-        if (sorts) body.sorts = sorts;
-
-        const response = await client.dataSources.query(body);
-        allResults.push(...response.results);
-
-        cursor =
-          response.has_more && allResults.length < maxResults
-            ? (response.next_cursor ?? undefined)
-            : undefined;
-      } while (cursor);
-
-      // Wrap property values — database content is untrusted external content
-      return {
-        results: allResults.map((page: any) => {
-          const props = extractProperties(page.properties ?? {});
-          const wrappedProps: Record<string, unknown> = {};
-          for (const [key, value] of Object.entries(props)) {
-            wrappedProps[key] = wrapPropertyValue(value, "notion_database");
-          }
-          return {
-            id: page.id,
-            url: page.url,
-            properties: wrappedProps,
-          };
-        }),
-        total: allResults.length,
-        capped: allResults.length >= maxResults,
-      };
+      return data;
     } catch (err) {
       return { error: formatError(err) };
     }
