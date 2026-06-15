@@ -7,6 +7,7 @@ import { Client, LogLevel, isNotionClientError, ClientErrorCode, APIErrorCode } 
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { prepareUntrustedContent } from "../utils/content-safety.js";
+import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
 
 // ---------------------------------------------------------------------------
 // Client — the SDK handles retries (3 attempts with backoff) and rate-limit
@@ -172,40 +173,34 @@ function formatError(err: unknown): string {
 
 export const notionSearchTool = createTool({
   id: "notion-search",
-  description: "Search for pages and databases in Notion by title or content",
+  description:
+    "Search the user's Notion for pages and databases by title or content. The Notion credential is resolved server-side from the user's connected integration — you never see it. Returns a lean list of {id, type, title, url}. " +
+    "If the result is `{connected:false}`, the user has not connected Notion — tell them to connect it in Settings → Integrations. " +
+    "If `{connected:true, total:0}` (no matches), the most likely cause is that a Notion internal integration only sees pages explicitly SHARED with it — tell the user to open the page/database in Notion, click '•••' → 'Connections' (or 'Add connections') and share it with the integration, then try again. " +
+    "Use the returned page/database `id` with notion-get-page or notion-query-database.",
   inputSchema: z.object({
     query: z.string().describe("Search query"),
     filter: z.enum(["page", "database"]).optional().describe("Filter by object type"),
   }),
   execute: async (inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const workspaceId = requestContext?.get("workspaceId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
     try {
-      const client = getClientFromRuntime(requestContext);
-      const { query, filter } = inputData;
-
-      // SDK v5 renamed "database" → "data_source" in the filter type
-      const body: Parameters<typeof client.search>[0] = { query };
-      if (filter) {
-        body.filter = {
-          value: filter === "database" ? "data_source" : "page",
-          property: "object",
-        };
-      }
-
-      const response = await client.search(body);
-
-      return {
-        results: response.results.map((r: any) => ({
-          id: r.id,
-          type: r.object,
-          title:
-            r.object === "page"
-              ? extractPageTitle(r.properties ?? {})
-              : r.title?.[0]?.plain_text ?? "Untitled",
-          url: r.url,
-        })),
-        total: response.results.length,
-        hasMore: response.has_more,
-      };
+      const { data } = await authenticatedTrpcCall(
+        "mastra.notionSearch",
+        {
+          query: inputData.query,
+          filter: inputData.filter,
+          workspaceId: workspaceId || undefined,
+        },
+        { authToken, sessionId, userId },
+      );
+      return data;
     } catch (err) {
       return { error: formatError(err) };
     }
