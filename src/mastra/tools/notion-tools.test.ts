@@ -9,7 +9,13 @@ vi.mock('../utils/authenticated-fetch.js', () => ({
   authenticatedTrpcCall: (...args: unknown[]) => authenticatedTrpcCall(...args),
 }));
 
-const { notionSearchTool, notionQueryDatabaseTool, notionGetPageTool } = await import('./notion-tools.js');
+const {
+  notionSearchTool,
+  notionQueryDatabaseTool,
+  notionGetPageTool,
+  notionCreatePageTool,
+  notionUpdatePageTool,
+} = await import('./notion-tools.js');
 
 function makeRequestContext(overrides: Record<string, string> = {}) {
   return new Map<string, string>([
@@ -217,6 +223,91 @@ describe('notionGetPageTool', () => {
     await expect(
       notionGetPageTool.execute!(
         { pageId: 'pg-1' },
+        { requestContext: new Map() } as never,
+      ),
+    ).rejects.toThrow(/authentication token/i);
+    expect(authenticatedTrpcCall).not.toHaveBeenCalled();
+  });
+});
+
+describe('notionCreatePageTool', () => {
+  beforeEach(() => {
+    authenticatedTrpcCall.mockReset();
+  });
+
+  it('calls mastra.notionCreatePage with the mapped arguments + workspaceId', async () => {
+    authenticatedTrpcCall.mockResolvedValue({
+      data: { connected: true, id: 'new-1', url: 'https://notion.so/new-1', title: 'Groceries' },
+    });
+
+    const result = await notionCreatePageTool.execute!(
+      { databaseId: 'db-1', title: 'Groceries', properties: { Amount: { number: 50 } } },
+      { requestContext: makeRequestContext() } as never,
+    );
+
+    expect(authenticatedTrpcCall).toHaveBeenCalledWith(
+      'mastra.notionCreatePage',
+      {
+        databaseId: 'db-1',
+        title: 'Groceries',
+        properties: { Amount: { number: 50 } },
+        workspaceId: 'ws-1',
+      },
+      expect.objectContaining({ authToken: 'token-123', userId: 'user-1' }),
+    );
+    expect(result).toEqual({ connected: true, id: 'new-1', url: 'https://notion.so/new-1', title: 'Groceries' });
+  });
+
+  it('mandates draft-and-confirm in its description (no silent writes)', () => {
+    expect(notionCreatePageTool.description).toMatch(/draft-and-confirm/i);
+    expect(notionCreatePageTool.description).toMatch(/confirm/i);
+  });
+
+  it('throws when no auth token is present (never reaches the backend)', async () => {
+    await expect(
+      notionCreatePageTool.execute!(
+        { databaseId: 'db-1', title: 'x' },
+        { requestContext: new Map() } as never,
+      ),
+    ).rejects.toThrow(/authentication token/i);
+    expect(authenticatedTrpcCall).not.toHaveBeenCalled();
+  });
+});
+
+describe('notionUpdatePageTool', () => {
+  beforeEach(() => {
+    authenticatedTrpcCall.mockReset();
+  });
+
+  it('calls mastra.notionUpdatePage with the mapped arguments + workspaceId', async () => {
+    authenticatedTrpcCall.mockResolvedValue({ data: { connected: true, id: 'pg-1' } });
+
+    const result = await notionUpdatePageTool.execute!(
+      { pageId: 'pg-1', properties: { Status: { status: { name: 'Done' } } } },
+      { requestContext: makeRequestContext() } as never,
+    );
+
+    expect(authenticatedTrpcCall).toHaveBeenCalledWith(
+      'mastra.notionUpdatePage',
+      {
+        pageId: 'pg-1',
+        properties: { Status: { status: { name: 'Done' } } },
+        workspaceId: 'ws-1',
+      },
+      expect.objectContaining({ authToken: 'token-123', userId: 'user-1' }),
+    );
+    expect(result).toEqual({ connected: true, id: 'pg-1' });
+  });
+
+  it('mandates draft-and-confirm in its description (no silent writes)', () => {
+    expect(notionUpdatePageTool.description).toMatch(/draft-and-confirm/i);
+    expect(notionUpdatePageTool.description).toMatch(/confirm/i);
+  });
+
+  it('throws when no auth token is present (never reaches the backend)', async () => {
+    await expect(
+      notionUpdatePageTool.execute!(
+        { pageId: 'pg-1', properties: {} },
         { requestContext: new Map() } as never,
       ),
     ).rejects.toThrow(/authentication token/i);
