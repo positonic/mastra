@@ -9,7 +9,7 @@ vi.mock('../utils/authenticated-fetch.js', () => ({
   authenticatedTrpcCall: (...args: unknown[]) => authenticatedTrpcCall(...args),
 }));
 
-const { notionSearchTool, notionQueryDatabaseTool } = await import('./notion-tools.js');
+const { notionSearchTool, notionQueryDatabaseTool, notionGetPageTool } = await import('./notion-tools.js');
 
 function makeRequestContext(overrides: Record<string, string> = {}) {
   return new Map<string, string>([
@@ -157,6 +157,66 @@ describe('notionQueryDatabaseTool', () => {
     await expect(
       notionQueryDatabaseTool.execute!(
         { databaseId: 'db-1' },
+        { requestContext: new Map() } as never,
+      ),
+    ).rejects.toThrow(/authentication token/i);
+    expect(authenticatedTrpcCall).not.toHaveBeenCalled();
+  });
+});
+
+describe('notionGetPageTool', () => {
+  beforeEach(() => {
+    authenticatedTrpcCall.mockReset();
+  });
+
+  it('calls mastra.notionGetPage with the pageId + workspaceId from context', async () => {
+    authenticatedTrpcCall.mockResolvedValue({
+      data: { connected: true, id: 'pg-1', title: 'Notes', url: 'https://notion.so/pg-1', text: 'hello', truncated: false },
+    });
+
+    await notionGetPageTool.execute!(
+      { pageId: 'pg-1' },
+      { requestContext: makeRequestContext() } as never,
+    );
+
+    expect(authenticatedTrpcCall).toHaveBeenCalledWith(
+      'mastra.notionGetPage',
+      { pageId: 'pg-1', workspaceId: 'ws-1' },
+      expect.objectContaining({ authToken: 'token-123', userId: 'user-1' }),
+    );
+  });
+
+  it('wraps the returned title + text (untrusted) and keeps the truncated flag', async () => {
+    authenticatedTrpcCall.mockResolvedValue({
+      data: { connected: true, id: 'pg-1', title: 'Notes', url: 'https://notion.so/pg-1', text: 'secret plan', truncated: true },
+    });
+
+    const result = (await notionGetPageTool.execute!(
+      { pageId: 'pg-1' },
+      { requestContext: makeRequestContext() } as never,
+    )) as any;
+
+    expect(result.connected).toBe(true);
+    expect(result.truncated).toBe(true);
+    expect(String(result.title)).toContain('Notes');
+    expect(String(result.text)).toContain('secret plan');
+  });
+
+  it('passes {connected:false} through untouched', async () => {
+    authenticatedTrpcCall.mockResolvedValue({ data: { connected: false } });
+
+    const result = await notionGetPageTool.execute!(
+      { pageId: 'pg-1' },
+      { requestContext: makeRequestContext() } as never,
+    );
+
+    expect(result).toEqual({ connected: false });
+  });
+
+  it('throws when no auth token is present', async () => {
+    await expect(
+      notionGetPageTool.execute!(
+        { pageId: 'pg-1' },
         { requestContext: new Map() } as never,
       ),
     ).rejects.toThrow(/authentication token/i);
