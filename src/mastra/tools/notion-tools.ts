@@ -228,51 +228,41 @@ function wrapPropertyValue(value: unknown, context: string): unknown {
 export const notionGetPageTool = createTool({
   id: "notion-get-page",
   description:
-    "Get a Notion page by ID, including its properties and full block content (auto-paginates)",
+    "Read a specific Notion page's title and text content by ID (often an id from notion-search or notion-query-database). The Notion credential is resolved server-side — you never see it. " +
+    "Returns `{connected, id, title, url, text, truncated}`. The page text may be **truncated** (~3k chars): when `truncated:true`, tell the user you only read the start and ask if they want a specific section, rather than assuming you have the whole page. " +
+    "If `{connected:false}`, the user hasn't connected Notion — tell them to connect it in Settings → Integrations. " +
+    "If the page isn't found, the internal integration may not have been SHARED with that page — tell the user to share it with the integration in Notion.",
   inputSchema: z.object({
     pageId: z.string().describe("Notion page ID (UUID or 32-char hex)"),
   }),
   execute: async (inputData, { requestContext }) => {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const workspaceId = requestContext?.get("workspaceId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
     try {
-      const client = getClientFromRuntime(requestContext);
-      const { pageId } = inputData;
+      const { data } = await authenticatedTrpcCall(
+        "mastra.notionGetPage",
+        { pageId: inputData.pageId, workspaceId: workspaceId || undefined },
+        { authToken, sessionId, userId },
+      );
 
-      const [page, blocks] = await Promise.all([
-        client.pages.retrieve({ page_id: pageId }),
-        getAllBlocks(client, pageId),
-      ]);
-
-      const p = page as any;
-
-      // Wrap Notion content — pages are untrusted external content
-      const wrappedContent = blocks
-        .map((b: any) => ({
-          type: b.type,
-          text: extractBlockText(b),
-          hasChildren: b.has_children ?? false,
-        }))
-        .filter((b) => b.text)
-        .map((b) => ({
-          ...b,
-          text: prepareUntrustedContent(b.text!, "notion_page"),
-        }));
-
-      // Wrap title and property values — page metadata is also untrusted
-      const rawTitle = extractPageTitle(p.properties ?? {});
-      const rawProps = extractProperties(p.properties ?? {});
-      const wrappedProps: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(rawProps)) {
-        wrappedProps[key] = wrapPropertyValue(value, "notion_page");
+      // Wrap the page title + text — Notion page content is untrusted external
+      // content (content-injection posture, ADR-0020).
+      if (data && (data as any).connected) {
+        const d = data as any;
+        if (typeof d.title === "string") {
+          d.title = prepareUntrustedContent(d.title, "notion_page");
+        }
+        if (typeof d.text === "string") {
+          d.text = prepareUntrustedContent(d.text, "notion_page");
+        }
       }
 
-      return {
-        id: p.id,
-        url: p.url,
-        title: prepareUntrustedContent(rawTitle, "notion_page"),
-        properties: wrappedProps,
-        content: wrappedContent,
-        blockCount: blocks.length,
-      };
+      return data;
     } catch (err) {
       return { error: formatError(err) };
     }
