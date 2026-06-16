@@ -9,7 +9,7 @@ import {
 } from "../utils/authenticated-fetch.js";
 import { prepareUntrustedContent, auditWriteAction } from "../utils/content-safety.js";
 import { asAppContext } from "../types/request-context.js";
-import { looseBoolean, looseNumber, looseEnum } from "./zod-loose.js";
+import { looseBoolean, looseNumber, looseEnum, looseStringArray, looseEnumArray } from "./zod-loose.js";
 
 interface GeocodingResponse {
   results: {
@@ -1044,8 +1044,7 @@ export const getMeetingTranscriptionsTool = createTool({
       .optional()
       .describe("Start date filter in ISO format"),
     endDate: z.string().optional().describe("End date filter in ISO format"),
-    participants: z
-      .array(z.string())
+    participants: looseStringArray()
       .optional()
       .describe("Filter by participant names/IDs"),
     meetingType: z
@@ -1254,17 +1253,14 @@ export const getMeetingInsightsTool = createTool({
       .string()
       .optional()
       .describe("Custom end date if timeframe is custom"),
-    insightTypes: z
-      .array(
-        z.enum([
-          "decisions",
-          "action_items",
-          "deadlines",
-          "blockers",
-          "milestones",
-          "team_updates",
-        ])
-      )
+    insightTypes: looseEnumArray([
+      "decisions",
+      "action_items",
+      "deadlines",
+      "blockers",
+      "milestones",
+      "team_updates",
+    ])
       .optional()
       .describe("Types of insights to extract"),
   }),
@@ -2038,7 +2034,7 @@ export const searchCrmContactsTool = createTool({
     "Search contacts in the CRM by name, tags, or organization. Returns a list of matching contacts with basic info. Use this to find contacts before getting full details or logging interactions.",
   inputSchema: z.object({
     search: z.string().optional().describe("Search by first or last name"),
-    tags: z.array(z.string()).optional().describe("Filter by tags (e.g., ['investor', 'advisor'])"),
+    tags: looseStringArray().optional().describe("Filter by tags (e.g., ['investor', 'advisor'])"),
     organizationId: z.string().optional().describe("Filter by organization ID"),
     limit: looseNumber(z.number()).default(20).describe("Max results to return (default: 20)"),
   }),
@@ -2171,8 +2167,8 @@ export const createFullCrmContactTool = createTool({
     twitter: z.string().optional().describe("Twitter/X handle"),
     github: z.string().optional().describe("GitHub username"),
     about: z.string().optional().describe("Notes about this contact"),
-    skills: z.array(z.string()).optional().describe("Contact's skills"),
-    tags: z.array(z.string()).optional().describe("Tags for categorization"),
+    skills: looseStringArray().optional().describe("Contact's skills"),
+    tags: looseStringArray().optional().describe("Tags for categorization"),
     organizationId: z.string().optional().describe("Organization to link this contact to"),
   }),
   outputSchema: z.object({
@@ -2224,8 +2220,8 @@ export const updateCrmContactTool = createTool({
     twitter: z.string().optional().nullable().describe("Updated Twitter handle"),
     github: z.string().optional().nullable().describe("Updated GitHub username"),
     about: z.string().optional().describe("Updated notes"),
-    skills: z.array(z.string()).optional().describe("Updated skills list (replaces existing)"),
-    tags: z.array(z.string()).optional().describe("Updated tags list (replaces existing)"),
+    skills: looseStringArray().optional().describe("Updated skills list (replaces existing)"),
+    tags: looseStringArray().optional().describe("Updated tags list (replaces existing)"),
     organizationId: z.string().optional().nullable().describe("Organization ID (null to unlink)"),
   }),
   outputSchema: z.object({

@@ -1,7 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { one2bTrpcMutation, one2bTrpcQuery, serperSearch } from "../utils/one2b-api.js";
-import { looseEnum } from "./zod-loose.js";
+import { looseEnum, looseStringArray } from "./zod-loose.js";
 
 // ─── Track definitions ──────────────────────────────────────────────────────
 // Each track maps to a specific tRPC router on the One2b platform.
@@ -278,7 +278,7 @@ export const one2bCreateLeadTool = createTool({
     // Communication preferences (required by most tracks)
     mobileContactMethod: z.string().optional().describe("Preferred mobile contact: WhatsApp, Signal, Telegram, SMS"),
     videoCallPlatform: z.string().optional().describe("Preferred video call: Zoom, Teams, Google Meet"),
-    preferredContactTimes: z.array(z.string()).optional().describe("Preferred times: Morning, Afternoon, Evening"),
+    preferredContactTimes: looseStringArray().optional().describe("Preferred times: Morning, Afternoon, Evening"),
     timeZone: z.string().optional().describe("Contact's timezone"),
     // Track-specific data collected during conversation
     trackData: z.record(z.unknown()).optional().describe(

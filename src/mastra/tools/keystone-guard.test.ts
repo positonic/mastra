@@ -93,6 +93,18 @@ function isLooseWrapped(schema: any, innerTypes: string[]): boolean {
 }
 const isLooseWrappedScalar = (s: any) => isLooseWrapped(s, ['ZodNumber', 'ZodBoolean']);
 const isLooseWrappedEnum = (s: any) => isLooseWrapped(s, ['ZodEnum']);
+// looseStringArray/looseEnumArray = preprocess over a ZodArray whose element is
+// a string or enum.
+function isLooseWrappedArray(schema: any): boolean {
+  const u = unwrap(schema);
+  if (u?._def?.typeName === 'ZodEffects' && u._def.effect?.type === 'preprocess') {
+    const innerArr = unwrap(u._def.schema);
+    if (innerArr?._def?.typeName !== 'ZodArray') return false;
+    const el = unwrap(innerArr._def.type)?._def?.typeName;
+    return el === 'ZodString' || el === 'ZodEnum';
+  }
+  return false;
+}
 
 // Does the optional/default/nullable/catch wrapper chain over this field
 // contain a `.catch()` guarding a model-facing enum/scalar? `.catch(default)`
@@ -127,19 +139,21 @@ interface Violation {
 }
 
 // Recursively collect every model-facing input that breaks a swept convention:
-//   • bare z.number()/z.boolean()      (scalars — deep.rune)
-//   • bare z.enum()                    (enums   — zippy.acorn)
-//   • a `.catch()` over any of those   (banned  — zippy.acorn)
-// A direct `z.array(z.enum())` (array-of-enum) is deferred to wet.llama (#4),
-// so its element enum is NOT flagged here. Enums nested inside an object that
-// happens to live in an array (e.g. `tickets[].status`) ARE flagged — they are
-// ordinary enum fields. Output schemas are never walked (not model-produced).
+//   • bare z.number()/z.boolean()              (scalars — deep.rune)
+//   • bare z.enum()                            (enums   — zippy.acorn)
+//   • a `.catch()` over any of those           (banned  — zippy.acorn)
+//   • bare z.array(z.string())/z.array(z.enum()) (arrays — wet.llama)
+// Enums/strings nested inside an object that happens to live in an array (e.g.
+// `tickets[].status`) are still walked as ordinary fields. Output schemas are
+// never walked (not model-produced).
 function findViolations(schema: any, path: string, out: Violation[]): void {
   if (hasCatchOverGuardedClass(schema)) {
     out.push({ path, reason: '.catch() is banned on model-facing enums/scalars — use looseEnum/looseNumber/looseBoolean (normalize-then-fail, never silent-default)' });
     return;
   }
-  if (isLooseWrappedScalar(schema) || isLooseWrappedEnum(schema)) return; // properly wrapped
+  if (isLooseWrappedScalar(schema) || isLooseWrappedEnum(schema) || isLooseWrappedArray(schema)) {
+    return; // properly wrapped
+  }
   const u = unwrap(schema);
   if (!u?._def) return;
   const tn = u._def.typeName;
@@ -158,8 +172,21 @@ function findViolations(schema: any, path: string, out: Violation[]): void {
       findViolations(shape[key], `${path}.${key}`, out);
     }
   } else if (tn === 'ZodArray') {
-    // Direct array-of-enum is wet.llama's (#4) territory — skip its element.
-    if (unwrap(u._def.type)?._def?.typeName === 'ZodEnum') return;
+    // A bare array-of-string / array-of-enum must use looseStringArray() /
+    // looseEnumArray() (the field itself was not loose-wrapped, else we'd have
+    // returned above). Arrays of objects/other are not a string-array class —
+    // recurse so their inner fields are still checked.
+    const elType = unwrap(u._def.type)?._def?.typeName;
+    if (elType === 'ZodString' || elType === 'ZodEnum') {
+      out.push({
+        path,
+        reason:
+          elType === 'ZodEnum'
+            ? 'bare z.array(z.enum()) — wrap in looseEnumArray([...])'
+            : 'bare z.array(z.string()) — wrap in looseStringArray()',
+      });
+      return;
+    }
     findViolations(u._def.type, `${path}[]`, out);
   } else if (tn === 'ZodUnion') {
     (u._def.options ?? []).forEach((opt: any, i: number) =>

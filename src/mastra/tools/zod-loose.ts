@@ -117,3 +117,60 @@ export const looseEnum = <U extends string, T extends Readonly<[U, ...U[]]>>(
     inner,
   ) as z.ZodEffects<typeof inner, z.infer<typeof inner>, z.infer<typeof inner>>;
 };
+
+/**
+ * Tolerant string-array input schemas for tool parameters.
+ *
+ * Models routinely emit a `string[]` field as a comma-string (`"investor,
+ * advisor"`) or a JSON-string array (`'["investor","advisor"]'`) instead of a
+ * native array. A bare `z.array(z.string())` rejects both. `toStringArray`
+ * accepts a native array (pass through), a JSON-string array (parse), or a
+ * comma-string (split on commas + optional whitespace, trim, and drop empties
+ * so an empty string becomes an empty array).
+ */
+const toStringArray = (v: unknown): unknown => {
+  if (Array.isArray(v)) return v;
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (s === "") return [];
+    if (s.startsWith("[")) {
+      try {
+        const parsed: unknown = JSON.parse(s);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // not valid JSON — fall through to comma-splitting
+      }
+    }
+    return s
+      .split(/,\s*/)
+      .map((x) => x.trim())
+      .filter((x) => x !== "");
+  }
+  return v; // fall through — inner z.array() rejects anything unexpected
+};
+
+export const looseStringArray = (
+  inner: z.ZodArray<z.ZodString> = z.array(z.string()),
+): z.ZodEffects<z.ZodArray<z.ZodString>, string[], string[]> =>
+  z.preprocess(toStringArray, inner) as z.ZodEffects<
+    z.ZodArray<z.ZodString>,
+    string[],
+    string[]
+  >;
+
+/**
+ * Tolerant `z.array(z.enum())` input. Splits the comma/JSON-string shapes the
+ * same way as {@link looseStringArray}, then runs each element through the enum
+ * normalizer ({@link normalizeEnumValue}) so near-miss members coerce to
+ * canonical. Any element that still can't be mapped is left unchanged, so the
+ * inner `z.array(z.enum())` fails loud — coerce to preserve intent, never invent.
+ */
+export const looseEnumArray = <U extends string, T extends Readonly<[U, ...U[]]>>(
+  values: T,
+) => {
+  const inner = z.array(z.enum(values));
+  return z.preprocess((v) => {
+    const arr = toStringArray(v);
+    return Array.isArray(arr) ? arr.map((el) => normalizeEnumValue(values, el)) : arr;
+  }, inner) as z.ZodEffects<typeof inner, z.infer<typeof inner>, z.infer<typeof inner>>;
+};
