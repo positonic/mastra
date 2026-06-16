@@ -2,6 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { WebClient } from "@slack/web-api";
 import { prepareUntrustedContent } from "../utils/content-safety.js";
+import { looseNumber, looseBoolean } from "./zod-loose.js";
 
 // Bot token client (xoxb-*)
 const slackBotClient = new WebClient(process.env.SLACK_BOT_TOKEN);
@@ -148,27 +149,27 @@ async function fetchAllSlackChannels(
 // Block Kit schemas
 const slackBlockElementSchema = z.object({
   type: z.string(),
-  text: z.object({ type: z.string(), text: z.string(), emoji: z.boolean().optional(), verbatim: z.boolean().optional() }).optional(),
+  text: z.object({ type: z.string(), text: z.string(), emoji: looseBoolean().optional(), verbatim: looseBoolean().optional() }).optional(),
   value: z.string().optional(),
   url: z.string().optional(),
   action_id: z.string().optional(),
   style: z.string().optional(),
   confirm: z.any().optional(),
-  placeholder: z.object({ type: z.string(), text: z.string(), emoji: z.boolean().optional() }).optional(),
+  placeholder: z.object({ type: z.string(), text: z.string(), emoji: looseBoolean().optional() }).optional(),
   initial_value: z.string().optional(),
-  options: z.array(z.object({ text: z.object({ type: z.string(), text: z.string(), emoji: z.boolean().optional() }), value: z.string() })).optional(),
+  options: z.array(z.object({ text: z.object({ type: z.string(), text: z.string(), emoji: looseBoolean().optional() }), value: z.string() })).optional(),
 });
 
 const slackBlockSchema = z.object({
   type: z.string(),
-  text: z.object({ type: z.string(), text: z.string(), emoji: z.boolean().optional(), verbatim: z.boolean().optional() }).optional(),
+  text: z.object({ type: z.string(), text: z.string(), emoji: looseBoolean().optional(), verbatim: looseBoolean().optional() }).optional(),
   elements: z.array(slackBlockElementSchema).optional(),
   accessory: slackBlockElementSchema.optional(),
   block_id: z.string().optional(),
-  fields: z.array(z.object({ type: z.string(), text: z.string(), emoji: z.boolean().optional(), verbatim: z.boolean().optional() })).optional(),
+  fields: z.array(z.object({ type: z.string(), text: z.string(), emoji: looseBoolean().optional(), verbatim: looseBoolean().optional() })).optional(),
   image_url: z.string().optional(),
   alt_text: z.string().optional(),
-  title: z.object({ type: z.string(), text: z.string(), emoji: z.boolean().optional() }).optional(),
+  title: z.object({ type: z.string(), text: z.string(), emoji: looseBoolean().optional() }).optional(),
 });
 
 // ── Existing tools (moved from index.ts) ─────────────────────────────
@@ -270,8 +271,8 @@ export const listSlackChannelsTool = createTool({
     "List Slack channels the bot has access to. Shows channel name, topic, purpose, member count, and whether it is archived. Use this to discover available channels before reading their history.",
   inputSchema: z.object({
     types: z.string().default("public_channel,private_channel").describe("Comma-separated channel types: public_channel, private_channel, mpim, im"),
-    excludeArchived: z.boolean().default(true).describe("Exclude archived channels (default: true)"),
-    limit: z.number().min(1).max(1000).default(200).describe("Max channels to return (default: 200, max: 1000). Fetches all pages automatically."),
+    excludeArchived: looseBoolean().default(true).describe("Exclude archived channels (default: true)"),
+    limit: looseNumber(z.number().min(1).max(1000)).default(200).describe("Max channels to return (default: 200, max: 1000). Fetches all pages automatically."),
   }),
   outputSchema: z.object({
     channels: z.array(z.object({
@@ -309,7 +310,7 @@ export const getSlackChannelHistoryTool = createTool({
     "Read recent messages from a Slack channel. Returns messages in reverse chronological order (newest first). Use the channel ID from list-slack-channels. Messages include sender display name, text, permalink, and thread info.",
   inputSchema: z.object({
     channel: z.string().describe("Channel ID (e.g., C1234567890). Use list-slack-channels to find IDs."),
-    limit: z.number().min(1).max(100).default(25).describe("Number of messages to return (default: 25, max: 100)"),
+    limit: looseNumber(z.number().min(1).max(100)).default(25).describe("Number of messages to return (default: 25, max: 100)"),
     oldest: z.string().optional().describe("Only messages after this Unix timestamp (e.g., '1234567890.123456')"),
     latest: z.string().optional().describe("Only messages before this Unix timestamp"),
   }),
@@ -359,7 +360,7 @@ export const getSlackThreadRepliesTool = createTool({
   inputSchema: z.object({
     channel: z.string().describe("Channel ID where the thread exists"),
     threadTs: z.string().describe("Timestamp (ts) of the thread's parent message"),
-    limit: z.number().min(1).max(100).default(50).describe("Max replies to return (default: 50)"),
+    limit: looseNumber(z.number().min(1).max(100)).default(50).describe("Max replies to return (default: 50)"),
   }),
   outputSchema: z.object({
     messages: z.array(z.object({
@@ -405,7 +406,7 @@ export const searchSlackMessagesTool = createTool({
   inputSchema: z.object({
     query: z.string().describe("Search query — keywords to look for in messages"),
     channel: z.string().optional().describe("Limit search to a specific channel ID (optional)"),
-    limit: z.number().min(1).max(50).default(20).describe("Max results to return (default: 20)"),
+    limit: looseNumber(z.number().min(1).max(50)).default(20).describe("Max results to return (default: 20)"),
   }),
   outputSchema: z.object({
     results: z.array(z.object({
@@ -517,9 +518,9 @@ export const getSlackMentionsTool = createTool({
     "Find @mentions of the user across Slack channels. Returns messages where the user was directly mentioned (@user), and optionally @here/@channel mentions. Use this when the user asks about tags, mentions, or who's been pinging them.",
   inputSchema: z.object({
     since: sinceEnum.default("24h").describe("Time window to search (default: 24h)"),
-    includeGroupMentions: z.boolean().default(true).describe("Include @here and @channel mentions (default: true)"),
-    limit: z.number().min(1).max(50).default(25).describe("Max mentions to return (default: 25)"),
-    maxChannels: z.number().min(1).max(50).default(20).describe("Max channels to scan in bot-token mode (default: 20)"),
+    includeGroupMentions: looseBoolean().default(true).describe("Include @here and @channel mentions (default: true)"),
+    limit: looseNumber(z.number().min(1).max(50)).default(25).describe("Max mentions to return (default: 25)"),
+    maxChannels: looseNumber(z.number().min(1).max(50)).default(20).describe("Max channels to scan in bot-token mode (default: 20)"),
   }),
   outputSchema: z.object({
     mentions: z.array(z.object({
@@ -685,9 +686,9 @@ export const getSlackUnreadsTool = createTool({
     "Show channels with unread messages or recent activity. With a user token, shows actual unread counts. Without a user token, shows channels with recent activity since a given time window. Use this when the user asks what they missed, about unreads, or wants to catch up on Slack.",
   inputSchema: z.object({
     since: sinceEnum.default("24h").describe("Time window for recent activity mode (default: 24h)"),
-    includeMessages: z.boolean().default(false).describe("Include actual recent messages in the response (default: false, just counts)"),
-    messagesPerChannel: z.number().min(1).max(10).default(3).describe("Messages to show per channel when includeMessages is true (default: 3)"),
-    maxChannels: z.number().min(1).max(50).default(30).describe("Max channels to check (default: 30)"),
+    includeMessages: looseBoolean().default(false).describe("Include actual recent messages in the response (default: false, just counts)"),
+    messagesPerChannel: looseNumber(z.number().min(1).max(10)).default(3).describe("Messages to show per channel when includeMessages is true (default: 3)"),
+    maxChannels: looseNumber(z.number().min(1).max(50)).default(30).describe("Max channels to check (default: 30)"),
   }),
   outputSchema: z.object({
     channels: z.array(z.object({

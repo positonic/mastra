@@ -2,6 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
 import { asAppContext } from "../types/request-context.js";
+import { looseNumber } from "./zod-loose.js";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Document Tools
@@ -179,11 +180,8 @@ export const searchDocumentsTool = createTool({
     "Semantic search across documents in the current workspace's knowledge base. Returns relevant text chunks with similarity scores. Use this when the user asks to find a document by topic or content.",
   inputSchema: z.object({
     query: z.string().min(1).describe("Natural language search query"),
-    limit: z.number().min(1).max(50).default(10).describe("Max results"),
-    similarityThreshold: z
-      .number()
-      .min(0)
-      .max(1)
+    limit: looseNumber(z.number().min(1).max(50)).default(10).describe("Max results"),
+    similarityThreshold: looseNumber(z.number().min(0).max(1))
       .default(0.3)
       .describe("Minimum cosine similarity (0-1). Lower = broader matches."),
   }),
@@ -268,7 +266,7 @@ export const getDocumentsTool = createTool({
       .enum(["pending", "processing", "completed", "failed"])
       .optional()
       .describe("Filter by ingestion status"),
-    limit: z.number().min(1).max(100).default(20),
+    limit: looseNumber(z.number().min(1).max(100)).default(20),
   }),
   outputSchema: z.array(
     z.object({

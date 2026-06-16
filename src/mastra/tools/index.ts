@@ -740,10 +740,10 @@ export const updateProjectStatusTool = createTool({
       .enum(["HIGH", "MEDIUM", "LOW", "NONE"])
       .optional()
       .describe("Project priority"),
-    progress: z
+    progress: looseNumber(z
       .number()
       .min(0)
-      .max(100)
+      .max(100))
       .optional()
       .describe("Progress percentage (0-100)"),
     reviewDate: z
@@ -1056,25 +1056,23 @@ export const getMeetingTranscriptionsTool = createTool({
       .string()
       .optional()
       .describe("Filter by meeting type (standup, planning, review, etc.)"),
-    limit: z
-      .number()
+    limit: looseNumber(z
+      .number())
       .optional()
       .default(5)
       .describe("Maximum number of transcriptions to return (default: 5)"),
-    includeTranscript: z
-      .boolean()
+    includeTranscript: looseBoolean()
       .optional()
       .default(true)
       .describe(
         "Whether to fetch the full transcript text. Set false for list-style queries (titles + dates only) — much faster. Default: true."
       ),
-    truncateTranscript: z
-      .boolean()
+    truncateTranscript: looseBoolean()
       .optional()
       .default(true)
       .describe("Truncate transcript to prevent context overflow (default: true)"),
-    maxTranscriptLength: z
-      .number()
+    maxTranscriptLength: looseNumber(z
+      .number())
       .optional()
       .default(2000)
       .describe("Max characters per transcript when truncating (default: 2000)"),
@@ -1180,8 +1178,8 @@ export const queryMeetingContextTool = createTool({
       })
       .optional()
       .describe("Date range to search within"),
-    topK: z
-      .number()
+    topK: looseNumber(z
+      .number())
       .optional()
       .default(5)
       .describe("Number of most relevant results to return"),
@@ -1625,9 +1623,9 @@ export const findAvailableTimeSlotsTool = createTool({
   description: "Find available time slots in the user's calendar. Useful for scheduling new events. Specify date and work hours, returns free slots.",
   inputSchema: z.object({
     date: z.string().describe("Date to check in YYYY-MM-DD format"),
-    startHour: z.number().min(0).max(23).default(9).describe("Start of work day (hour, 0-23)"),
-    endHour: z.number().min(0).max(23).default(17).describe("End of work day (hour, 0-23)"),
-    slotDurationMinutes: z.number().default(30).describe("Desired slot duration in minutes"),
+    startHour: looseNumber(z.number().min(0).max(23)).default(9).describe("Start of work day (hour, 0-23)"),
+    endHour: looseNumber(z.number().min(0).max(23)).default(17).describe("End of work day (hour, 0-23)"),
+    slotDurationMinutes: looseNumber(z.number()).default(30).describe("Desired slot duration in minutes"),
   }),
   outputSchema: z.object({
     availableSlots: z.array(z.object({
@@ -1733,8 +1731,7 @@ export const createCalendarEventTool = createTool({
       displayName: z.string().optional(),
     })).optional().describe("List of attendees"),
     provider: z.enum(['google', 'microsoft']).default('google').describe("Calendar provider to use"),
-    userConfirmed: z
-      .boolean()
+    userConfirmed: looseBoolean()
       .describe("REQUIRED: Must be true. You MUST show the user the event details and receive explicit confirmation before setting this to true."),
   }),
   outputSchema: z.object({
@@ -1887,8 +1884,8 @@ export const getWhatsAppContextTool = createTool({
     contactName: z
       .string()
       .describe("Name of the contact for context in logs"),
-    limit: z
-      .number()
+    limit: looseNumber(z
+      .number())
       .default(20)
       .describe("Number of recent messages to fetch (default: 20)"),
   }),
@@ -2049,7 +2046,7 @@ export const searchCrmContactsTool = createTool({
     search: z.string().optional().describe("Search by first or last name"),
     tags: z.array(z.string()).optional().describe("Filter by tags (e.g., ['investor', 'advisor'])"),
     organizationId: z.string().optional().describe("Filter by organization ID"),
-    limit: z.number().default(20).describe("Max results to return (default: 20)"),
+    limit: looseNumber(z.number()).default(20).describe("Max results to return (default: 20)"),
   }),
   outputSchema: z.object({
     contacts: z.array(z.object({
@@ -2111,7 +2108,7 @@ export const getCrmContactTool = createTool({
     "Get full details for a specific CRM contact including social handles, about, skills, and recent interactions. Use after searching to get complete info.",
   inputSchema: z.object({
     contactId: z.string().describe("The contact ID to look up"),
-    includeInteractions: z.boolean().default(true).describe("Include recent interactions (default: true)"),
+    includeInteractions: looseBoolean().default(true).describe("Include recent interactions (default: true)"),
   }),
   outputSchema: z.object({
     id: z.string(),
@@ -2327,7 +2324,7 @@ export const searchCrmOrganizationsTool = createTool({
   inputSchema: z.object({
     search: z.string().optional().describe("Search by organization name or description"),
     industry: z.string().optional().describe("Filter by industry"),
-    limit: z.number().default(20).describe("Max results (default: 20)"),
+    limit: looseNumber(z.number()).default(20).describe("Max results (default: 20)"),
   }),
   outputSchema: z.object({
     organizations: z.array(z.object({
