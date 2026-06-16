@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { z } from 'zod';
-import { looseEnum, normalizeEnumValue } from './zod-loose.js';
+import {
+  looseEnum,
+  normalizeEnumValue,
+  looseStringArray,
+  looseEnumArray,
+} from './zod-loose.js';
 
 // Regression guard for the failure class documented in zod-loose.ts: the model
 // (Haiku especially) emits JSON-stringified scalars ("19", "false") instead of
@@ -35,6 +40,7 @@ const {
   getMeetingTranscriptionsTool,
   findAvailableTimeSlotsTool,
   createProjectActionTool,
+  getMeetingInsightsTool,
 } = await import('./index.js');
 const { bulkCreateWorkspaceStructureTool, deleteProjectTool } = await import(
   './project-tools.js'
@@ -243,5 +249,63 @@ describe('looseEnum helper in isolation', () => {
     expect(schema.parse('HIGH')).toBe('high');
     expect(schema.parse('low')).toBe('low');
     expect(() => schema.parse('medium')).toThrow();
+  });
+});
+
+// ── Array inputs (wet.llama) ────────────────────────────────────────────────
+// The model emits string[] fields as comma-strings or JSON-string arrays.
+// looseStringArray accepts all three shapes; looseEnumArray additionally
+// normalizes each element. Read-filter .email() is relaxed to plain string.
+
+describe('looseStringArray helper in isolation', () => {
+  it('accepts a native array, a JSON-string array, and a comma-string', () => {
+    const schema = looseStringArray();
+    expect(schema.parse(['a', 'b'])).toEqual(['a', 'b']); // native
+    expect(schema.parse('["a","b"]')).toEqual(['a', 'b']); // JSON-string
+    expect(schema.parse('a, b')).toEqual(['a', 'b']); // comma-string
+  });
+
+  it('trims and drops empties (so "" → [])', () => {
+    const schema = looseStringArray();
+    expect(schema.parse('')).toEqual([]);
+    expect(schema.parse('a, , b,')).toEqual(['a', 'b']);
+    expect(schema.parse(' x ,y')).toEqual(['x', 'y']);
+  });
+});
+
+describe('array fields on real tools', () => {
+  it('getMeetingTranscriptionsTool.participants: comma-string → array', () => {
+    expect(parseField(getMeetingTranscriptionsTool, 'participants', 'Alice, Bob')).toEqual([
+      'Alice',
+      'Bob',
+    ]);
+    expect(parseField(getMeetingTranscriptionsTool, 'participants', ['Alice'])).toEqual(['Alice']);
+  });
+
+  it('findRelatedMeetingsTool.participantEmails: .email() relaxed — a bad email is kept, not rejected', () => {
+    // A typo in a read filter matches nothing (harmless); rejecting the whole
+    // query would be strictly worse. Plain strings, comma-split, no .email().
+    expect(parseField(findRelatedMeetingsTool, 'participantEmails', 'a@b.com, not-an-email')).toEqual([
+      'a@b.com',
+      'not-an-email',
+    ]);
+  });
+
+  it('getMeetingInsightsTool.insightTypes: split + per-element enum normalize, unmappable fails loud', () => {
+    expect(parseField(getMeetingInsightsTool, 'insightTypes', 'decisions, action_items')).toEqual([
+      'decisions',
+      'action_items',
+    ]);
+    // near-miss element normalizes to canonical
+    expect(parseField(getMeetingInsightsTool, 'insightTypes', 'Action Items')).toEqual(['action_items']);
+    expect(parseField(getMeetingInsightsTool, 'insightTypes', ['deadlines'])).toEqual(['deadlines']);
+    // an unmappable element fails loud rather than being silently dropped
+    expect(() => parseField(getMeetingInsightsTool, 'insightTypes', 'decisions, nonsense')).toThrow();
+  });
+
+  it('looseEnumArray in isolation: splits, normalizes, and rejects unmappable', () => {
+    const schema = looseEnumArray(['decisions', 'action_items']);
+    expect(schema.parse('Decisions, action items')).toEqual(['decisions', 'action_items']);
+    expect(() => schema.parse('decisions, bogus')).toThrow();
   });
 });

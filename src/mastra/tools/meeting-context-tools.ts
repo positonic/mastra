@@ -2,7 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
 import { asAppContext } from "../types/request-context.js";
-import { looseNumber, looseEnum } from "./zod-loose.js";
+import { looseNumber, looseEnum, looseStringArray } from "./zod-loose.js";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Meeting Context Tools
@@ -351,8 +351,10 @@ export const findRelatedMeetingsTool = createTool({
       .string()
       .min(1)
       .describe("Title of the upcoming meeting to match against past titles"),
-    participantEmails: z
-      .array(z.string().email())
+    // Read-only filter: per-element .email() is relaxed to plain string. A bad
+    // email matches nothing (harmless); rejecting the whole query over one typo
+    // is strictly worse. looseStringArray also accepts comma/JSON-string shapes.
+    participantEmails: looseStringArray()
       .default([])
       .describe(
         "Attendee emails for the upcoming meeting; used for participant-overlap scoring",
