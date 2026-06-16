@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { TradescapeClient } from "tradescape-sdk";
+import { looseNumber } from "./zod-loose.js";
 
 // ==================== Tradescape Trading Tools ====================
 // Tools for managing trading setups, alerts, and positions.
@@ -29,7 +30,7 @@ export const listSetupsTool = createTool({
       .enum(["active", "closed", "cancelled"])
       .optional()
       .describe("Filter by status"),
-    limit: z.number().optional().default(10).describe("Maximum number of setups to return"),
+    limit: looseNumber(z.number()).optional().default(10).describe("Maximum number of setups to return"),
   }),
   outputSchema: z.object({
     setups: z.array(
@@ -90,9 +91,9 @@ export const createSetupTool = createTool({
   inputSchema: z.object({
     pair: z.string().describe("Trading pair (e.g., BTC/USDT)"),
     direction: z.enum(["long", "short"]).describe("Trade direction"),
-    entryPrice: z.number().optional().describe("Entry price"),
-    takeProfitPrice: z.number().optional().describe("Take profit price"),
-    stopPrice: z.number().optional().describe("Stop loss price"),
+    entryPrice: looseNumber(z.number()).optional().describe("Entry price"),
+    takeProfitPrice: looseNumber(z.number()).optional().describe("Take profit price"),
+    stopPrice: looseNumber(z.number()).optional().describe("Stop loss price"),
     timeframe: z.string().optional().describe("Timeframe (e.g., 1h, 4h, 1d)"),
     notes: z.string().optional().describe("Additional notes"),
   }),
@@ -153,7 +154,7 @@ export const listAlertsTool = createTool({
       .optional()
       .describe("Filter by status"),
     pair: z.string().optional().describe("Filter by trading pair"),
-    limit: z.number().optional().default(10).describe("Maximum number of alerts to return"),
+    limit: looseNumber(z.number()).optional().default(10).describe("Maximum number of alerts to return"),
   }),
   outputSchema: z.object({
     alerts: z.array(
@@ -208,7 +209,7 @@ export const createAlertTool = createTool({
     "Create a new price alert in Tradescape. Use this when the user wants to be notified when a price reaches a certain level.",
   inputSchema: z.object({
     pair: z.string().describe("Trading pair (e.g., BTC/USDT)"),
-    threshold: z.number().describe("Price threshold to trigger the alert"),
+    threshold: looseNumber(z.number()).describe("Price threshold to trigger the alert"),
     direction: z.enum(["above", "below"]).describe("Trigger when price goes above or below threshold"),
     message: z.string().optional().describe("Custom message for the alert"),
   }),

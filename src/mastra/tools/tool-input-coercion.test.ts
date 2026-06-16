@@ -28,8 +28,29 @@ const {
   createOkrObjectiveTool,
   linkObjectiveToParentTool,
 } = await import('./okr-tools.js');
-const { getAllProjectsTool } = await import('./index.js');
-const { bulkCreateWorkspaceStructureTool } = await import('./project-tools.js');
+const {
+  getAllProjectsTool,
+  getMeetingTranscriptionsTool,
+  findAvailableTimeSlotsTool,
+} = await import('./index.js');
+const { bulkCreateWorkspaceStructureTool, deleteProjectTool } = await import(
+  './project-tools.js'
+);
+const { sendEmailTool, replyToEmailTool, getRecentEmailsTool } = await import(
+  './email-tools.js'
+);
+const { createTicketTool } = await import('./ticket-tools.js');
+const { listSlackChannelsTool } = await import('./slack-tools.js');
+const { findRelatedMeetingsTool } = await import('./meeting-context-tools.js');
+const { createSetupTool } = await import('./tradescape-tools.js');
+const { listWhatsAppChatsTool } = await import('./whatsapp-tools.js');
+const { getActionItemsTool } = await import('./action-items-tools.js');
+const { searchDocumentsTool } = await import('./document-tools.js');
+
+// Parse a single input field's schema in isolation (avoids constructing a full
+// valid tool input). Each field on a ZodObject is an independent schema.
+const parseField = (tool: { inputSchema?: unknown }, field: string, value: unknown): unknown =>
+  ((tool.inputSchema as any).shape[field] as z.ZodTypeAny).parse(value);
 
 describe('tool input coercion — the model emits scalars as strings', () => {
   it('getAllProjectsTool.includeAll: string "false" stays false (NOT the z.coerce.boolean footgun)', () => {
@@ -97,5 +118,67 @@ describe('goal hierarchy — parentGoalId coercion', () => {
     });
     expect(parsed.parentGoalId).toBe(19);
     expect((parsed.goals as Array<{ parentGoalId: number }>)[0]!.parentGoalId).toBe(20);
+  });
+});
+
+// ── Scalar coercion sweep (deep.rune) ───────────────────────────────────────
+// One representative swept field from every tool file, each asserting the three
+// behaviours the sweep guarantees: stringified value coerces, native value is
+// unchanged, and genuine garbage still throws (coercion is not blind
+// acceptance). The keystone-guard.test.ts enforces that the *rest* of the
+// scalar fields are wrapped; these rows pin the runtime behaviour.
+
+describe('scalar sweep — number fields coerce, pass through, and reject garbage', () => {
+  // `from`/`to` is the coercion case (chosen in-range for each field's
+  // .min/.max); the native passthrough re-uses `to`.
+  const numberFields: Array<{ name: string; tool: unknown; field: string; from: string; to: number }> = [
+    { name: 'getActionItemsTool.limit', tool: getActionItemsTool, field: 'limit', from: '7', to: 7 },
+    { name: 'searchDocumentsTool.similarityThreshold', tool: searchDocumentsTool, field: 'similarityThreshold', from: '0.7', to: 0.7 },
+    { name: 'getRecentEmailsTool.maxResults', tool: getRecentEmailsTool, field: 'maxResults', from: '7', to: 7 },
+    { name: 'findRelatedMeetingsTool.matchThreshold', tool: findRelatedMeetingsTool, field: 'matchThreshold', from: '0.7', to: 0.7 },
+    { name: 'listSlackChannelsTool.limit', tool: listSlackChannelsTool, field: 'limit', from: '7', to: 7 },
+    { name: 'createTicketTool.points', tool: createTicketTool, field: 'points', from: '7', to: 7 },
+    { name: 'createSetupTool.entryPrice', tool: createSetupTool, field: 'entryPrice', from: '100.5', to: 100.5 },
+    { name: 'listWhatsAppChatsTool.limit', tool: listWhatsAppChatsTool, field: 'limit', from: '7', to: 7 },
+    { name: 'getMeetingTranscriptionsTool.maxTranscriptLength', tool: getMeetingTranscriptionsTool, field: 'maxTranscriptLength', from: '1500', to: 1500 },
+    { name: 'findAvailableTimeSlotsTool.startHour', tool: findAvailableTimeSlotsTool, field: 'startHour', from: '9', to: 9 },
+  ];
+
+  it.each(numberFields)('$name: "$from" → $to, native → $to, "banana" throws', ({ tool, field, from, to }) => {
+    const t = tool as { inputSchema?: unknown };
+    expect(parseField(t, field, from)).toBe(to); // stringified coerces
+    expect(parseField(t, field, to)).toBe(to); // native passes through
+    expect(() => parseField(t, field, 'banana')).toThrow(); // garbage rejected
+  });
+
+  it('createTicketTool.priority keeps its .min/.max INSIDE the wrapper (out-of-range still throws)', () => {
+    expect(parseField(createTicketTool, 'priority', '3')).toBe(3);
+    expect(() => parseField(createTicketTool, 'priority', '9')).toThrow(); // max(4) preserved
+    expect(() => parseField(createTicketTool, 'priority', 'banana')).toThrow();
+  });
+});
+
+describe('scalar sweep — boolean fields coerce contents (not the z.coerce footgun)', () => {
+  const booleanFields: Array<{ name: string; tool: unknown; field: string }> = [
+    { name: 'sendEmailTool.userConfirmed', tool: sendEmailTool, field: 'userConfirmed' },
+    { name: 'replyToEmailTool.userConfirmed', tool: replyToEmailTool, field: 'userConfirmed' },
+    { name: 'deleteProjectTool.confirmDeletion', tool: deleteProjectTool, field: 'confirmDeletion' },
+    { name: 'getRecentEmailsTool.unreadOnly', tool: getRecentEmailsTool, field: 'unreadOnly' },
+    { name: 'listSlackChannelsTool.excludeArchived', tool: listSlackChannelsTool, field: 'excludeArchived' },
+    { name: 'getMeetingTranscriptionsTool.includeTranscript', tool: getMeetingTranscriptionsTool, field: 'includeTranscript' },
+  ];
+
+  it.each(booleanFields)('$name: "false" → false (NOT inverted), "true" → true, native passes', ({ tool, field }) => {
+    const t = tool as { inputSchema?: unknown };
+    // z.coerce.boolean("false") === true would silently invert the gate — these
+    // confirmation gates make that the difference between sending and not.
+    expect(parseField(t, field, 'false')).toBe(false);
+    expect(parseField(t, field, 'true')).toBe(true);
+    expect(parseField(t, field, true)).toBe(true);
+    expect(parseField(t, field, false)).toBe(false);
+  });
+
+  it('a confirmation gate rejects genuine garbage rather than defaulting it', () => {
+    expect(() => parseField(sendEmailTool, 'userConfirmed', 'banana')).toThrow();
   });
 });

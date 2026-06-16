@@ -2,6 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
 import { prepareUntrustedContent, auditWriteAction } from "../utils/content-safety.js";
+import { looseNumber, looseBoolean } from "./zod-loose.js";
 
 // ==================== Email Tools ====================
 // Per-user email access via the Exponential backend (IMAP/SMTP).
@@ -45,14 +46,13 @@ export const getRecentEmailsTool = createTool({
   description:
     "Get recent emails from the user's inbox. Returns summaries (no full body). Use get-email-by-id to read full content.",
   inputSchema: z.object({
-    maxResults: z
+    maxResults: looseNumber(z
       .number()
       .min(1)
-      .max(50)
+      .max(50))
       .default(10)
       .describe("Maximum number of emails to return (default 10)"),
-    unreadOnly: z
-      .boolean()
+    unreadOnly: looseBoolean()
       .default(false)
       .describe("Only return unread emails"),
     since: z
@@ -181,10 +181,10 @@ export const searchEmailsTool = createTool({
     query: z
       .string()
       .describe("Search query — matches against sender, subject, and body"),
-    maxResults: z
+    maxResults: looseNumber(z
       .number()
       .min(1)
-      .max(50)
+      .max(50))
       .default(10)
       .describe("Maximum number of results (default 10)"),
   }),
@@ -249,8 +249,7 @@ export const sendEmailTool = createTool({
       .string()
       .optional()
       .describe("References header (for threading)"),
-    userConfirmed: z
-      .boolean()
+    userConfirmed: looseBoolean()
       .describe("REQUIRED: Must be true. You MUST show the user the full email draft and receive explicit confirmation before setting this to true."),
   }),
   outputSchema: z.object({
@@ -300,8 +299,7 @@ export const replyToEmailTool = createTool({
   inputSchema: z.object({
     emailId: z.string().describe("The email ID (UID) to reply to"),
     body: z.string().describe("Reply body (plain text)"),
-    userConfirmed: z
-      .boolean()
+    userConfirmed: looseBoolean()
       .describe("REQUIRED: Must be true. You MUST show the user the full reply draft and receive explicit confirmation before setting this to true."),
   }),
   outputSchema: z.object({

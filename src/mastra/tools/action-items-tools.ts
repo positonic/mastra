@@ -2,6 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
 import { asAppContext } from "../types/request-context.js";
+import { looseNumber } from "./zod-loose.js";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Action Items Tools
@@ -307,10 +308,7 @@ export const getActionItemsTool = createTool({
       .enum(["ACTIVE", "COMPLETED", "CANCELLED"])
       .optional()
       .describe("Filter by action status"),
-    limit: z
-      .number()
-      .min(1)
-      .max(100)
+    limit: looseNumber(z.number().min(1).max(100))
       .default(20)
       .describe("Max results to return"),
   }),

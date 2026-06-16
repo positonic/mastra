@@ -1,7 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
-import { looseNumber } from "./zod-loose.js";
+import { looseBoolean, looseNumber } from "./zod-loose.js";
 
 // ==================== Project & Action Management Tools ====================
 // Tools for creating projects and updating actions (including moving between projects).
@@ -136,7 +136,7 @@ export const deleteProjectTool = createTool({
     "Permanently delete a project. This action cannot be undone — all project data will be lost. Always confirm with the user before deleting. Ask the user to confirm by name before proceeding.",
   inputSchema: z.object({
     projectId: z.string().describe("The ID of the project to delete"),
-    confirmDeletion: z.boolean().describe("Must be explicitly true to proceed — confirm with the user before setting this"),
+    confirmDeletion: looseBoolean().describe("Must be explicitly true to proceed — confirm with the user before setting this"),
   }),
   outputSchema: z.object({
     success: z.boolean(),

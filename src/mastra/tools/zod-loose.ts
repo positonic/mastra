@@ -42,8 +42,26 @@ const toNumber = (v: unknown): unknown => {
   return v; // fall through — inner z.number() rejects anything unexpected
 };
 
-export const looseBoolean = (inner: z.ZodBoolean = z.boolean()) =>
-  z.preprocess(toBoolean, inner);
+// The explicit return annotations matter. `z.preprocess` is typed against a
+// `(v: unknown) => unknown` preprocessor, so its inferred type carries
+// `unknown` for BOTH the input and output side. Mastra types a tool's
+// `execute(inputData)` from the schema's *input* type, so an unannotated
+// looseNumber/looseBoolean field surfaces in `inputData` as `unknown` / `{}`.
+// That's invisible until a coerced field is used as a real number/boolean
+// (arithmetic, comparisons, typed API params), at which point every such call
+// site fails to typecheck.
+//
+// We pin BOTH generics to the inner scalar type. The runtime is unchanged —
+// `.parse()` still accepts anything and coerces the stringified-scalar shapes
+// the model emits. The third generic (input) is a deliberate, harmless white
+// lie: by the time we read `inputData`, validation has already run and the
+// value IS a number/boolean, which is exactly what call sites need.
+export const looseBoolean = (
+  inner: z.ZodBoolean = z.boolean(),
+): z.ZodEffects<z.ZodBoolean, boolean, boolean> =>
+  z.preprocess(toBoolean, inner) as z.ZodEffects<z.ZodBoolean, boolean, boolean>;
 
-export const looseNumber = (inner: z.ZodNumber = z.number()) =>
-  z.preprocess(toNumber, inner);
+export const looseNumber = (
+  inner: z.ZodNumber = z.number(),
+): z.ZodEffects<z.ZodNumber, number, number> =>
+  z.preprocess(toNumber, inner) as z.ZodEffects<z.ZodNumber, number, number>;

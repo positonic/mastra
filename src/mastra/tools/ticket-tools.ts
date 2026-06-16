@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
+import { looseNumber } from "./zod-loose.js";
 
 // ==================== Product Pipeline Ticket Tools ====================
 // Tools for listing products and filing tickets into a product's pipeline
@@ -87,14 +88,14 @@ export const createTicketTool = createTool({
       ])
       .optional()
       .describe("Initial pipeline status (defaults to BACKLOG)"),
-    priority: z
+    priority: looseNumber(z
       .number()
       .int()
       .min(0)
-      .max(4)
+      .max(4))
       .optional()
       .describe("Priority 0-4 (0 = critical, 4 = backlog)"),
-    points: z.number().optional().describe("Optional estimate in points"),
+    points: looseNumber(z.number()).optional().describe("Optional estimate in points"),
     assigneeId: z
       .string()
       .optional()
@@ -170,15 +171,15 @@ export const bulkCreateTicketsTool = createTool({
             ])
             .optional()
             .describe("Pipeline status. Map e.g. 'In progress'→IN_PROGRESS, 'Committed'→COMMITTED (defaults to BACKLOG)"),
-          priority: z
+          priority: looseNumber(z
             .number()
             .int()
             .min(0)
-            .max(4)
+            .max(4))
             .optional()
             .describe("Priority 0-4. Map High→1, Medium→2, Low→3 (reserve 0 for critical)"),
-          points: z
-            .number()
+          points: looseNumber(z
+            .number())
             .optional()
             .describe("Estimate in points. Map T-shirt sizes XS/S/M/L/XL → 1/2/3/5/8"),
           cycleName: z
