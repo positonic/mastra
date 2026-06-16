@@ -642,7 +642,7 @@ export const createProjectActionTool = createTool({
 export const quickCreateActionTool = createTool({
   id: "quick-create-action",
   description:
-    "Create a new action using natural language. Pass the action description in the `text` parameter — e.g. { \"text\": \"Call John tomorrow\" }. Automatically parses dates like 'tomorrow' or 'next Monday' and matches project names from the text. Use this when the user wants to create an action without specifying project ID or priority explicitly.",
+    "Create a new action using natural language. Pass the action description in the `text` parameter — e.g. { \"text\": \"Call John tomorrow\" }. Automatically parses dates like 'tomorrow' or 'next Monday' and matches project names from the text. Optionally pass an explicit `priority` (when the user states one) and/or a resolved `projectId` (when the user names a project — resolve it to a real id via get-all-projects first). An explicit `projectId` wins over the page context.",
   inputSchema: z.object({
     text: z
       .string()
@@ -657,6 +657,13 @@ export const quickCreateActionTool = createTool({
       .string()
       .optional()
       .describe("Alias for `text` — prefer `text`."),
+    priority: looseEnum(["Quick", "Scheduled", "1st Priority", "2nd Priority", "3rd Priority", "4th Priority", "5th Priority", "Errand", "Remember", "Watch", "Someday Maybe"])
+      .optional()
+      .describe("Action priority. Only set this when the user expresses a priority; otherwise omit it and the action defaults to 'Quick'. Map natural language: 'highest'/'urgent'/'ASAP' → '1st Priority', 'high' → '2nd Priority', 'medium' → '3rd Priority', 'low' → '4th Priority' or '5th Priority'."),
+    projectId: z
+      .string()
+      .optional()
+      .describe("Explicit project id to file the action under. Resolve a user-named project to its real id via get-all-projects and pass it here — it takes precedence over the current page context. Omit to fall back to the page context / text-matched project."),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -692,7 +699,7 @@ export const quickCreateActionTool = createTool({
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
-    const projectId = requestContext?.get("projectId");
+    const contextProjectId = requestContext?.get("projectId");
 
     const text = inputData.text ?? inputData.input;
     if (!text) {
@@ -701,9 +708,13 @@ export const quickCreateActionTool = createTool({
       );
     }
 
-    console.log(`🎯 [quickCreateAction] INPUT: text="${text}"`);
-    console.log(`🎯 [quickCreateAction] CONTEXT: authToken=${authToken ? "present" : "MISSING"}, userId=${userId || "none"}, projectId=${projectId || "none"}`);
-    console.log(`🎯 [quickCreateAction] SENDING TO TRPC: { text: "${text}", projectId: ${projectId ? `"${projectId}"` : "undefined"} }`);
+    // An explicitly-resolved projectId from the model wins over the page context.
+    const projectId = inputData.projectId ?? contextProjectId;
+    const priority = inputData.priority;
+
+    console.log(`🎯 [quickCreateAction] INPUT: text="${text}", priority=${priority || "none"}, inputProjectId=${inputData.projectId || "none"}`);
+    console.log(`🎯 [quickCreateAction] CONTEXT: authToken=${authToken ? "present" : "MISSING"}, userId=${userId || "none"}, contextProjectId=${contextProjectId || "none"}, resolvedProjectId=${projectId || "none"}`);
+    console.log(`🎯 [quickCreateAction] SENDING TO TRPC: { text: "${text}", projectId: ${projectId ? `"${projectId}"` : "undefined"}, priority: ${priority ? `"${priority}"` : "undefined"} }`);
 
     if (!authToken) {
       throw new Error("No authentication token available");
@@ -712,7 +723,7 @@ export const quickCreateActionTool = createTool({
     try {
       const { data: result } = await authenticatedTrpcCall(
         "mastra.quickCreateAction",
-        { text, projectId: projectId || undefined },
+        { text, projectId: projectId || undefined, priority: priority || undefined },
         { authToken, sessionId, userId }
       );
 
