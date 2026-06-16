@@ -1,6 +1,6 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
-import { looseNumber } from "./zod-loose.js";
+import { looseNumber, looseEnum } from "./zod-loose.js";
 import { prepareUntrustedContent } from "../utils/content-safety.js";
 import { asAppContext } from "../types/request-context.js";
 /**
@@ -149,8 +149,7 @@ export const searchWhatsAppChatsTool = createTool({
     query: z
       .string()
       .describe("Search query — can be keywords or a natural language question"),
-    searchType: z
-      .enum(["keyword", "semantic", "hybrid"])
+    searchType: looseEnum(["keyword", "semantic", "hybrid"])
       .default("hybrid")
       .describe(
         "'keyword' for exact text matches, 'semantic' for meaning-based search, 'hybrid' for both (default)",

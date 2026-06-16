@@ -2,7 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
 import { asAppContext } from "../types/request-context.js";
-import { looseNumber } from "./zod-loose.js";
+import { looseNumber, looseEnum } from "./zod-loose.js";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Meeting Context Tools
@@ -128,8 +128,7 @@ export const searchContextTool = createTool({
       .describe(
         "Filter results to chunks from meetings this email attended. Note: this is a 'transcript-attended' filter (passes if the participant attended the meeting), not a 'speaker-spoke' filter (chunks where they specifically spoke).",
       ),
-    sourceType: z
-      .enum(["transcription", "document", "resource"])
+    sourceType: looseEnum(["transcription", "document", "resource"])
       .optional()
       .describe("Restrict search to a specific source type"),
   }),

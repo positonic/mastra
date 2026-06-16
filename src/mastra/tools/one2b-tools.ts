@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { one2bTrpcMutation, one2bTrpcQuery, serperSearch } from "../utils/one2b-api.js";
+import { looseEnum } from "./zod-loose.js";
 
 // ─── Track definitions ──────────────────────────────────────────────────────
 // Each track maps to a specific tRPC router on the One2b platform.
@@ -221,7 +222,7 @@ export const one2bGetTrackQuestionsTool = createTool({
     "Use this after determining which track the contact likely belongs to. " +
     "Questions map directly to fields in the One2b CRM.",
   inputSchema: z.object({
-    track: trackEnum.describe("The One2b community track to get questions for"),
+    track: looseEnum(ONE2B_TRACKS).describe("The One2b community track to get questions for"),
   }),
   outputSchema: z.object({
     track: trackEnum,
@@ -266,7 +267,7 @@ export const one2bCreateLeadTool = createTool({
     "Call this once you have collected enough qualifying data from the conversation. " +
     "All tRPC endpoints are public (no auth required) and will trigger DocuSign NDA automatically.",
   inputSchema: z.object({
-    track: trackEnum.describe("Which track to create the lead in"),
+    track: looseEnum(ONE2B_TRACKS).describe("Which track to create the lead in"),
     // Common fields across all tracks
     fullName: z.string().describe("Full name of the contact"),
     email: z.string().email().describe("Email address"),
@@ -500,7 +501,7 @@ export const one2bLookupLeadTool = createTool({
     "Call this early in the conversation to avoid creating duplicate records.",
   inputSchema: z.object({
     email: z.string().email().describe("Email address to look up"),
-    track: trackEnum.optional().describe("If you know their track, search that specific router. Otherwise searches community leads."),
+    track: looseEnum(ONE2B_TRACKS).optional().describe("If you know their track, search that specific router. Otherwise searches community leads."),
   }),
   outputSchema: z.object({
     found: z.boolean(),
@@ -585,9 +586,9 @@ export const one2bEscalateTool = createTool({
   inputSchema: z.object({
     contactName: z.string().describe("Name of the contact"),
     contactEmail: z.string().email().describe("Email of the contact"),
-    track: trackEnum.describe("The identified track"),
+    track: looseEnum(ONE2B_TRACKS).describe("The identified track"),
     reason: z.string().describe("Why escalation is needed"),
-    urgency: z.enum(['high', 'medium', 'low']).describe("How urgently a human should follow up"),
+    urgency: looseEnum(['high', 'medium', 'low']).describe("How urgently a human should follow up"),
     conversationSummary: z.string().describe("Summary of the conversation so far"),
     dataCollected: z.record(z.unknown()).optional().describe("Qualification data collected so far"),
   }),

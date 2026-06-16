@@ -82,70 +82,120 @@ function unwrap(schema: any): any {
   return cur;
 }
 
-// A scalar is "loose-wrapped" iff it sits behind a `z.preprocess(...)`
-// (what looseNumber/looseBoolean produce) whose inner type is the scalar.
-function isLooseWrappedScalar(schema: any): boolean {
+// A node is "loose-wrapped" iff it sits behind a `z.preprocess(...)` (what
+// looseNumber/looseBoolean/looseEnum produce) whose inner type is in the set.
+function isLooseWrapped(schema: any, innerTypes: string[]): boolean {
   const u = unwrap(schema);
   if (u?._def?.typeName === 'ZodEffects' && u._def.effect?.type === 'preprocess') {
-    const inner = unwrap(u._def.schema)?._def?.typeName;
-    return inner === 'ZodNumber' || inner === 'ZodBoolean';
+    return innerTypes.includes(unwrap(u._def.schema)?._def?.typeName);
   }
   return false;
 }
+const isLooseWrappedScalar = (s: any) => isLooseWrapped(s, ['ZodNumber', 'ZodBoolean']);
+const isLooseWrappedEnum = (s: any) => isLooseWrapped(s, ['ZodEnum']);
 
-// Recursively collect dotted paths to any bare (unwrapped) scalar input.
-function findBareScalars(schema: any, path: string, out: string[]): void {
-  if (isLooseWrappedScalar(schema)) return; // properly wrapped — stop here
+// Does the optional/default/nullable/catch wrapper chain over this field
+// contain a `.catch()` guarding a model-facing enum/scalar? `.catch(default)`
+// silently substitutes a wrong value (ADR-0001 bans it on write tools) — and
+// it works on bare OR loose-wrapped cores, so detect it on the chain directly.
+function hasCatchOverGuardedClass(schema: any): boolean {
+  let cur = schema;
+  let sawCatch = false;
+  while (cur?._def) {
+    const tn = cur._def.typeName;
+    if (tn === 'ZodCatch') {
+      sawCatch = true;
+      cur = cur._def.innerType;
+      continue;
+    }
+    if (tn === 'ZodOptional' || tn === 'ZodNullable' || tn === 'ZodDefault') {
+      cur = cur._def.innerType;
+      continue;
+    }
+    break;
+  }
+  if (!sawCatch) return false;
+  const core = cur?._def?.typeName;
+  if (core === 'ZodNumber' || core === 'ZodBoolean' || core === 'ZodEnum') return true;
+  // a loose-wrapped core (preprocess) also counts
+  return core === 'ZodEffects' && cur._def.effect?.type === 'preprocess';
+}
+
+interface Violation {
+  path: string;
+  reason: string;
+}
+
+// Recursively collect every model-facing input that breaks a swept convention:
+//   • bare z.number()/z.boolean()      (scalars — deep.rune)
+//   • bare z.enum()                    (enums   — zippy.acorn)
+//   • a `.catch()` over any of those   (banned  — zippy.acorn)
+// A direct `z.array(z.enum())` (array-of-enum) is deferred to wet.llama (#4),
+// so its element enum is NOT flagged here. Enums nested inside an object that
+// happens to live in an array (e.g. `tickets[].status`) ARE flagged — they are
+// ordinary enum fields. Output schemas are never walked (not model-produced).
+function findViolations(schema: any, path: string, out: Violation[]): void {
+  if (hasCatchOverGuardedClass(schema)) {
+    out.push({ path, reason: '.catch() is banned on model-facing enums/scalars — use looseEnum/looseNumber/looseBoolean (normalize-then-fail, never silent-default)' });
+    return;
+  }
+  if (isLooseWrappedScalar(schema) || isLooseWrappedEnum(schema)) return; // properly wrapped
   const u = unwrap(schema);
   if (!u?._def) return;
   const tn = u._def.typeName;
 
   if (tn === 'ZodNumber' || tn === 'ZodBoolean') {
-    out.push(`${path} (${tn})`);
+    out.push({ path, reason: `bare ${tn} — wrap in looseNumber()/looseBoolean()` });
+    return;
+  }
+  if (tn === 'ZodEnum') {
+    out.push({ path, reason: 'bare ZodEnum — wrap in looseEnum()' });
     return;
   }
   if (tn === 'ZodObject') {
     const shape = typeof u._def.shape === 'function' ? u._def.shape() : u.shape;
     for (const key of Object.keys(shape)) {
-      findBareScalars(shape[key], `${path}.${key}`, out);
+      findViolations(shape[key], `${path}.${key}`, out);
     }
   } else if (tn === 'ZodArray') {
-    findBareScalars(u._def.type, `${path}[]`, out);
+    // Direct array-of-enum is wet.llama's (#4) territory — skip its element.
+    if (unwrap(u._def.type)?._def?.typeName === 'ZodEnum') return;
+    findViolations(u._def.type, `${path}[]`, out);
   } else if (tn === 'ZodUnion') {
     (u._def.options ?? []).forEach((opt: any, i: number) =>
-      findBareScalars(opt, `${path}|${i}`, out),
+      findViolations(opt, `${path}|${i}`, out),
     );
   } else if (tn === 'ZodEffects') {
     // refine/transform (non-preprocess) — descend into the wrapped schema.
-    findBareScalars(u._def.schema, path, out);
+    findViolations(u._def.schema, path, out);
   }
 }
 
-describe('keystone guard: model-facing scalar inputs must use zod-loose', () => {
+describe('keystone guard: model-facing inputs must use the zod-loose helpers', () => {
   const tools = discoverTools();
 
   it('discovers the tool surface (sanity check the glob found tools)', () => {
     expect(tools.length).toBeGreaterThan(40);
   });
 
-  it('every model-facing z.number()/z.boolean() input is wrapped in looseNumber()/looseBoolean()', () => {
+  it('every model-facing scalar/enum input is wrapped (and no .catch() on them)', () => {
     const violations: string[] = [];
     for (const tool of tools) {
-      const bare: string[] = [];
-      findBareScalars(tool.inputSchema, tool.exportName, bare);
-      if (bare.length) {
+      const found: Violation[] = [];
+      findViolations(tool.inputSchema, tool.exportName, found);
+      if (found.length) {
         violations.push(
           `  ${tool.exportName} (${tool.id}) [${tool.module}]\n` +
-            bare.map((b) => `      ${b}`).join('\n'),
+            found.map((v) => `      ${v.path} — ${v.reason}`).join('\n'),
         );
       }
     }
     if (violations.length) {
       throw new Error(
-        `Found ${violations.length} tool(s) with unwrapped model-facing scalar inputs.\n` +
-          `Wrap each in looseNumber()/looseBoolean() from ./zod-loose.js — see ADR-0001.\n` +
-          `Keep .min()/.max() INSIDE the wrapper, .optional()/.default()/.describe() outside:\n` +
-          `  limit: looseNumber(z.number().min(1).max(100)).optional().default(25).describe(...)\n\n` +
+        `Found ${violations.length} tool(s) with model-facing inputs that bypass the ` +
+          `coercion helpers (ADR-0001 — coerce to preserve intent, never invent it).\n` +
+          `Scalars → looseNumber()/looseBoolean() (keep .min/.max inside the wrapper).\n` +
+          `Enums   → looseEnum([...]) (normalize-then-fail; do NOT use .catch(default)).\n\n` +
           violations.join('\n'),
       );
     }
