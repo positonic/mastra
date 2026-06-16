@@ -1,6 +1,7 @@
 import { anthropic } from '@ai-sdk/anthropic';
 import { Agent } from '@mastra/core/agent';
 import { memory } from '../memory/index.js';
+import { neutralizeServerToolErrorsProcessor } from '../processors/neutralize-server-tool-errors.js';
 import { withAnthropicPromptCache } from '../utils/anthropic-prompt-cache.js';
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
 import { SECURITY_POLICY } from './security-policy.js';
@@ -405,6 +406,10 @@ export const assistantAgent = new Agent({
   memory,
   defaultOptions: assistantDefaultOptions,
   tools: assistantTools,
+  // Flatten Anthropic server-tool *_tool_result_error blocks to a text note
+  // before request conversion, so one failed web_fetch/web_search can't poison
+  // the whole thread on replay (ADR-0002).
+  inputProcessors: [neutralizeServerToolErrorsProcessor],
 });
 
 // Haiku 4.5 variant of Assistant. Identical instructions + tools + memory +
@@ -418,4 +423,5 @@ export const assistantAgentHaiku = new Agent({
   memory,
   defaultOptions: assistantDefaultOptions,
   tools: assistantTools,
+  inputProcessors: [neutralizeServerToolErrorsProcessor],
 });
