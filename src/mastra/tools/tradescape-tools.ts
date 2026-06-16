@@ -1,7 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { TradescapeClient } from "tradescape-sdk";
-import { looseNumber } from "./zod-loose.js";
+import { looseNumber, looseEnum } from "./zod-loose.js";
 
 // ==================== Tradescape Trading Tools ====================
 // Tools for managing trading setups, alerts, and positions.
@@ -26,8 +26,7 @@ export const listSetupsTool = createTool({
   description:
     "List trading setups from Tradescape. Use this when the user asks about their trading setups, open positions, or trade ideas.",
   inputSchema: z.object({
-    status: z
-      .enum(["active", "closed", "cancelled"])
+    status: looseEnum(["active", "closed", "cancelled"])
       .optional()
       .describe("Filter by status"),
     limit: looseNumber(z.number()).optional().default(10).describe("Maximum number of setups to return"),
@@ -90,7 +89,7 @@ export const createSetupTool = createTool({
     "Create a new trading setup in Tradescape. Use this when the user wants to record a trade idea or setup.",
   inputSchema: z.object({
     pair: z.string().describe("Trading pair (e.g., BTC/USDT)"),
-    direction: z.enum(["long", "short"]).describe("Trade direction"),
+    direction: looseEnum(["long", "short"]).describe("Trade direction"),
     entryPrice: looseNumber(z.number()).optional().describe("Entry price"),
     takeProfitPrice: looseNumber(z.number()).optional().describe("Take profit price"),
     stopPrice: looseNumber(z.number()).optional().describe("Stop loss price"),
@@ -149,8 +148,7 @@ export const listAlertsTool = createTool({
   description:
     "List price alerts from Tradescape. Use this when the user asks about their alerts or price notifications.",
   inputSchema: z.object({
-    status: z
-      .enum(["pending", "triggered", "cancelled"])
+    status: looseEnum(["pending", "triggered", "cancelled"])
       .optional()
       .describe("Filter by status"),
     pair: z.string().optional().describe("Filter by trading pair"),
@@ -210,7 +208,7 @@ export const createAlertTool = createTool({
   inputSchema: z.object({
     pair: z.string().describe("Trading pair (e.g., BTC/USDT)"),
     threshold: looseNumber(z.number()).describe("Price threshold to trigger the alert"),
-    direction: z.enum(["above", "below"]).describe("Trigger when price goes above or below threshold"),
+    direction: looseEnum(["above", "below"]).describe("Trigger when price goes above or below threshold"),
     message: z.string().optional().describe("Custom message for the alert"),
   }),
   outputSchema: z.object({
@@ -341,7 +339,7 @@ export const syncTradesTool = createTool({
   description:
     "Sync trades from an exchange to Tradescape. Use this when the user wants to import their recent trades.",
   inputSchema: z.object({
-    exchange: z.enum(["binance", "kraken", "bybit", "hyperliquid"]).describe("Exchange to sync from"),
+    exchange: looseEnum(["binance", "kraken", "bybit", "hyperliquid"]).describe("Exchange to sync from"),
   }),
   outputSchema: z.object({
     count: z.number(),

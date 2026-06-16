@@ -9,7 +9,7 @@ import {
 } from "../utils/authenticated-fetch.js";
 import { prepareUntrustedContent, auditWriteAction } from "../utils/content-safety.js";
 import { asAppContext } from "../types/request-context.js";
-import { looseBoolean, looseNumber } from "./zod-loose.js";
+import { looseBoolean, looseNumber, looseEnum } from "./zod-loose.js";
 
 interface GeocodingResponse {
   results: {
@@ -530,8 +530,7 @@ export const getProjectActionsTool = createTool({
     "Get all actions for a specific project with detailed status and priority information",
   inputSchema: z.object({
     projectId: z.string().describe("The project ID to get actions for"),
-    status: z
-      .enum(["ACTIVE", "COMPLETED", "CANCELLED"])
+    status: looseEnum(["ACTIVE", "COMPLETED", "CANCELLED"])
       .optional()
       .describe("Filter by action status"),
   }),
@@ -594,8 +593,7 @@ export const createProjectActionTool = createTool({
       .string()
       .optional()
       .describe("Detailed description of the action"),
-    priority: z
-      .enum(["Quick", "Scheduled", "1st Priority", "2nd Priority", "3rd Priority", "4th Priority", "5th Priority", "Errand", "Remember", "Watch", "Someday Maybe"])
+    priority: looseEnum(["Quick", "Scheduled", "1st Priority", "2nd Priority", "3rd Priority", "4th Priority", "5th Priority", "Errand", "Remember", "Watch", "Someday Maybe"])
       .describe("Action priority. Use 'Quick' for small tasks, 'Scheduled' for time-bound items, '1st Priority' through '5th Priority' for ranked importance, 'Errand' for errands, 'Remember' for things to keep in mind, 'Watch' for items to monitor, 'Someday Maybe' for future ideas"),
     dueDate: z.string().optional().describe("Due date in ISO format"),
   }),
@@ -732,12 +730,10 @@ export const updateProjectStatusTool = createTool({
   description: "Update project status and progress information",
   inputSchema: z.object({
     projectId: z.string().describe("The project ID to update"),
-    status: z
-      .enum(["ACTIVE", "ON_HOLD", "COMPLETED", "CANCELLED"])
+    status: looseEnum(["ACTIVE", "ON_HOLD", "COMPLETED", "CANCELLED"])
       .optional()
       .describe("New project status"),
-    priority: z
-      .enum(["HIGH", "MEDIUM", "LOW", "NONE"])
+    priority: looseEnum(["HIGH", "MEDIUM", "LOW", "NONE"])
       .optional()
       .describe("Project priority"),
     progress: looseNumber(z
@@ -1247,8 +1243,7 @@ export const getMeetingInsightsTool = createTool({
     "Extract key insights from recent meetings and calls including decisions, action items, deadlines, and project evolution. Use this to summarize what was discussed in calls or meetings.",
   inputSchema: z.object({
     projectId: z.string().optional().describe("Focus on specific project"),
-    timeframe: z
-      .enum(["last_week", "last_month", "last_quarter", "custom"])
+    timeframe: looseEnum(["last_week", "last_month", "last_quarter", "custom"])
       .default("last_week")
       .describe("Time period for insights"),
     startDate: z
@@ -1417,8 +1412,7 @@ export const getCalendarEventsTool = createTool({
   description:
     "Get calendar events for today or upcoming days. Use this tool for any request about calendar, schedule, meetings today, upcoming meetings, what's on the calendar, or scheduled events. This retrieves actual calendar/scheduled events, NOT past meeting transcriptions.",
   inputSchema: z.object({
-    timeframe: z
-      .enum(["today", "upcoming", "custom"])
+    timeframe: looseEnum(["today", "upcoming", "custom"])
       .default("today")
       .describe(
         "'today' for today's events, 'upcoming' for next N days, 'custom' for specific date range"
@@ -1572,7 +1566,7 @@ export const getCalendarEventsInRangeTool = createTool({
   inputSchema: z.object({
     timeMin: z.string().describe("Start date/time in ISO 8601 format (e.g., '2024-02-12T00:00:00Z')"),
     timeMax: z.string().describe("End date/time in ISO 8601 format (e.g., '2024-02-12T23:59:59Z')"),
-    provider: z.enum(['google', 'microsoft']).optional().describe("Optional: filter to specific provider"),
+    provider: looseEnum(['google', 'microsoft']).optional().describe("Optional: filter to specific provider"),
   }),
   outputSchema: z.object({
     events: z.array(z.object({
@@ -1730,7 +1724,7 @@ export const createCalendarEventTool = createTool({
       email: z.string().email(),
       displayName: z.string().optional(),
     })).optional().describe("List of attendees"),
-    provider: z.enum(['google', 'microsoft']).default('google').describe("Calendar provider to use"),
+    provider: looseEnum(['google', 'microsoft']).default('google').describe("Calendar provider to use"),
     userConfirmed: looseBoolean()
       .describe("REQUIRED: Must be true. You MUST show the user the event details and receive explicit confirmation before setting this to true."),
   }),
@@ -2276,8 +2270,8 @@ export const addCrmInteractionTool = createTool({
     "Log an interaction with a CRM contact (email, call, meeting, note, etc.). This updates the contact's last interaction timestamp and creates an audit trail.",
   inputSchema: z.object({
     contactId: z.string().describe("The contact ID to log interaction for"),
-    type: z.enum(["EMAIL", "PHONE_CALL", "MEETING", "NOTE", "LINKEDIN", "TELEGRAM", "OTHER"]).describe("Type of interaction"),
-    direction: z.enum(["INBOUND", "OUTBOUND"]).describe("Direction: INBOUND (they reached out) or OUTBOUND (you reached out)"),
+    type: looseEnum(["EMAIL", "PHONE_CALL", "MEETING", "NOTE", "LINKEDIN", "TELEGRAM", "OTHER"]).describe("Type of interaction"),
+    direction: looseEnum(["INBOUND", "OUTBOUND"]).describe("Direction: INBOUND (they reached out) or OUTBOUND (you reached out)"),
     subject: z.string().optional().describe("Brief subject line for the interaction"),
     notes: z.string().optional().describe("Detailed notes about the interaction"),
   }),
@@ -2381,7 +2375,7 @@ export const createCrmOrganizationTool = createTool({
     description: z.string().optional().describe("Description of the organization"),
     websiteUrl: z.string().optional().describe("Website URL"),
     industry: z.string().optional().describe("Industry (e.g., 'Technology', 'Finance', 'Healthcare')"),
-    size: z.enum(["1-10", "11-50", "51-200", "201-500", "501-1000", "1000+"]).optional().describe("Company size range"),
+    size: looseEnum(["1-10", "11-50", "51-200", "201-500", "501-1000", "1000+"]).optional().describe("Company size range"),
   }),
   outputSchema: z.object({
     id: z.string(),

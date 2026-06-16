@@ -65,3 +65,55 @@ export const looseNumber = (
   inner: z.ZodNumber = z.number(),
 ): z.ZodEffects<z.ZodNumber, number, number> =>
   z.preprocess(toNumber, inner) as z.ZodEffects<z.ZodNumber, number, number>;
+
+/**
+ * Tolerant enum input schemas for tool parameters.
+ *
+ * Models emit near-miss enum members constantly: `"In Progress"` for
+ * `IN_PROGRESS`, `"Binance"` for `binance`, `"1st priority"` for
+ * `"1st Priority"`. A bare `z.enum()` rejects all of these and the model burns
+ * a retry (or, with `.catch(default)`, the value is silently replaced with a
+ * wrong one — a data-integrity bug, see ADR-0001).
+ *
+ * `looseEnum` normalizes obvious near-misses to the canonical member, then
+ * validates. The match is done on a separator/case-insensitive key
+ * (lowercased, non-alphanumerics stripped), and we return the enum's OWN
+ * canonical spelling — so this works for `UPPER_SNAKE`, lowercase, and
+ * human-cased (`"1st Priority"`) enums alike, NOT just blind uppercasing.
+ *
+ * A value that can't be normalized to a member is returned UNCHANGED, so the
+ * inner `z.enum()` fails loud with the real Zod error listing valid values.
+ * That is correct self-correction (the model retries), not a bug — we coerce
+ * to preserve intent, we never invent it. Do NOT add `.catch(default)`: that
+ * substitutes a wrong value silently (the guard test bans it).
+ */
+const enumKey = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+export const normalizeEnumValue = (
+  values: readonly string[],
+  v: unknown,
+): unknown => {
+  if (typeof v !== "string") return v;
+  if (values.includes(v)) return v; // already canonical
+  const key = enumKey(v);
+  if (key === "") return v;
+  // First canonical member whose normalized key matches. Real enums here have
+  // no key collisions; if two ever did, first-declared wins (deterministic).
+  return values.find((val) => enumKey(val) === key) ?? v; // unmappable → fail loud
+};
+
+// `values` is passed straight to `z.enum` so its overloads drive literal-tuple
+// inference (re-specifying the generics here widens the members to `string`).
+// Output AND input are pinned to the inner enum's literal union — same white
+// lie as the scalar helpers: by the time `inputData` is read the value has been
+// normalized-and-validated into a real member, which is what call sites need
+// (e.g. indexing a Record keyed by the union).
+export const looseEnum = <U extends string, T extends Readonly<[U, ...U[]]>>(
+  values: T,
+) => {
+  const inner = z.enum(values);
+  return z.preprocess(
+    (v) => normalizeEnumValue(values, v),
+    inner,
+  ) as z.ZodEffects<typeof inner, z.infer<typeof inner>, z.infer<typeof inner>>;
+};

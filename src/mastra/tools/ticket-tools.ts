@@ -1,7 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
-import { looseNumber } from "./zod-loose.js";
+import { looseEnum, looseNumber } from "./zod-loose.js";
 
 // ==================== Product Pipeline Ticket Tools ====================
 // Tools for listing products and filing tickets into a product's pipeline
@@ -69,12 +69,10 @@ export const createTicketTool = createTool({
       .string()
       .optional()
       .describe("Optional longer description / details for the ticket"),
-    type: z
-      .enum(["BUG", "FEATURE", "CHORE", "IMPROVEMENT", "SPIKE", "RESEARCH"])
+    type: looseEnum(["BUG", "FEATURE", "CHORE", "IMPROVEMENT", "SPIKE", "RESEARCH"])
       .optional()
       .describe("Ticket type (defaults to FEATURE)"),
-    status: z
-      .enum([
+    status: looseEnum([
         "BACKLOG",
         "NEEDS_REFINEMENT",
         "READY_TO_PLAN",
@@ -152,12 +150,10 @@ export const bulkCreateTicketsTool = createTool({
         z.object({
           title: z.string().min(1).max(300).describe("Short, descriptive ticket title"),
           body: z.string().optional().describe("Optional details. Put unmappable columns (e.g. Area) here."),
-          type: z
-            .enum(["BUG", "FEATURE", "CHORE", "IMPROVEMENT", "SPIKE", "RESEARCH"])
+          type: looseEnum(["BUG", "FEATURE", "CHORE", "IMPROVEMENT", "SPIKE", "RESEARCH"])
             .optional()
             .describe("Ticket type (defaults to FEATURE)"),
-          status: z
-            .enum([
+          status: looseEnum([
               "BACKLOG",
               "NEEDS_REFINEMENT",
               "READY_TO_PLAN",

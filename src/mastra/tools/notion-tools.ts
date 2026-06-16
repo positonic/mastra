@@ -8,6 +8,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { prepareUntrustedContent } from "../utils/content-safety.js";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
+import { looseEnum } from "./zod-loose.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -50,7 +51,7 @@ export const notionSearchTool = createTool({
     "Use the returned page/database `id` with notion-get-page or notion-query-database.",
   inputSchema: z.object({
     query: z.string().describe("Search query"),
-    filter: z.enum(["page", "database"]).optional().describe("Filter by object type"),
+    filter: looseEnum(["page", "database"]).optional().describe("Filter by object type"),
   }),
   execute: async (inputData, { requestContext }) => {
     const authToken = requestContext?.get("authToken") as string | undefined;
@@ -154,7 +155,7 @@ export const notionQueryDatabaseTool = createTool({
       .array(
         z.object({
           property: z.string(),
-          direction: z.enum(["ascending", "descending"]),
+          direction: looseEnum(["ascending", "descending"]),
         })
       )
       .optional()

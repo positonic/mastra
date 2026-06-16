@@ -2,7 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { WebClient } from "@slack/web-api";
 import { prepareUntrustedContent } from "../utils/content-safety.js";
-import { looseNumber, looseBoolean } from "./zod-loose.js";
+import { looseNumber, looseBoolean, looseEnum } from "./zod-loose.js";
 
 // Bot token client (xoxb-*)
 const slackBotClient = new WebClient(process.env.SLACK_BOT_TOKEN);
@@ -510,7 +510,7 @@ export const searchSlackMessagesTool = createTool({
 
 // ── Mentions & Unreads tools ────────────────────────────────────────
 
-const sinceEnum = z.enum(["1h", "4h", "12h", "24h", "3d", "7d"]);
+const sinceEnum = looseEnum(["1h", "4h", "12h", "24h", "3d", "7d"]);
 
 export const getSlackMentionsTool = createTool({
   id: "get-slack-mentions",

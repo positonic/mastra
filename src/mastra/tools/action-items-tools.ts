@@ -2,7 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
 import { asAppContext } from "../types/request-context.js";
-import { looseNumber } from "./zod-loose.js";
+import { looseEnum, looseNumber } from "./zod-loose.js";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Action Items Tools
@@ -304,8 +304,7 @@ export const getActionItemsTool = createTool({
       .email()
       .optional()
       .describe("Filter to actions assigned to this email"),
-    status: z
-      .enum(["ACTIVE", "COMPLETED", "CANCELLED"])
+    status: looseEnum(["ACTIVE", "COMPLETED", "CANCELLED"])
       .optional()
       .describe("Filter by action status"),
     limit: looseNumber(z.number().min(1).max(100))
@@ -400,14 +399,12 @@ export const updateActionItemTool = createTool({
     "Update an action's status, priority, description, or due date. Translates one2b-style status (OPEN/IN_PROGRESS/COMPLETED/CANCELLED) to exponential's ACTIVE/COMPLETED/CANCELLED + kanbanStatus. If a completionNote is provided alongside a COMPLETED status, an ActionComment is added.",
   inputSchema: z.object({
     actionItemId: z.string().describe("The exponential Action ID to update"),
-    status: z
-      .enum(["OPEN", "IN_PROGRESS", "COMPLETED", "OVERDUE", "CANCELLED"])
+    status: looseEnum(["OPEN", "IN_PROGRESS", "COMPLETED", "OVERDUE", "CANCELLED"])
       .optional()
       .describe(
         "New status. OVERDUE is derived server-side and is ignored if passed here.",
       ),
-    priority: z
-      .enum(["HIGH", "MEDIUM", "LOW"])
+    priority: looseEnum(["HIGH", "MEDIUM", "LOW"])
       .optional()
       .describe("New priority — translated to exponential's priority scale."),
     description: z

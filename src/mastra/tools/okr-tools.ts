@@ -1,7 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
-import { looseNumber } from "./zod-loose.js";
+import { looseEnum, looseNumber } from "./zod-loose.js";
 
 // ==================== OKR Tools ====================
 // CRUD operations for Objectives (Goals) and Key Results.
@@ -186,7 +186,7 @@ export const createOkrKeyResultTool = createTool({
     description: z.string().optional().describe("Additional detail"),
     targetValue: looseNumber().describe("The target value to achieve (e.g., 100 for 100%, 50 for 50 customers)"),
     startValue: looseNumber().optional().default(0).describe("Starting value (default: 0)"),
-    unit: z.enum(["percent", "count", "currency", "hours", "custom"]).optional().default("percent")
+    unit: looseEnum(["percent", "count", "currency", "hours", "custom"]).optional().default("percent")
       .describe("Unit of measurement"),
     unitLabel: z.string().optional().describe("Custom unit label (e.g., 'customers', 'deals') - used when unit is 'custom'"),
     period: z.string().describe("OKR period (e.g., 'Q1-2026')"),
@@ -237,9 +237,9 @@ export const updateOkrKeyResultTool = createTool({
     targetValue: looseNumber().optional().describe("Updated target value"),
     currentValue: looseNumber().optional().describe("Updated current value"),
     startValue: looseNumber().optional().describe("Updated start value"),
-    unit: z.enum(["percent", "count", "currency", "hours", "custom"]).optional(),
+    unit: looseEnum(["percent", "count", "currency", "hours", "custom"]).optional(),
     unitLabel: z.string().optional(),
-    status: z.enum(["not-started", "on-track", "at-risk", "off-track", "achieved"]).optional()
+    status: looseEnum(["not-started", "on-track", "at-risk", "off-track", "achieved"]).optional()
       .describe("Manual status override"),
     confidence: looseNumber(z.number().min(0).max(100)).optional().describe("Confidence level 0-100"),
   }),
@@ -437,7 +437,7 @@ export const addObjectiveUpdateTool = createTool({
   inputSchema: z.object({
     goalId: looseNumber().describe("The numeric ID of the Objective (goal) to update — from the page context. Tolerant of a stringified number because the model often emits it as text lifted from the prompt."),
     content: z.string().min(1).max(10000).describe("The update text (markdown). Draft this and get the user's explicit confirmation before calling the tool."),
-    health: z.enum(["on-track", "at-risk", "off-track"]).describe("The health this check-in sets — moves the status badge. Infer from the conversation; default to the Objective's current health when unclear. Show it in the draft and confirm before posting."),
+    health: looseEnum(["on-track", "at-risk", "off-track"]).describe("The health this check-in sets — moves the status badge. Infer from the conversation; default to the Objective's current health when unclear. Show it in the draft and confirm before posting."),
   }),
   outputSchema: z.object({
     id: z.string(),

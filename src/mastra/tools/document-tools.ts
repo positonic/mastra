@@ -2,7 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
 import { asAppContext } from "../types/request-context.js";
-import { looseNumber } from "./zod-loose.js";
+import { looseEnum, looseNumber } from "./zod-loose.js";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Document Tools
@@ -26,8 +26,7 @@ export const ingestDocumentTool = createTool({
   description:
     "Ingest a document into exponential's workspace knowledge base from base64 binary, a URL, or raw text. Stores the original (when applicable), extracts text, chunks it, and embeds it for semantic search. Use sourceType to tag where the document originated (upload, meeting, whatsapp, email, api).",
   inputSchema: z.object({
-    source: z
-      .enum(["base64", "url", "text"])
+    source: looseEnum(["base64", "url", "text"])
       .describe(
         "How the document content is being supplied. base64 = encoded file binary; url = remote URL to fetch; text = inline raw text",
       ),
@@ -262,8 +261,7 @@ export const getDocumentsTool = createTool({
       .describe(
         "Filter by source type (e.g. upload, meeting, whatsapp, email, api)",
       ),
-    ingestionStatus: z
-      .enum(["pending", "processing", "completed", "failed"])
+    ingestionStatus: looseEnum(["pending", "processing", "completed", "failed"])
       .optional()
       .describe("Filter by ingestion status"),
     limit: looseNumber(z.number().min(1).max(100)).default(20),
