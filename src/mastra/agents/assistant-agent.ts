@@ -1,6 +1,7 @@
 import { anthropic } from '@ai-sdk/anthropic';
 import { Agent } from '@mastra/core/agent';
 import { memory } from '../memory/index.js';
+import { neutralizeServerToolErrorsProcessor } from '../processors/neutralize-server-tool-errors.js';
 import { withAnthropicPromptCache } from '../utils/anthropic-prompt-cache.js';
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
 import { SECURITY_POLICY } from './security-policy.js';
@@ -90,7 +91,11 @@ import {
  * supplies the identity.
  */
 
-const INSTRUCTIONS = `
+// Exported (with assistantModel/assistantDefaultOptions/assistantTools below)
+// for the eval-replay runner (src/mastra/evals/), which builds a memory-less
+// twin of this agent with intent-capturing no-op tools so a candidate prompt
+// can be scored offline (ADR-0013 in the exponential repo).
+export const INSTRUCTIONS = `
 You are a personal AI assistant integrated into Exponential — a life management system.
 
 ${SECURITY_POLICY}
@@ -108,9 +113,13 @@ If no personality is provided, be helpful, concise, and friendly with a natural 
 You have real tools that create, read, and update data. When someone asks you to do something actionable, call the tool — don't describe what they *could* do or give them instructions on how to do it themselves.
 
 ### Action & Task Management
-- **quick-create-action**: Create actions from natural language. Parses dates ("tomorrow", "next Monday", "Friday") and matches project names automatically. This is your default for creating tasks.
-- **create-project-action**: Create actions with explicit projectId, name, priority (Quick/Short/Long/Research), and optional description/dueDate.
+- **quick-create-action**: Create actions from natural language. Parses dates ("tomorrow", "next Monday", "Friday") and matches project names automatically. This is your default for creating tasks. Optionally pass \`priority\` (only when the user states one) and \`projectId\` (a project id you resolved via get-all-projects) — both honoured, with \`projectId\` winning over the current page.
+- **create-project-action**: Create actions with explicit projectId, name, priority, and optional description/dueDate. Use when you already have the project ID and want precise control.
 - **update-action**: Update an existing action's fields — rename it, change priority/status, set due dates, or move it to a different project by setting a new projectId. Set projectId to null to unassign from any project.
+
+**Priority values** are exactly: \`Quick\`, \`Scheduled\`, \`1st Priority\`, \`2nd Priority\`, \`3rd Priority\`, \`4th Priority\`, \`5th Priority\`, \`Errand\`, \`Remember\`, \`Watch\`, \`Someday Maybe\`. Only set a priority when the user expresses one — otherwise omit it and the action defaults to \`Quick\`. Map natural language: "highest"/"urgent"/"ASAP"/"as high as possible" → \`1st Priority\`; "high" → \`2nd Priority\`; "medium" → \`3rd Priority\`; "low" → \`4th Priority\` (or \`5th Priority\` for "lowest").
+
+**Resolving a named project:** when the user names a project (possibly mis-transcribed from voice), call get-all-projects, pick the best match by name, and pass its real \`projectId\` — do **not** rely on the current page context. An explicitly passed \`projectId\` files the action there even if the user is viewing a different project, and works for shared/team projects the user can access but didn't create.
 
 ### Project Intelligence
 - **get-all-projects**: List projects (ACTIVE by default, pass includeAll=true for all statuses).
@@ -295,20 +304,20 @@ When listing projects, use a table sorted by priority (HIGH > MEDIUM > LOW > NON
 When listing actions, group by project and sort by due date.
 `;
 
-const assistantModel = withAnthropicPromptCache(anthropic('claude-sonnet-4-5-20250929'));
+export const assistantModel = withAnthropicPromptCache(anthropic('claude-sonnet-4-5-20250929'));
 const assistantHaikuModel = withAnthropicPromptCache(anthropic('claude-haiku-4-5-20251001'));
 
 // See zoe-agent.ts for the rationale. Cap was 30, reduced to 12 to
 // bound worst-case latency on simple turns; raise if we see frequent
 // `finishReason: 'tool-calls'` in chat/stream "Stream complete" logs.
-const assistantDefaultOptions = {
+export const assistantDefaultOptions = {
   maxSteps: 12,
   modelSettings: {
     temperature: 0.7,
   },
 };
 
-const assistantTools = {
+export const assistantTools = {
     // Exponential tools
     getProjectContextTool,
     getProjectActionsTool,
@@ -401,6 +410,10 @@ export const assistantAgent = new Agent({
   memory,
   defaultOptions: assistantDefaultOptions,
   tools: assistantTools,
+  // Flatten Anthropic server-tool *_tool_result_error blocks to a text note
+  // before request conversion, so one failed web_fetch/web_search can't poison
+  // the whole thread on replay (ADR-0002).
+  inputProcessors: [neutralizeServerToolErrorsProcessor],
 });
 
 // Haiku 4.5 variant of Assistant. Identical instructions + tools + memory +
@@ -414,4 +427,5 @@ export const assistantAgentHaiku = new Agent({
   memory,
   defaultOptions: assistantDefaultOptions,
   tools: assistantTools,
+  inputProcessors: [neutralizeServerToolErrorsProcessor],
 });

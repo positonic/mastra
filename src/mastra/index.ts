@@ -1,7 +1,9 @@
 import { Mastra } from '@mastra/core/mastra';
 import { MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-context';
+import { Observability, MastraStorageExporter, SensitiveDataFilter } from '@mastra/observability';
+import { bulkyPayloadTruncator } from './utils/tracing.js';
 import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent, zoeAgent, zoeAgentHaiku, expoAgent, assistantAgent, assistantAgentHaiku, platformAgent, one2bAgent, actionItemsAgent, meetingContextAgent, documentTrackerAgent } from './agents';
-import { memory } from './memory/index.js';
+import { memory, storage } from './memory/index.js';
 import { createLogger } from './utils/logger.js';
 import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js';
 import { createTelegramGateway, cleanupTelegramGateway } from './bots/telegram-gateway.js';
@@ -10,7 +12,9 @@ import { startSignalGateway, getSignalGateway } from './bots/signal-gateway.js';
 import { startVoiceGateway, cleanupVoiceGateway } from './bots/voice-gateway.js';
 import { initSentry, captureException, flushSentry } from './utils/sentry.js';
 import { assertAgentsValid } from './utils/validate-agents.js';
+import { computeBrainVersions, agentIdFromPath, BRAIN_VERSION_HEADER } from './utils/brain-version.js';
 import { startScheduler, stopScheduler, triggerCheck, deliverWhatsAppBriefings } from './proactive/index.js';
+import { startSpanRetention, stopSpanRetention } from './utils/span-retention.js';
 import jwt from 'jsonwebtoken';
 import { createHmac, timingSafeEqual } from 'crypto';
 
@@ -23,6 +27,9 @@ const logger = createLogger({
 });
 
 const isDev = process.env.NODE_ENV !== 'production';
+// Railway injects this on deployed services; it is absent in local dev.
+// NODE_ENV is NOT set on Railway, so isDev cannot distinguish prod there.
+const isRailway = !!process.env.RAILWAY_ENVIRONMENT_NAME;
 
 // One2b agents are gated behind MASTRA_ONE2B_AGENTS_ENABLED so the merge
 // PR can land while one2b-internal-agent is still the live processor.
@@ -50,9 +57,46 @@ if (!oneTwoBAgentsEnabled) {
 // Top-level await is supported in this ESM module.
 await assertAgentsValid(agents, logger);
 
+// brain@<hash> per agent, computed once at boot. Served as the
+// x-brain-version response header so exponential can stamp the composite
+// promptVersion (router@X+brain@Y) on AiInteractionHistory (ADR-0013).
+const brainVersions = await computeBrainVersions(agents);
+logger.info('🧠 [MAIN] Brain prompt versions computed', brainVersions);
+
 export const mastra = new Mastra({
   agents,
   memory: { default: memory },
+  // Top-level storage is required by the observability exporter below;
+  // shares the Memory PostgresStore (schema 'mastra').
+  storage,
+  // AI tracing: spans for every agent step + tool call (with inputs) land
+  // in mastra.mastra_ai_spans. This is the signal that was missing during
+  // the 2026-06-12 web_fetch incident — the table existed but stayed empty.
+  // SensitiveDataFilter redacts apiKey/token/secret-like fields;
+  // bulkyPayloadTruncator caps prompt-sized step/generation payloads while
+  // keeping tool-call inputs intact.
+  //
+  // Gate on RAILWAY_ENVIRONMENT_NAME, NOT NODE_ENV: Railway does not set
+  // NODE_ENV, so an isDev-based gate silently disabled tracing in prod
+  // (verified 2026-06-12 — deploy at 23:29 wrote zero spans for two live
+  // failures). Local `mastra dev` shares the production DATABASE_URL, so
+  // tracing stays off outside Railway unless MASTRA_TRACING=true opts in;
+  // dev spans are stamped with a distinct serviceName for filterability.
+  ...(isRailway || process.env.MASTRA_TRACING === 'true'
+    ? {
+        observability: new Observability({
+          configs: {
+            default: {
+              serviceName: isRailway
+                ? `mastra-${process.env.RAILWAY_ENVIRONMENT_NAME}`
+                : 'mastra-local-dev',
+              exporters: [new MastraStorageExporter()],
+              spanOutputProcessors: [new SensitiveDataFilter(), bulkyPayloadTruncator],
+            },
+          },
+        }),
+      }
+    : {}),
   logger: logger.raw,
   server: {
     port: parseInt(process.env.PORT || '4111', 10),
@@ -164,6 +208,14 @@ export const mastra = new Mastra({
           }
 
           await next();
+
+          // Stamp agent responses with the serving agent's prompt hash so
+          // exponential can compose router@X+brain@Y (ADR-0013 decision 3).
+          const servingAgentId = agentIdFromPath(c.req.path);
+          const brainVersion = servingAgentId ? brainVersions[servingAgentId] : undefined;
+          if (brainVersion) {
+            c.res.headers.set(BRAIN_VERSION_HEADER, brainVersion);
+          }
       },
     ],
   },
@@ -209,6 +261,12 @@ if (enableProactive) {
   logger.info('📵 [MAIN] Proactive scheduler disabled (set ENABLE_PROACTIVE_SCHEDULER=true to enable)');
 }
 
+// Daily prune of AI tracing spans (exponential-gnui). Railway-only: local
+// dev points at a shared DB it shouldn't be deleting from.
+if (isRailway) {
+  startSpanRetention(logger);
+}
+
 // Add graceful shutdown handling
 const shutdown = async (signal: string, error?: Error) => {
   logger.info(`🛑 [MAIN] Received ${signal}, starting graceful shutdown...`);
@@ -218,6 +276,8 @@ const shutdown = async (signal: string, error?: Error) => {
     if (error) {
       captureException(error, { operation: `shutdown:${signal}` });
     }
+
+    stopSpanRetention();
 
     // Cleanup bots and gateways
     if (enableTelegram) {

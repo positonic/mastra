@@ -9,7 +9,7 @@ import {
 } from "../utils/authenticated-fetch.js";
 import { prepareUntrustedContent, auditWriteAction } from "../utils/content-safety.js";
 import { asAppContext } from "../types/request-context.js";
-import { looseBoolean, looseNumber, resolveDateRange } from "./zod-loose.js";
+import { looseBoolean, looseNumber, looseEnum, looseStringArray, looseEnumArray, resolveDateRange } from "./zod-loose.js";
 
 interface GeocodingResponse {
   results: {
@@ -530,8 +530,7 @@ export const getProjectActionsTool = createTool({
     "Get all actions for a specific project with detailed status and priority information",
   inputSchema: z.object({
     projectId: z.string().describe("The project ID to get actions for"),
-    status: z
-      .enum(["ACTIVE", "COMPLETED", "CANCELLED"])
+    status: looseEnum(["ACTIVE", "COMPLETED", "CANCELLED"])
       .optional()
       .describe("Filter by action status"),
   }),
@@ -594,8 +593,7 @@ export const createProjectActionTool = createTool({
       .string()
       .optional()
       .describe("Detailed description of the action"),
-    priority: z
-      .enum(["Quick", "Scheduled", "1st Priority", "2nd Priority", "3rd Priority", "4th Priority", "5th Priority", "Errand", "Remember", "Watch", "Someday Maybe"])
+    priority: looseEnum(["Quick", "Scheduled", "1st Priority", "2nd Priority", "3rd Priority", "4th Priority", "5th Priority", "Errand", "Remember", "Watch", "Someday Maybe"])
       .describe("Action priority. Use 'Quick' for small tasks, 'Scheduled' for time-bound items, '1st Priority' through '5th Priority' for ranked importance, 'Errand' for errands, 'Remember' for things to keep in mind, 'Watch' for items to monitor, 'Someday Maybe' for future ideas"),
     dueDate: z.string().optional().describe("Due date in ISO format"),
   }),
@@ -644,13 +642,28 @@ export const createProjectActionTool = createTool({
 export const quickCreateActionTool = createTool({
   id: "quick-create-action",
   description:
-    "Create a new action using natural language. Automatically parses dates like 'tomorrow' or 'next Monday' and matches project names from the text. Use this when the user wants to create an action without specifying project ID or priority explicitly.",
+    "Create a new action using natural language. Pass the action description in the `text` parameter — e.g. { \"text\": \"Call John tomorrow\" }. Automatically parses dates like 'tomorrow' or 'next Monday' and matches project names from the text. Optionally pass an explicit `priority` (when the user states one) and/or a resolved `projectId` (when the user names a project — resolve it to a real id via get-all-projects first). An explicit `projectId` wins over the page context.",
   inputSchema: z.object({
     text: z
       .string()
+      .optional()
       .describe(
         "Natural language action description. Can include dates ('tomorrow', 'next week', 'today') and project names ('for Marketing project', 'add to Exercise'). Examples: 'Call John tomorrow', 'Review docs for Marketing project', 'Buy groceries next Monday'"
       ),
+    // Models calling via deferred tool-search regularly guess `input`
+    // instead of `text` (observed 2026-06-12: 8 wasted validation
+    // round-trips on one turn). Accept it as an alias.
+    input: z
+      .string()
+      .optional()
+      .describe("Alias for `text` — prefer `text`."),
+    priority: looseEnum(["Quick", "Scheduled", "1st Priority", "2nd Priority", "3rd Priority", "4th Priority", "5th Priority", "Errand", "Remember", "Watch", "Someday Maybe"])
+      .optional()
+      .describe("Action priority. Only set this when the user expresses a priority; otherwise omit it and the action defaults to 'Quick'. Map natural language: 'highest'/'urgent'/'ASAP' → '1st Priority', 'high' → '2nd Priority', 'medium' → '3rd Priority', 'low' → '4th Priority' or '5th Priority'."),
+    projectId: z
+      .string()
+      .optional()
+      .describe("Explicit project id to file the action under. Resolve a user-named project to its real id via get-all-projects and pass it here — it takes precedence over the current page context. Omit to fall back to the page context / text-matched project."),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -686,11 +699,22 @@ export const quickCreateActionTool = createTool({
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
-    const projectId = requestContext?.get("projectId");
+    const contextProjectId = requestContext?.get("projectId");
 
-    console.log(`🎯 [quickCreateAction] INPUT: text="${inputData.text}"`);
-    console.log(`🎯 [quickCreateAction] CONTEXT: authToken=${authToken ? "present" : "MISSING"}, userId=${userId || "none"}, projectId=${projectId || "none"}`);
-    console.log(`🎯 [quickCreateAction] SENDING TO TRPC: { text: "${inputData.text}", projectId: ${projectId ? `"${projectId}"` : "undefined"} }`);
+    const text = inputData.text ?? inputData.input;
+    if (!text) {
+      throw new Error(
+        'Missing action description: pass it in the `text` parameter, e.g. { "text": "Call John tomorrow" }'
+      );
+    }
+
+    // An explicitly-resolved projectId from the model wins over the page context.
+    const projectId = inputData.projectId ?? contextProjectId;
+    const priority = inputData.priority;
+
+    console.log(`🎯 [quickCreateAction] INPUT: text="${text}", priority=${priority || "none"}, inputProjectId=${inputData.projectId || "none"}`);
+    console.log(`🎯 [quickCreateAction] CONTEXT: authToken=${authToken ? "present" : "MISSING"}, userId=${userId || "none"}, contextProjectId=${contextProjectId || "none"}, resolvedProjectId=${projectId || "none"}`);
+    console.log(`🎯 [quickCreateAction] SENDING TO TRPC: { text: "${text}", projectId: ${projectId ? `"${projectId}"` : "undefined"}, priority: ${priority ? `"${priority}"` : "undefined"} }`);
 
     if (!authToken) {
       throw new Error("No authentication token available");
@@ -699,7 +723,7 @@ export const quickCreateActionTool = createTool({
     try {
       const { data: result } = await authenticatedTrpcCall(
         "mastra.quickCreateAction",
-        { text: inputData.text, projectId: projectId || undefined },
+        { text, projectId: projectId || undefined, priority: priority || undefined },
         { authToken, sessionId, userId }
       );
 
@@ -717,18 +741,16 @@ export const updateProjectStatusTool = createTool({
   description: "Update project status and progress information",
   inputSchema: z.object({
     projectId: z.string().describe("The project ID to update"),
-    status: z
-      .enum(["ACTIVE", "ON_HOLD", "COMPLETED", "CANCELLED"])
+    status: looseEnum(["ACTIVE", "ON_HOLD", "COMPLETED", "CANCELLED"])
       .optional()
       .describe("New project status"),
-    priority: z
-      .enum(["HIGH", "MEDIUM", "LOW", "NONE"])
+    priority: looseEnum(["HIGH", "MEDIUM", "LOW", "NONE"])
       .optional()
       .describe("Project priority"),
-    progress: z
+    progress: looseNumber(z
       .number()
       .min(0)
-      .max(100)
+      .max(100))
       .optional()
       .describe("Progress percentage (0-100)"),
     reviewDate: z
@@ -929,7 +951,7 @@ export const getAllProjectsTool = createTool({
             title: z.string(),
             description: z.string().nullable(),
             dueDate: z.string().nullable(),
-            lifeDomainId: z.number(),
+            lifeDomainId: z.number().nullable(),
           })
         ),
         outcomes: z.array(
@@ -1033,33 +1055,30 @@ export const getMeetingTranscriptionsTool = createTool({
       .optional()
       .describe("Start date filter in ISO format"),
     endDate: z.string().optional().describe("End date filter in ISO format"),
-    participants: z
-      .array(z.string())
+    participants: looseStringArray()
       .optional()
       .describe("Filter by participant names/IDs"),
     meetingType: z
       .string()
       .optional()
       .describe("Filter by meeting type (standup, planning, review, etc.)"),
-    limit: z
-      .number()
+    limit: looseNumber(z
+      .number())
       .optional()
       .default(5)
       .describe("Maximum number of transcriptions to return (default: 5)"),
-    includeTranscript: z
-      .boolean()
+    includeTranscript: looseBoolean()
       .optional()
       .default(true)
       .describe(
         "Whether to fetch the full transcript text. Set false for list-style queries (titles + dates only) — much faster. Default: true."
       ),
-    truncateTranscript: z
-      .boolean()
+    truncateTranscript: looseBoolean()
       .optional()
       .default(true)
       .describe("Truncate transcript to prevent context overflow (default: true)"),
-    maxTranscriptLength: z
-      .number()
+    maxTranscriptLength: looseNumber(z
+      .number())
       .optional()
       .default(2000)
       .describe("Max characters per transcript when truncating (default: 2000)"),
@@ -1165,8 +1184,8 @@ export const queryMeetingContextTool = createTool({
       })
       .optional()
       .describe("Date range to search within"),
-    topK: z
-      .number()
+    topK: looseNumber(z
+      .number())
       .optional()
       .default(5)
       .describe("Number of most relevant results to return"),
@@ -1234,8 +1253,7 @@ export const getMeetingInsightsTool = createTool({
     "Extract key insights from recent meetings and calls including decisions, action items, deadlines, and project evolution. Use this to summarize what was discussed in calls or meetings.",
   inputSchema: z.object({
     projectId: z.string().optional().describe("Focus on specific project"),
-    timeframe: z
-      .enum(["last_week", "last_month", "last_quarter", "custom"])
+    timeframe: looseEnum(["last_week", "last_month", "last_quarter", "custom"])
       .default("last_week")
       .describe("Time period for insights"),
     startDate: z
@@ -1246,17 +1264,14 @@ export const getMeetingInsightsTool = createTool({
       .string()
       .optional()
       .describe("Custom end date if timeframe is custom"),
-    insightTypes: z
-      .array(
-        z.enum([
-          "decisions",
-          "action_items",
-          "deadlines",
-          "blockers",
-          "milestones",
-          "team_updates",
-        ])
-      )
+    insightTypes: looseEnumArray([
+      "decisions",
+      "action_items",
+      "deadlines",
+      "blockers",
+      "milestones",
+      "team_updates",
+    ])
       .optional()
       .describe("Types of insights to extract"),
   }),
@@ -1404,8 +1419,7 @@ export const getCalendarEventsTool = createTool({
   description:
     "Get calendar events for today or upcoming days. Use this tool for any request about calendar, schedule, meetings today, upcoming meetings, what's on the calendar, or scheduled events. This retrieves actual calendar/scheduled events, NOT past meeting transcriptions.",
   inputSchema: z.object({
-    timeframe: z
-      .enum(["today", "upcoming", "custom"])
+    timeframe: looseEnum(["today", "upcoming", "custom"])
       .default("today")
       .describe(
         "'today' for today's events, 'upcoming' for next N days, 'custom' for specific date range"
@@ -1428,13 +1442,13 @@ export const getCalendarEventsTool = createTool({
       z.object({
         id: z.string(),
         summary: z.string(),
-        description: z.string().optional(),
+        description: z.string().nullish(),
         start: z.string(),
         end: z.string(),
-        location: z.string().optional(),
-        attendees: z.array(z.string()).optional(),
-        htmlLink: z.string().optional(),
-        status: z.string().optional(),
+        location: z.string().nullish(),
+        attendees: z.array(z.string()).nullish(),
+        htmlLink: z.string().nullish(),
+        status: z.string().nullish(),
       })
     ),
     calendarConnected: z.boolean(),
@@ -1477,15 +1491,15 @@ export const getTodayCalendarEventsTool = createTool({
       id: z.string(),
       summary: z.string(),
       start: z.object({
-        dateTime: z.string().optional(),
-        date: z.string().optional(),
+        dateTime: z.string().nullish(),
+        date: z.string().nullish(),
       }),
       end: z.object({
-        dateTime: z.string().optional(),
-        date: z.string().optional(),
+        dateTime: z.string().nullish(),
+        date: z.string().nullish(),
       }),
-      location: z.string().optional(),
-      attendees: z.array(z.any()).optional(),
+      location: z.string().nullish(),
+      attendees: z.array(z.any()).nullish(),
       provider: z.enum(['google', 'microsoft']).optional(),
     })),
     date: z.string(),
@@ -1521,14 +1535,14 @@ export const getUpcomingCalendarEventsTool = createTool({
       id: z.string(),
       summary: z.string(),
       start: z.object({
-        dateTime: z.string().optional(),
-        date: z.string().optional(),
+        dateTime: z.string().nullish(),
+        date: z.string().nullish(),
       }),
       end: z.object({
-        dateTime: z.string().optional(),
-        date: z.string().optional(),
+        dateTime: z.string().nullish(),
+        date: z.string().nullish(),
       }),
-      location: z.string().optional(),
+      location: z.string().nullish(),
       provider: z.enum(['google', 'microsoft']).optional(),
     })),
     days: z.number(),
@@ -1561,25 +1575,25 @@ export const getCalendarEventsInRangeTool = createTool({
     timeMax: z.string().optional().describe("End of range — ISO 8601 datetime (e.g. '2024-02-12T23:59:59Z') or date-only 'YYYY-MM-DD' (expands to end of day UTC)"),
     startDate: z.string().optional().describe("Alias for timeMin"),
     endDate: z.string().optional().describe("Alias for timeMax"),
-    provider: z.enum(['google', 'microsoft']).optional().describe("Optional: filter to specific provider"),
+    provider: looseEnum(['google', 'microsoft']).optional().describe("Optional: filter to specific provider"),
   }),
   outputSchema: z.object({
     events: z.array(z.object({
       id: z.string(),
       summary: z.string(),
-      description: z.string().optional(),
+      description: z.string().nullish(),
       start: z.object({
-        dateTime: z.string().optional(),
-        date: z.string().optional(),
+        dateTime: z.string().nullish(),
+        date: z.string().nullish(),
       }),
       end: z.object({
-        dateTime: z.string().optional(),
-        date: z.string().optional(),
+        dateTime: z.string().nullish(),
+        date: z.string().nullish(),
       }),
-      location: z.string().optional(),
-      attendees: z.array(z.any()).optional(),
-      calendarId: z.string().optional(),
-      calendarName: z.string().optional(),
+      location: z.string().nullish(),
+      attendees: z.array(z.any()).nullish(),
+      calendarId: z.string().nullish(),
+      calendarName: z.string().nullish(),
       provider: z.enum(['google', 'microsoft']).optional(),
     })),
   }),
@@ -1614,9 +1628,9 @@ export const findAvailableTimeSlotsTool = createTool({
   description: "Find available time slots in the user's calendar. Useful for scheduling new events. Specify date and work hours, returns free slots.",
   inputSchema: z.object({
     date: z.string().describe("Date to check in YYYY-MM-DD format"),
-    startHour: z.number().min(0).max(23).default(9).describe("Start of work day (hour, 0-23)"),
-    endHour: z.number().min(0).max(23).default(17).describe("End of work day (hour, 0-23)"),
-    slotDurationMinutes: z.number().default(30).describe("Desired slot duration in minutes"),
+    startHour: looseNumber(z.number().min(0).max(23)).default(9).describe("Start of work day (hour, 0-23)"),
+    endHour: looseNumber(z.number().min(0).max(23)).default(17).describe("End of work day (hour, 0-23)"),
+    slotDurationMinutes: looseNumber(z.number()).default(30).describe("Desired slot duration in minutes"),
   }),
   outputSchema: z.object({
     availableSlots: z.array(z.object({
@@ -1721,9 +1735,8 @@ export const createCalendarEventTool = createTool({
       email: z.string().email(),
       displayName: z.string().optional(),
     })).optional().describe("List of attendees"),
-    provider: z.enum(['google', 'microsoft']).default('google').describe("Calendar provider to use"),
-    userConfirmed: z
-      .boolean()
+    provider: looseEnum(['google', 'microsoft']).default('google').describe("Calendar provider to use"),
+    userConfirmed: looseBoolean()
       .describe("REQUIRED: Must be true. You MUST show the user the event details and receive explicit confirmation before setting this to true."),
   }),
   outputSchema: z.object({
@@ -1876,8 +1889,8 @@ export const getWhatsAppContextTool = createTool({
     contactName: z
       .string()
       .describe("Name of the contact for context in logs"),
-    limit: z
-      .number()
+    limit: looseNumber(z
+      .number())
       .default(20)
       .describe("Number of recent messages to fetch (default: 20)"),
   }),
@@ -2036,9 +2049,9 @@ export const searchCrmContactsTool = createTool({
     "Search contacts in the CRM by name, tags, or organization. Returns a list of matching contacts with basic info. Use this to find contacts before getting full details or logging interactions.",
   inputSchema: z.object({
     search: z.string().optional().describe("Search by first or last name"),
-    tags: z.array(z.string()).optional().describe("Filter by tags (e.g., ['investor', 'advisor'])"),
+    tags: looseStringArray().optional().describe("Filter by tags (e.g., ['investor', 'advisor'])"),
     organizationId: z.string().optional().describe("Filter by organization ID"),
-    limit: z.number().default(20).describe("Max results to return (default: 20)"),
+    limit: looseNumber(z.number()).default(20).describe("Max results to return (default: 20)"),
   }),
   outputSchema: z.object({
     contacts: z.array(z.object({
@@ -2100,7 +2113,7 @@ export const getCrmContactTool = createTool({
     "Get full details for a specific CRM contact including social handles, about, skills, and recent interactions. Use after searching to get complete info.",
   inputSchema: z.object({
     contactId: z.string().describe("The contact ID to look up"),
-    includeInteractions: z.boolean().default(true).describe("Include recent interactions (default: true)"),
+    includeInteractions: looseBoolean().default(true).describe("Include recent interactions (default: true)"),
   }),
   outputSchema: z.object({
     id: z.string(),
@@ -2169,8 +2182,8 @@ export const createFullCrmContactTool = createTool({
     twitter: z.string().optional().describe("Twitter/X handle"),
     github: z.string().optional().describe("GitHub username"),
     about: z.string().optional().describe("Notes about this contact"),
-    skills: z.array(z.string()).optional().describe("Contact's skills"),
-    tags: z.array(z.string()).optional().describe("Tags for categorization"),
+    skills: looseStringArray().optional().describe("Contact's skills"),
+    tags: looseStringArray().optional().describe("Tags for categorization"),
     organizationId: z.string().optional().describe("Organization to link this contact to"),
   }),
   outputSchema: z.object({
@@ -2222,8 +2235,8 @@ export const updateCrmContactTool = createTool({
     twitter: z.string().optional().nullable().describe("Updated Twitter handle"),
     github: z.string().optional().nullable().describe("Updated GitHub username"),
     about: z.string().optional().describe("Updated notes"),
-    skills: z.array(z.string()).optional().describe("Updated skills list (replaces existing)"),
-    tags: z.array(z.string()).optional().describe("Updated tags list (replaces existing)"),
+    skills: looseStringArray().optional().describe("Updated skills list (replaces existing)"),
+    tags: looseStringArray().optional().describe("Updated tags list (replaces existing)"),
     organizationId: z.string().optional().nullable().describe("Organization ID (null to unlink)"),
   }),
   outputSchema: z.object({
@@ -2268,8 +2281,8 @@ export const addCrmInteractionTool = createTool({
     "Log an interaction with a CRM contact (email, call, meeting, note, etc.). This updates the contact's last interaction timestamp and creates an audit trail.",
   inputSchema: z.object({
     contactId: z.string().describe("The contact ID to log interaction for"),
-    type: z.enum(["EMAIL", "PHONE_CALL", "MEETING", "NOTE", "LINKEDIN", "TELEGRAM", "OTHER"]).describe("Type of interaction"),
-    direction: z.enum(["INBOUND", "OUTBOUND"]).describe("Direction: INBOUND (they reached out) or OUTBOUND (you reached out)"),
+    type: looseEnum(["EMAIL", "PHONE_CALL", "MEETING", "NOTE", "LINKEDIN", "TELEGRAM", "OTHER"]).describe("Type of interaction"),
+    direction: looseEnum(["INBOUND", "OUTBOUND"]).describe("Direction: INBOUND (they reached out) or OUTBOUND (you reached out)"),
     subject: z.string().optional().describe("Brief subject line for the interaction"),
     notes: z.string().optional().describe("Detailed notes about the interaction"),
   }),
@@ -2316,7 +2329,7 @@ export const searchCrmOrganizationsTool = createTool({
   inputSchema: z.object({
     search: z.string().optional().describe("Search by organization name or description"),
     industry: z.string().optional().describe("Filter by industry"),
-    limit: z.number().default(20).describe("Max results (default: 20)"),
+    limit: looseNumber(z.number()).default(20).describe("Max results (default: 20)"),
   }),
   outputSchema: z.object({
     organizations: z.array(z.object({
@@ -2373,7 +2386,7 @@ export const createCrmOrganizationTool = createTool({
     description: z.string().optional().describe("Description of the organization"),
     websiteUrl: z.string().optional().describe("Website URL"),
     industry: z.string().optional().describe("Industry (e.g., 'Technology', 'Finance', 'Healthcare')"),
-    size: z.enum(["1-10", "11-50", "51-200", "201-500", "501-1000", "1000+"]).optional().describe("Company size range"),
+    size: looseEnum(["1-10", "11-50", "51-200", "201-500", "501-1000", "1000+"]).optional().describe("Company size range"),
   }),
   outputSchema: z.object({
     id: z.string(),
@@ -2476,7 +2489,7 @@ export { notionTools, notionSearchTool, notionGetPageTool, notionQueryDatabaseTo
 export { checkEmailConnectionTool, getRecentEmailsTool, getEmailByIdTool, searchEmailsTool, sendEmailTool, replyToEmailTool } from "./email-tools.js";
 
 // OKR tools
-export { getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, linkProjectToGoalTool, unlinkProjectFromGoalTool } from "./okr-tools.js";
+export { getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, linkProjectToGoalTool, unlinkProjectFromGoalTool, linkObjectiveToParentTool, addObjectiveCommentTool, addObjectiveUpdateTool } from "./okr-tools.js";
 
 // Project & Action management tools
 export { createProjectTool, updateActionTool, deleteProjectTool, getUserWorkspacesTool, bulkCreateWorkspaceStructureTool } from "./project-tools.js";

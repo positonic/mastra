@@ -42,11 +42,138 @@ const toNumber = (v: unknown): unknown => {
   return v; // fall through — inner z.number() rejects anything unexpected
 };
 
-export const looseBoolean = (inner: z.ZodBoolean = z.boolean()) =>
-  z.preprocess(toBoolean, inner);
+// The explicit return annotations matter. `z.preprocess` is typed against a
+// `(v: unknown) => unknown` preprocessor, so its inferred type carries
+// `unknown` for BOTH the input and output side. Mastra types a tool's
+// `execute(inputData)` from the schema's *input* type, so an unannotated
+// looseNumber/looseBoolean field surfaces in `inputData` as `unknown` / `{}`.
+// That's invisible until a coerced field is used as a real number/boolean
+// (arithmetic, comparisons, typed API params), at which point every such call
+// site fails to typecheck.
+//
+// We pin BOTH generics to the inner scalar type. The runtime is unchanged —
+// `.parse()` still accepts anything and coerces the stringified-scalar shapes
+// the model emits. The third generic (input) is a deliberate, harmless white
+// lie: by the time we read `inputData`, validation has already run and the
+// value IS a number/boolean, which is exactly what call sites need.
+export const looseBoolean = (
+  inner: z.ZodBoolean = z.boolean(),
+): z.ZodEffects<z.ZodBoolean, boolean, boolean> =>
+  z.preprocess(toBoolean, inner) as z.ZodEffects<z.ZodBoolean, boolean, boolean>;
 
-export const looseNumber = (inner: z.ZodNumber = z.number()) =>
-  z.preprocess(toNumber, inner);
+export const looseNumber = (
+  inner: z.ZodNumber = z.number(),
+): z.ZodEffects<z.ZodNumber, number, number> =>
+  z.preprocess(toNumber, inner) as z.ZodEffects<z.ZodNumber, number, number>;
+
+/**
+ * Tolerant enum input schemas for tool parameters.
+ *
+ * Models emit near-miss enum members constantly: `"In Progress"` for
+ * `IN_PROGRESS`, `"Binance"` for `binance`, `"1st priority"` for
+ * `"1st Priority"`. A bare `z.enum()` rejects all of these and the model burns
+ * a retry (or, with `.catch(default)`, the value is silently replaced with a
+ * wrong one — a data-integrity bug, see ADR-0001).
+ *
+ * `looseEnum` normalizes obvious near-misses to the canonical member, then
+ * validates. The match is done on a separator/case-insensitive key
+ * (lowercased, non-alphanumerics stripped), and we return the enum's OWN
+ * canonical spelling — so this works for `UPPER_SNAKE`, lowercase, and
+ * human-cased (`"1st Priority"`) enums alike, NOT just blind uppercasing.
+ *
+ * A value that can't be normalized to a member is returned UNCHANGED, so the
+ * inner `z.enum()` fails loud with the real Zod error listing valid values.
+ * That is correct self-correction (the model retries), not a bug — we coerce
+ * to preserve intent, we never invent it. Do NOT add `.catch(default)`: that
+ * substitutes a wrong value silently (the guard test bans it).
+ */
+const enumKey = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+
+export const normalizeEnumValue = (
+  values: readonly string[],
+  v: unknown,
+): unknown => {
+  if (typeof v !== "string") return v;
+  if (values.includes(v)) return v; // already canonical
+  const key = enumKey(v);
+  if (key === "") return v;
+  // First canonical member whose normalized key matches. Real enums here have
+  // no key collisions; if two ever did, first-declared wins (deterministic).
+  return values.find((val) => enumKey(val) === key) ?? v; // unmappable → fail loud
+};
+
+// `values` is passed straight to `z.enum` so its overloads drive literal-tuple
+// inference (re-specifying the generics here widens the members to `string`).
+// Output AND input are pinned to the inner enum's literal union — same white
+// lie as the scalar helpers: by the time `inputData` is read the value has been
+// normalized-and-validated into a real member, which is what call sites need
+// (e.g. indexing a Record keyed by the union).
+export const looseEnum = <U extends string, T extends Readonly<[U, ...U[]]>>(
+  values: T,
+) => {
+  const inner = z.enum(values);
+  return z.preprocess(
+    (v) => normalizeEnumValue(values, v),
+    inner,
+  ) as z.ZodEffects<typeof inner, z.infer<typeof inner>, z.infer<typeof inner>>;
+};
+
+/**
+ * Tolerant string-array input schemas for tool parameters.
+ *
+ * Models routinely emit a `string[]` field as a comma-string (`"investor,
+ * advisor"`) or a JSON-string array (`'["investor","advisor"]'`) instead of a
+ * native array. A bare `z.array(z.string())` rejects both. `toStringArray`
+ * accepts a native array (pass through), a JSON-string array (parse), or a
+ * comma-string (split on commas + optional whitespace, trim, and drop empties
+ * so an empty string becomes an empty array).
+ */
+const toStringArray = (v: unknown): unknown => {
+  if (Array.isArray(v)) return v;
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (s === "") return [];
+    if (s.startsWith("[")) {
+      try {
+        const parsed: unknown = JSON.parse(s);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // not valid JSON — fall through to comma-splitting
+      }
+    }
+    return s
+      .split(/,\s*/)
+      .map((x) => x.trim())
+      .filter((x) => x !== "");
+  }
+  return v; // fall through — inner z.array() rejects anything unexpected
+};
+
+export const looseStringArray = (
+  inner: z.ZodArray<z.ZodString> = z.array(z.string()),
+): z.ZodEffects<z.ZodArray<z.ZodString>, string[], string[]> =>
+  z.preprocess(toStringArray, inner) as z.ZodEffects<
+    z.ZodArray<z.ZodString>,
+    string[],
+    string[]
+  >;
+
+/**
+ * Tolerant `z.array(z.enum())` input. Splits the comma/JSON-string shapes the
+ * same way as {@link looseStringArray}, then runs each element through the enum
+ * normalizer ({@link normalizeEnumValue}) so near-miss members coerce to
+ * canonical. Any element that still can't be mapped is left unchanged, so the
+ * inner `z.array(z.enum())` fails loud — coerce to preserve intent, never invent.
+ */
+export const looseEnumArray = <U extends string, T extends Readonly<[U, ...U[]]>>(
+  values: T,
+) => {
+  const inner = z.array(z.enum(values));
+  return z.preprocess((v) => {
+    const arr = toStringArray(v);
+    return Array.isArray(arr) ? arr.map((el) => normalizeEnumValue(values, el)) : arr;
+  }, inner) as z.ZodEffects<typeof inner, z.infer<typeof inner>, z.infer<typeof inner>>;
+};
 
 /**
  * Tolerant date-range resolution for tool parameters.
@@ -91,8 +218,11 @@ export interface LooseDateRangeInput {
 }
 
 export function resolveDateRange(input: LooseDateRangeInput): { timeMin: string; timeMax: string } {
-  const rawMin = input.timeMin ?? input.startDate;
-  const rawMax = input.timeMax ?? input.endDate;
+  // Treat a blank/whitespace string as absent so an empty `timeMin` doesn't
+  // shadow a valid `startDate` alias (`??` would keep the empty string).
+  const blankToUndef = (v?: string) => (v && v.trim() !== "" ? v : undefined);
+  const rawMin = blankToUndef(input.timeMin) ?? blankToUndef(input.startDate);
+  const rawMax = blankToUndef(input.timeMax) ?? blankToUndef(input.endDate);
   if (!rawMin || !rawMax) {
     throw new Error(
       'Date range required: provide "timeMin" and "timeMax" as ISO 8601 datetimes or date-only "YYYY-MM-DD" values.'

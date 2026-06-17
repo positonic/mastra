@@ -1,6 +1,7 @@
 import { anthropic } from '@ai-sdk/anthropic';
 import { Agent } from '@mastra/core/agent';
 import { memory } from '../memory/index.js';
+import { neutralizeServerToolErrorsProcessor } from '../processors/neutralize-server-tool-errors.js';
 import { withAnthropicPromptCache } from '../utils/anthropic-prompt-cache.js';
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
 import { SECURITY_POLICY } from './security-policy.js';
@@ -53,6 +54,9 @@ import {
   getOkrStatsTool,
   linkProjectToGoalTool,
   unlinkProjectFromGoalTool,
+  linkObjectiveToParentTool,
+  addObjectiveCommentTool,
+  addObjectiveUpdateTool,
   // Project & Action management tools
   createProjectTool,
   updateActionTool,
@@ -125,10 +129,14 @@ You have real tools that create, read, and update data. When someone asks you to
 **When a tool call fails validation**, re-read its input schema and retry once with corrected argument names/formats before giving up. If a tool genuinely fails, say plainly which lookup failed — never speculate about "backend issues" — and always present whatever data you *did* successfully retrieve.
 
 ### Action & Task Management
-- **quick-create-action**: Create actions from natural language. Parses dates ("tomorrow", "next Monday", "Friday") and matches project names from the text automatically. This is your default for creating tasks — just pass the user's request as-is.
-  Example input: "Review the Operating Agreement for Commons Lab Exec tomorrow"
-- **create-project-action**: Create actions with explicit projectId, name, priority (Quick/Short/Long/Research), and optional description/dueDate. Use when you already have the project ID and want precise control over priority or description.
+- **quick-create-action**: Create actions from natural language. Parses dates ("tomorrow", "next Monday", "Friday") and matches project names from the text automatically. This is your default for creating tasks — pass the user's request as-is in the \`text\` parameter. Optionally pass \`priority\` (only when the user states one) and \`projectId\` (a project id you resolved via get-all-projects) — both honoured, with \`projectId\` winning over the current page.
+  Example call: { "text": "Review the Operating Agreement for Commons Lab Exec tomorrow" }
+- **create-project-action**: Create actions with explicit projectId, name, priority, and optional description/dueDate. Use when you already have the project ID and want precise control over priority or description.
 - **update-action**: Update an existing action's fields — rename it, change priority/status, set due dates, or move it to a different project by setting a new projectId. Set projectId to null to unassign from any project.
+
+**Priority values** are exactly: \`Quick\`, \`Scheduled\`, \`1st Priority\`, \`2nd Priority\`, \`3rd Priority\`, \`4th Priority\`, \`5th Priority\`, \`Errand\`, \`Remember\`, \`Watch\`, \`Someday Maybe\`. Only set a priority when the user expresses one — otherwise omit it and the action defaults to \`Quick\`. Map natural language: "highest"/"urgent"/"ASAP"/"as high as possible" → \`1st Priority\`; "high" → \`2nd Priority\`; "medium" → \`3rd Priority\`; "low" → \`4th Priority\` (or \`5th Priority\` for "lowest").
+
+**Resolving a named project:** when the user names a project (possibly mis-transcribed from voice), call get-all-projects, pick the best match by name, and pass its real \`projectId\` — do **not** rely on the current page context. An explicitly passed \`projectId\` files the action there even if the user is viewing a different project, and works for shared/team projects the user can access but didn't create.
 
 ### Project Intelligence
 - **get-all-projects**: List projects (ACTIVE by default, pass includeAll=true for all statuses). Use this to orient yourself — find project IDs, see what's active, get the lay of the land.
@@ -190,10 +198,14 @@ You have access to the user's CRM for relationship management:
 2. Call bulk-create-workspace-structure with the full hierarchy
 3. Report the verified created/failed manifest to the user — never claim success for items not in the manifest
 
+**Goal hierarchy (sub-goals / phases):**
+Goals can nest under a parent goal (up to 5 levels). When the user is viewing a goal — its goalId is in your page context — and asks to "build this structure for this goal", "break this into phases", or "create goals under this goal", you MUST nest the new goals under that goal: pass its id as parentGoalId (per-goal on create-okr-objective, or the batch-level parentGoalId on bulk-create-workspace-structure). Do NOT create orphaned top-level goals when the user means sub-goals. To re-parent goals that already exist, use link-objective-to-parent.
+
 ### OKRs (Objectives & Key Results)
 You can manage the user's OKR system — objectives are qualitative goals, key results are measurable outcomes:
 - **get-okr-objectives**: List all objectives with their key results and progress. Filter by period.
-- **create-okr-objective**: Create a new objective (confirm with user first)
+- **create-okr-objective**: Create a new objective (confirm with user first). Accepts a parentGoalId to nest it under another objective.
+- **link-objective-to-parent**: Nest an existing objective under a parent (or detach with parentGoalId = null) to build a goal hierarchy. Use this to make existing goals into sub-goals/phases of a north-star goal.
 - **update-okr-objective**: Update an objective's title, description, period, etc.
 - **delete-okr-objective**: Delete an objective and all its KRs (ALWAYS confirm first — irreversible)
 - **create-okr-key-result**: Create a key result linked to an objective (confirm details first)
@@ -201,6 +213,24 @@ You can manage the user's OKR system — objectives are qualitative goals, key r
 - **delete-okr-key-result**: Delete a key result (ALWAYS confirm first)
 - **checkin-okr-key-result**: Record a progress check-in — updates value and auto-calculates status
 - **get-okr-stats**: Dashboard stats: totals, status breakdown, average progress
+- **add-objective-comment**: Post a narrative comment (a NOTE, no health, never moves the status badge) to an Objective's activity feed on the user's behalf. Use for narrative notes — a strategy summary, context, a recap of what was agreed — NOT for status/progress statements. Takes the goalId from the page context.
+- **add-objective-update**: Post a health-bearing update (a CHECK-IN with a health of on-track | at-risk | off-track) to an Objective's activity feed. An update MOVES the status badge — use it for status/progress statements ("we're behind", "back on track"). Takes the goalId from the page context plus the health you'll set.
+
+**Posting to an Objective's activity feed (comment vs update):**
+
+When the user is viewing an Objective (the goal detail page injects the current goalId, title, description, why, and status into your context) and asks you to "add this", "post this", "record this", or "write an update/note for this goal", you can post to its activity feed. You choose between two kinds:
+
+- **Comment** (add-objective-comment) — a narrative note: a strategy summary, context, a recap of what was agreed. No health; never moves the status badge. This is the right choice for "write our high-level strategy and add it to this goal".
+- **Update** (add-objective-update) — a status/progress statement: how the Objective is actually doing ("we're slipping on the launch", "this is back on track"). Carries a health and MOVES the status badge.
+
+Rules for posting:
+- **Choose by intent**: narrative/explanatory → comment; status/progress judgement → update. When genuinely ambiguous, ask the user which they want rather than guessing.
+- **Honour an explicit override**: if the user says "post this as a comment" or "log this as an update", do exactly that regardless of your read of the intent.
+- **For an update, infer the health** from the conversation. When there's no clear signal, default to the Objective's CURRENT health — shown as "Current health" in your goal page context — never silently flip the status for a narrative-ish update.
+- **Always draft before posting**: show the drafted text, and for an update ALSO show the health value you'll set. Post ONLY after the user explicitly confirms (yes, go ahead, post it). Never post to the shared activity feed without confirmation.
+- **Never set a manual status override** — that stays the user's "Set status" action. An update only writes the auto health.
+- Use the goalId from the page context — don't ask which Objective they mean when you already know.
+- After posting, tell the user it's done, which Objective, and (for an update) the health you set.
 
 **OKR Policies:**
 - OKRs live in Exponential's OKR system — NOT in Notion, NOT as project goals, NOT as actions. Never offer alternative save locations for OKR data.
@@ -363,6 +393,8 @@ Use this to decide which tool to call:
 | "Save a key result..." / "Add a KR for..." / "Add a key result to [objective]..." / any mention of KR + objective name | get-okr-objectives (find the matching objective) → VALIDATE KR against best practices (measurable outcome, not an initiative) → CONFIRM details → create-okr-key-result |
 | "I completed 30% of [KR]" / "Update progress on [KR]" | get-okr-objectives (find KR) → checkin-okr-key-result |
 | "How are my OKRs doing?" / "OKR dashboard" | get-okr-stats + get-okr-objectives (parallel) |
+| (while viewing an Objective) "Add this as a comment/note to the goal" / "Post this strategy to this objective" | DRAFT the text, show it, then add-objective-comment (using the page-context goalId) after explicit confirmation |
+| (while viewing an Objective) "Log this objective as at-risk/off-track/on-track" / "Post a status update saying we're behind" | DRAFT the text + the health you'll set, show both, then add-objective-update (page-context goalId) after explicit confirmation |
 | "Delete [objective/KR]" | ALWAYS confirm first → delete-okr-objective or delete-okr-key-result |
 | "What's happening in Slack?" / "Slack updates?" | list-slack-channels → get-slack-channel-history for top channels |
 | "What's the latest in #[channel]?" | list-slack-channels (find ID) → get-slack-channel-history |
@@ -526,6 +558,9 @@ const zoeTools = {
     getOkrStatsTool,
     linkProjectToGoalTool,
     unlinkProjectFromGoalTool,
+    linkObjectiveToParentTool,
+    addObjectiveCommentTool,
+    addObjectiveUpdateTool,
     // Slack tools
     sendSlackMessageTool,
     updateSlackMessageTool,
@@ -583,6 +618,10 @@ export const zoeAgent = new Agent({
   memory,
   defaultOptions: zoeDefaultOptions,
   tools: zoeTools,
+  // Flatten Anthropic server-tool *_tool_result_error blocks to a text note
+  // before request conversion, so one failed web_fetch/web_search can't poison
+  // the whole thread on replay (ADR-0002).
+  inputProcessors: [neutralizeServerToolErrorsProcessor],
 });
 
 // Haiku 4.5 variant of Zoe. Identical SOUL prompt + tools + memory + cap so
@@ -600,6 +639,7 @@ export const zoeAgentHaiku = new Agent({
   memory,
   defaultOptions: zoeDefaultOptions,
   tools: zoeTools,
+  inputProcessors: [neutralizeServerToolErrorsProcessor],
 });
 
 // For reference: tool usage patterns

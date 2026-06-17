@@ -1,5 +1,6 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
+import { looseNumber, looseEnum } from "./zod-loose.js";
 import { prepareUntrustedContent } from "../utils/content-safety.js";
 import { asAppContext } from "../types/request-context.js";
 /**
@@ -28,12 +29,12 @@ export const listWhatsAppChatsTool = createTool({
     "List all WhatsApp conversations with contact names, phone numbers, last message time, and message counts. " +
     "Use this to see who the user has been chatting with on WhatsApp.",
   inputSchema: z.object({
-    limit: z
-      .number()
+    limit: looseNumber(z
+      .number())
       .default(50)
       .describe("Max chats to return (default: 50)"),
-    offset: z
-      .number()
+    offset: looseNumber(z
+      .number())
       .default(0)
       .describe("Offset for pagination"),
   }),
@@ -82,8 +83,8 @@ export const getWhatsAppChatHistoryTool = createTool({
       .describe(
         "WhatsApp JID (e.g., '1234567890@s.whatsapp.net') or phone number in international format",
       ),
-    limit: z
-      .number()
+    limit: looseNumber(z
+      .number())
       .default(50)
       .describe("Max messages to return (default: 50)"),
     before: z
@@ -148,8 +149,7 @@ export const searchWhatsAppChatsTool = createTool({
     query: z
       .string()
       .describe("Search query — can be keywords or a natural language question"),
-    searchType: z
-      .enum(["keyword", "semantic", "hybrid"])
+    searchType: looseEnum(["keyword", "semantic", "hybrid"])
       .default("hybrid")
       .describe(
         "'keyword' for exact text matches, 'semantic' for meaning-based search, 'hybrid' for both (default)",
@@ -158,8 +158,8 @@ export const searchWhatsAppChatsTool = createTool({
       .string()
       .optional()
       .describe("Limit search to a specific chat (WhatsApp JID or phone number)"),
-    limit: z
-      .number()
+    limit: looseNumber(z
+      .number())
       .default(15)
       .describe("Max results to return (default: 15)"),
   }),

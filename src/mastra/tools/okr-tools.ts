@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
+import { looseEnum, looseNumber } from "./zod-loose.js";
 
 // ==================== OKR Tools ====================
 // CRUD operations for Objectives (Goals) and Key Results.
@@ -69,7 +70,8 @@ export const createOkrObjectiveTool = createTool({
     description: z.string().optional().describe("More detail about the objective"),
     whyThisGoal: z.string().optional().describe("Why this objective matters"),
     period: z.string().optional().describe("OKR period (e.g., 'Q1-2026', 'H1-2026', 'Annual-2026')"),
-    lifeDomainId: z.number().optional().describe("Life domain ID to categorize this objective"),
+    lifeDomainId: looseNumber().optional().describe("Life domain ID to categorize this objective"),
+    parentGoalId: looseNumber().optional().describe("Parent objective (goal) ID to nest this under. When the user is viewing a goal and asks to create goals 'under this goal' / as phases of it, use that goal's ID (from the page context) here."),
   }),
   outputSchema: z.object({
     objective: z.object({
@@ -77,6 +79,7 @@ export const createOkrObjectiveTool = createTool({
       title: z.string(),
       description: z.string().nullable(),
       period: z.string().nullable(),
+      parentGoalId: z.number().nullable(),
       lifeDomain: z.object({ id: z.number(), title: z.string() }).nullable(),
       workspaceId: z.string().nullable(),
     }),
@@ -107,12 +110,12 @@ export const updateOkrObjectiveTool = createTool({
   description:
     "Update an existing OKR Objective. Only include fields you want to change.",
   inputSchema: z.object({
-    id: z.number().describe("The objective ID to update"),
+    id: looseNumber().describe("The objective ID to update"),
     title: z.string().optional().describe("Updated objective title"),
     description: z.string().optional().describe("Updated description"),
     whyThisGoal: z.string().optional().describe("Updated reason"),
     period: z.string().optional().describe("Updated OKR period"),
-    lifeDomainId: z.number().optional().describe("Updated life domain ID"),
+    lifeDomainId: looseNumber().optional().describe("Updated life domain ID"),
   }),
   outputSchema: z.object({
     objective: z.object({
@@ -147,7 +150,7 @@ export const deleteOkrObjectiveTool = createTool({
   description:
     "Delete an OKR Objective and all its key results. CRITICAL: Always confirm with the user before deleting. This is irreversible.",
   inputSchema: z.object({
-    id: z.number().describe("The objective ID to delete"),
+    id: looseNumber().describe("The objective ID to delete"),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -178,12 +181,12 @@ export const createOkrKeyResultTool = createTool({
   description:
     "Create a new Key Result linked to an Objective. A Key Result is a MEASURABLE OUTCOME (e.g., 'Increase MRR from $10k to $20k', 'Reach 500 active users'), NOT an initiative or task (e.g., 'Complete workshop', 'Establish cadence', 'Document Q1 objectives', 'Launch X'). Before calling this tool, verify the title describes a result with a target number — not an activity. If the user's proposed text is an initiative, activity, or checkbox-style milestone, DO NOT call this tool. Instead, explain why it isn't a KR, propose 1–3 measurable reworded alternatives (outcomes of that work), and get the user's explicit confirmation on one before creating.",
   inputSchema: z.object({
-    goalId: z.number().describe("The parent objective (goal) ID"),
+    goalId: looseNumber().describe("The parent objective (goal) ID"),
     title: z.string().describe("The key result title - should be specific and measurable"),
     description: z.string().optional().describe("Additional detail"),
-    targetValue: z.number().describe("The target value to achieve (e.g., 100 for 100%, 50 for 50 customers)"),
-    startValue: z.number().optional().default(0).describe("Starting value (default: 0)"),
-    unit: z.enum(["percent", "count", "currency", "hours", "custom"]).optional().default("percent")
+    targetValue: looseNumber().describe("The target value to achieve (e.g., 100 for 100%, 50 for 50 customers)"),
+    startValue: looseNumber().optional().default(0).describe("Starting value (default: 0)"),
+    unit: looseEnum(["percent", "count", "currency", "hours", "custom"]).optional().default("percent")
       .describe("Unit of measurement"),
     unitLabel: z.string().optional().describe("Custom unit label (e.g., 'customers', 'deals') - used when unit is 'custom'"),
     period: z.string().describe("OKR period (e.g., 'Q1-2026')"),
@@ -231,14 +234,14 @@ export const updateOkrKeyResultTool = createTool({
     id: z.string().describe("The key result ID to update"),
     title: z.string().optional().describe("Updated title"),
     description: z.string().optional().describe("Updated description"),
-    targetValue: z.number().optional().describe("Updated target value"),
-    currentValue: z.number().optional().describe("Updated current value"),
-    startValue: z.number().optional().describe("Updated start value"),
-    unit: z.enum(["percent", "count", "currency", "hours", "custom"]).optional(),
+    targetValue: looseNumber().optional().describe("Updated target value"),
+    currentValue: looseNumber().optional().describe("Updated current value"),
+    startValue: looseNumber().optional().describe("Updated start value"),
+    unit: looseEnum(["percent", "count", "currency", "hours", "custom"]).optional(),
     unitLabel: z.string().optional(),
-    status: z.enum(["not-started", "on-track", "at-risk", "off-track", "achieved"]).optional()
+    status: looseEnum(["not-started", "on-track", "at-risk", "off-track", "achieved"]).optional()
       .describe("Manual status override"),
-    confidence: z.number().min(0).max(100).optional().describe("Confidence level 0-100"),
+    confidence: looseNumber(z.number().min(0).max(100)).optional().describe("Confidence level 0-100"),
   }),
   outputSchema: z.object({
     keyResult: z.object({
@@ -307,7 +310,7 @@ export const checkInOkrKeyResultTool = createTool({
     "Record a progress check-in on a Key Result. This updates the current value and automatically calculates the status (on-track, at-risk, off-track, achieved). Use this instead of update when the user reports progress.",
   inputSchema: z.object({
     keyResultId: z.string().describe("The key result ID to check in on"),
-    newValue: z.number().describe("The new current value"),
+    newValue: looseNumber().describe("The new current value"),
     notes: z.string().optional().describe("Check-in notes explaining the progress"),
   }),
   outputSchema: z.object({
@@ -387,12 +390,94 @@ export const getOkrStatsTool = createTool({
   },
 });
 
+export const addObjectiveCommentTool = createTool({
+  id: "add-objective-comment",
+  description:
+    "Post a narrative comment to an Objective's (goal's) activity feed on the user's behalf. A comment is a NOTE with NO health — it never moves the Objective's status badge. Use this for narrative notes (a strategy summary, context, a recap of what was agreed), NOT for status/progress statements (use a check-in or an Objective update for those). The Objective the user is viewing is provided in the page context as goalId — use it directly; do not ask for the Objective name. CRITICAL: ALWAYS draft the comment text and show it to the user, then post ONLY after they explicitly confirm. After posting, tell the user it's done and which Objective it landed on.",
+  inputSchema: z.object({
+    goalId: looseNumber().describe("The numeric ID of the Objective (goal) to comment on — from the page context. Tolerant of a stringified number because the model often emits it as text lifted from the prompt."),
+    content: z.string().min(1).max(10000).describe("The comment text to post (markdown). Draft this and get the user's explicit confirmation before calling the tool."),
+  }),
+  outputSchema: z.object({
+    id: z.string(),
+    goalId: z.number(),
+    authorId: z.string(),
+    content: z.string(),
+    createdAt: z.string(),
+    author: z.object({
+      id: z.string(),
+      name: z.string().nullable(),
+      image: z.string().nullable(),
+    }).nullable().optional(),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`💬 [addObjectiveComment] Posting comment to objective ${inputData.goalId}`);
+
+    const { data } = await authenticatedTrpcCall(
+      "mastra.addGoalComment",
+      { goalId: inputData.goalId, content: inputData.content },
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [addObjectiveComment] Posted comment ${(data as any)?.id} to objective ${inputData.goalId}`);
+    return data;
+  },
+});
+
+export const addObjectiveUpdateTool = createTool({
+  id: "add-objective-update",
+  description:
+    "Post a health-bearing update (check-in) to an Objective's (goal's) activity feed on the user's behalf. An update carries a HEALTH (on-track | at-risk | off-track) and MOVES the Objective's status badge — use it for status/progress statements (\"we're behind on this\", \"back on track\"), NOT for narrative notes (use add-objective-comment for those). The Objective the user is viewing is provided in the page context as goalId — use it directly. Infer the health from the conversation; when there is no clear signal, default to the Objective's CURRENT health (shown as \"Current health\" in your goal page context) so a narrative-ish update never silently flips the status. CRITICAL: ALWAYS draft both the update text AND the health value you will set, show them to the user, and post ONLY after they explicitly confirm. Never set a manual status override — that stays the user's \"Set status\" action. After posting, tell the user it's done, which Objective, and the health you set.",
+  inputSchema: z.object({
+    goalId: looseNumber().describe("The numeric ID of the Objective (goal) to update — from the page context. Tolerant of a stringified number because the model often emits it as text lifted from the prompt."),
+    content: z.string().min(1).max(10000).describe("The update text (markdown). Draft this and get the user's explicit confirmation before calling the tool."),
+    health: looseEnum(["on-track", "at-risk", "off-track"]).describe("The health this check-in sets — moves the status badge. Infer from the conversation; default to the Objective's current health when unclear. Show it in the draft and confirm before posting."),
+  }),
+  outputSchema: z.object({
+    id: z.string(),
+    goalId: z.number(),
+    authorId: z.string(),
+    content: z.string(),
+    health: z.string(),
+    createdAt: z.string(),
+    author: z.object({
+      id: z.string(),
+      name: z.string().nullable(),
+      image: z.string().nullable(),
+    }).nullable().optional(),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`📌 [addObjectiveUpdate] Posting ${inputData.health} update to objective ${inputData.goalId}`);
+
+    const { data } = await authenticatedTrpcCall(
+      "mastra.addGoalUpdate",
+      { goalId: inputData.goalId, content: inputData.content, health: inputData.health },
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [addObjectiveUpdate] Posted update ${(data as any)?.id} to objective ${inputData.goalId}`);
+    return data;
+  },
+});
+
 export const linkProjectToGoalTool = createTool({
   id: "link-project-to-goal",
   description:
     "Link a project to an OKR objective (goal). Use this when the user wants to associate or connect a project with a goal/objective. You need both the numeric goal ID and the project ID string.",
   inputSchema: z.object({
-    goalId: z.number().describe("The numeric ID of the OKR objective/goal"),
+    goalId: looseNumber().describe("The numeric ID of the OKR objective/goal"),
     projectId: z.string().describe("The ID of the project to link to the goal"),
   }),
   outputSchema: z.object({
@@ -420,12 +505,48 @@ export const linkProjectToGoalTool = createTool({
   },
 });
 
+export const linkObjectiveToParentTool = createTool({
+  id: "link-objective-to-parent",
+  description:
+    "Nest an Objective (goal) under a parent Objective to build a goal hierarchy — e.g. make existing goals into sub-goals/phases of a north-star goal. Both are numeric goal IDs. To detach a goal (make it top-level again), pass parentGoalId = null. The backend rejects cycles and nesting deeper than 5 levels.",
+  inputSchema: z.object({
+    goalId: looseNumber().describe("The numeric ID of the Objective (goal) to re-parent"),
+    parentGoalId: looseNumber().nullable().describe("The numeric ID of the parent Objective to nest under, or null to detach (make top-level)"),
+  }),
+  outputSchema: z.object({
+    objective: z.object({
+      id: z.number(),
+      title: z.string(),
+      parentGoalId: z.number().nullable(),
+      parentGoal: z.object({ id: z.number(), title: z.string() }).nullable(),
+    }),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`🔗 [linkObjectiveToParent] Nesting goal ${inputData.goalId} under ${inputData.parentGoalId}`);
+
+    const { data } = await authenticatedTrpcCall(
+      "mastra.setObjectiveParent",
+      { goalId: inputData.goalId, parentGoalId: inputData.parentGoalId },
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [linkObjectiveToParent] Success`);
+    return data;
+  },
+});
+
 export const unlinkProjectFromGoalTool = createTool({
   id: "unlink-project-from-goal",
   description:
     "Remove the link between a project and an OKR objective (goal). Use this when the user wants to dissociate or disconnect a project from a goal/objective.",
   inputSchema: z.object({
-    goalId: z.number().describe("The numeric ID of the OKR objective/goal"),
+    goalId: looseNumber().describe("The numeric ID of the OKR objective/goal"),
     projectId: z.string().describe("The ID of the project to unlink from the goal"),
   }),
   outputSchema: z.object({

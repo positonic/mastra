@@ -2,6 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
 import { asAppContext } from "../types/request-context.js";
+import { looseNumber, looseEnum, looseStringArray } from "./zod-loose.js";
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Meeting Context Tools
@@ -119,7 +120,7 @@ export const searchContextTool = createTool({
     "Search the meeting knowledge base using semantic similarity. Returns relevant transcript sections with meeting metadata, speaker info, and timestamps. Use this to find historical context about topics, decisions, or discussions.",
   inputSchema: z.object({
     query: z.string().describe("Natural language search query"),
-    limit: z.number().min(1).max(50).default(10),
+    limit: looseNumber(z.number().min(1).max(50)).default(10),
     participantEmail: z
       .string()
       .email()
@@ -127,8 +128,7 @@ export const searchContextTool = createTool({
       .describe(
         "Filter results to chunks from meetings this email attended. Note: this is a 'transcript-attended' filter (passes if the participant attended the meeting), not a 'speaker-spoke' filter (chunks where they specifically spoke).",
       ),
-    sourceType: z
-      .enum(["transcription", "document", "resource"])
+    sourceType: looseEnum(["transcription", "document", "resource"])
       .optional()
       .describe("Restrict search to a specific source type"),
   }),
@@ -227,7 +227,7 @@ export const getParticipantHistoryTool = createTool({
     "Get meeting history and profile for a specific participant by email. Returns their workspace membership status, total meeting count, and a list of recent meetings they joined (with titles, dates, host flag, and summary).",
   inputSchema: z.object({
     email: z.string().email().describe("Participant email address"),
-    limit: z.number().min(1).max(50).default(10),
+    limit: looseNumber(z.number().min(1).max(50)).default(10),
   }),
   outputSchema: z.object({
     profile: z.object({
@@ -351,28 +351,21 @@ export const findRelatedMeetingsTool = createTool({
       .string()
       .min(1)
       .describe("Title of the upcoming meeting to match against past titles"),
-    participantEmails: z
-      .array(z.string().email())
+    // Read-only filter: per-element .email() is relaxed to plain string. A bad
+    // email matches nothing (harmless); rejecting the whole query over one typo
+    // is strictly worse. looseStringArray also accepts comma/JSON-string shapes.
+    participantEmails: looseStringArray()
       .default([])
       .describe(
         "Attendee emails for the upcoming meeting; used for participant-overlap scoring",
       ),
-    matchThreshold: z
-      .number()
-      .min(0)
-      .max(1)
+    matchThreshold: looseNumber(z.number().min(0).max(1))
       .default(0.5)
       .describe("Minimum score (0-1) required to include a match"),
-    lookbackDays: z
-      .number()
-      .min(1)
-      .max(365)
+    lookbackDays: looseNumber(z.number().min(1).max(365))
       .default(90)
       .describe("How many days back to search for related meetings"),
-    limit: z
-      .number()
-      .min(1)
-      .max(50)
+    limit: looseNumber(z.number().min(1).max(50))
       .default(10)
       .describe("Maximum number of results per bucket"),
   }),

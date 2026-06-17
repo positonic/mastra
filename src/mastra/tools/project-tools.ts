@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
+import { looseBoolean, looseEnum, looseNumber } from "./zod-loose.js";
 
 // ==================== Project & Action Management Tools ====================
 // Tools for creating projects and updating actions (including moving between projects).
@@ -13,12 +14,10 @@ export const createProjectTool = createTool({
   inputSchema: z.object({
     name: z.string().min(1).describe("The project name"),
     description: z.string().optional().describe("A brief description of the project's purpose"),
-    status: z
-      .enum(["ACTIVE", "ON_HOLD", "COMPLETED", "CANCELLED"])
+    status: looseEnum(["ACTIVE", "ON_HOLD", "COMPLETED", "CANCELLED"])
       .optional()
       .describe("Project status (defaults to ACTIVE)"),
-    priority: z
-      .enum(["HIGH", "MEDIUM", "LOW", "NONE"])
+    priority: looseEnum(["HIGH", "MEDIUM", "LOW", "NONE"])
       .optional()
       .describe("Project priority (defaults to MEDIUM)"),
   }),
@@ -74,16 +73,14 @@ export const updateActionTool = createTool({
     name: z.string().min(1).optional().describe("New name for the action"),
     description: z.string().nullable().optional().describe("New description (set null to clear)"),
     projectId: z.string().nullable().optional().describe("Move the action to this project ID, or null to unassign from any project"),
-    priority: z
-      .enum([
+    priority: looseEnum([
         "Quick", "Scheduled",
         "1st Priority", "2nd Priority", "3rd Priority", "4th Priority", "5th Priority",
         "Errand", "Remember", "Watch", "Someday Maybe",
       ])
       .optional()
       .describe("New priority level"),
-    status: z
-      .enum(["ACTIVE", "COMPLETED", "CANCELLED"])
+    status: looseEnum(["ACTIVE", "COMPLETED", "CANCELLED"])
       .optional()
       .describe("New status"),
     dueDate: z.string().nullable().optional().describe("New due date in ISO format, or null to clear"),
@@ -135,7 +132,7 @@ export const deleteProjectTool = createTool({
     "Permanently delete a project. This action cannot be undone — all project data will be lost. Always confirm with the user before deleting. Ask the user to confirm by name before proceeding.",
   inputSchema: z.object({
     projectId: z.string().describe("The ID of the project to delete"),
-    confirmDeletion: z.boolean().describe("Must be explicitly true to proceed — confirm with the user before setting this"),
+    confirmDeletion: looseBoolean().describe("Must be explicitly true to proceed — confirm with the user before setting this"),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -214,13 +211,15 @@ export const bulkCreateWorkspaceStructureTool = createTool({
     "Create a complete hierarchy of goals, projects, and actions in a single atomic operation. Use this when the user provides a structured list of goals with associated projects and actions — it's far more reliable than creating items one by one. Returns a manifest of everything created and anything that failed, so you can give the user an accurate verified summary.",
   inputSchema: z.object({
     workspaceId: z.string().describe("The ID of the workspace to create items in — use get-user-workspaces to find it"),
+    parentGoalId: looseNumber().optional().describe("Optional parent objective (goal) ID: nest EVERY created goal under this one unless a goal sets its own parentGoalId. When the user is viewing a goal and asks to build a structure 'under this goal' / as phases of it, pass that goal's ID (from the page context) here."),
     goals: z.array(z.object({
       title: z.string().describe("Goal/objective title"),
       description: z.string().optional().describe("Goal description"),
+      parentGoalId: looseNumber().optional().describe("Optional parent objective (goal) ID for THIS goal specifically; overrides the batch-level parentGoalId."),
       projects: z.array(z.object({
         name: z.string().describe("Project name"),
         description: z.string().optional().describe("Project description"),
-        priority: z.enum(["HIGH", "MEDIUM", "LOW", "NONE"]).optional().describe("Project priority (defaults to MEDIUM)"),
+        priority: looseEnum(["HIGH", "MEDIUM", "LOW", "NONE"]).optional().describe("Project priority (defaults to MEDIUM)"),
         actions: z.array(z.object({
           name: z.string().describe("Action/task name"),
         })).optional().describe("Actions to create under this project"),
