@@ -174,3 +174,62 @@ export const looseEnumArray = <U extends string, T extends Readonly<[U, ...U[]]>
     return Array.isArray(arr) ? arr.map((el) => normalizeEnumValue(values, el)) : arr;
   }, inner) as z.ZodEffects<typeof inner, z.infer<typeof inner>, z.infer<typeof inner>>;
 };
+
+/**
+ * Tolerant date-range resolution for tool parameters.
+ *
+ * Models invent argument names and shapes for date ranges: observed 2026-06-11,
+ * Zoe called get-calendar-events-in-range with `{ startDate: "2026-06-10",
+ * endDate: "2026-06-10" }` against a schema requiring `timeMin`/`timeMax` ISO
+ * datetimes — the validation error burned the turn and the model reported a
+ * fake "backend" failure to the user instead of retrying.
+ *
+ * Tools should declare BOTH canonical fields and aliases as optional strings
+ * in their inputSchema (so the JSON schema the model sees stays a plain
+ * object), then call `resolveDateRange` in execute. It:
+ *  - maps `startDate`/`endDate` aliases onto `timeMin`/`timeMax`
+ *  - expands date-only values (`YYYY-MM-DD`) to UTC day boundaries
+ *  - normalizes any parseable datetime (incl. `+02:00` offsets, which the
+ *    backend's `z.string().datetime()` would reject) to canonical UTC ISO
+ *  - throws a model-actionable error when the range is missing or unparseable
+ */
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+export function normalizeDateTime(value: string, boundary: "start" | "end"): string {
+  const s = value.trim();
+  const expanded = DATE_ONLY.test(s)
+    ? `${s}T${boundary === "start" ? "00:00:00.000" : "23:59:59.999"}Z`
+    : s;
+  const parsed = new Date(expanded);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(
+      `Could not parse "${value}" as a date. Use ISO 8601 datetime (e.g. "2026-06-10T09:00:00Z") or a date-only "YYYY-MM-DD".`
+    );
+  }
+  return parsed.toISOString();
+}
+
+export interface LooseDateRangeInput {
+  timeMin?: string;
+  timeMax?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export function resolveDateRange(input: LooseDateRangeInput): { timeMin: string; timeMax: string } {
+  // Treat a blank/whitespace string as absent so an empty `timeMin` doesn't
+  // shadow a valid `startDate` alias (`??` would keep the empty string).
+  const blankToUndef = (v?: string) => (v && v.trim() !== "" ? v : undefined);
+  const rawMin = blankToUndef(input.timeMin) ?? blankToUndef(input.startDate);
+  const rawMax = blankToUndef(input.timeMax) ?? blankToUndef(input.endDate);
+  if (!rawMin || !rawMax) {
+    throw new Error(
+      'Date range required: provide "timeMin" and "timeMax" as ISO 8601 datetimes or date-only "YYYY-MM-DD" values.'
+    );
+  }
+  return {
+    timeMin: normalizeDateTime(rawMin, "start"),
+    timeMax: normalizeDateTime(rawMax, "end"),
+  };
+}
