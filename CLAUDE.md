@@ -182,6 +182,9 @@ Key variables (see documentation in `/docs` for setup details):
 - `WHATSAPP_MAX_SESSIONS` - Max concurrent WhatsApp sessions (default: 10)
 - `AUTH_SECRET` - JWT signing secret (must match client app's secret for gateway auth)
 - `GATEWAY_SECRET` - Shared secret for token refresh (falls back to `WHATSAPP_GATEWAY_SECRET`)
+- `WHATSAPP_CAPTURE_GROUP_JIDS` - Comma-separated group JIDs the gateway captures/summarizes (the *watching* allowlist)
+- `ENABLE_CHANNEL_SUMMARIZER` - Enable the periodic channel summarizer job (default: false). When `true`, summarizes each watched group's traffic since its last summary and POSTs one summary per window to exponential's `mastra.recordChannelSummary` (ADR-0023). Posts via the connected user's agent JWT to `TODO_APP_BASE_URL`; raw messages never leave mastra.
+- `WHATSAPP_SUMMARY_INTERVAL_HOURS` - Channel summarizer cadence in hours (default: 24)
 
 ### Server Configuration
 

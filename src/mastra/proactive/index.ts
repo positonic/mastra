@@ -8,6 +8,11 @@ export { checkUser } from './checker.js';
 export { initNotifier, notifyUser, formatDailyDigest } from './notifier.js';
 export { startScheduler, stopScheduler, triggerCheck } from './scheduler.js';
 export { formatBriefingForWhatsApp, deliverWhatsAppBriefings } from './whatsapp-briefing.js';
+export {
+  startChannelSummarizer,
+  stopChannelSummarizer,
+  runChannelSummarizer,
+} from './channel-summarizer.js';
 export type {
   ProactiveCheckResult,
   UserContext,

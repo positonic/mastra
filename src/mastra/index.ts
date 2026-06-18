@@ -13,7 +13,7 @@ import { startVoiceGateway, cleanupVoiceGateway } from './bots/voice-gateway.js'
 import { initSentry, captureException, flushSentry } from './utils/sentry.js';
 import { assertAgentsValid } from './utils/validate-agents.js';
 import { computeBrainVersions, agentIdFromPath, BRAIN_VERSION_HEADER } from './utils/brain-version.js';
-import { startScheduler, stopScheduler, triggerCheck, deliverWhatsAppBriefings } from './proactive/index.js';
+import { startScheduler, stopScheduler, triggerCheck, deliverWhatsAppBriefings, startChannelSummarizer, stopChannelSummarizer } from './proactive/index.js';
 import { startSpanRetention, stopSpanRetention } from './utils/span-retention.js';
 import jwt from 'jsonwebtoken';
 import { createHmac, timingSafeEqual } from 'crypto';
@@ -261,6 +261,12 @@ if (enableProactive) {
   logger.info('📵 [MAIN] Proactive scheduler disabled (set ENABLE_PROACTIVE_SCHEDULER=true to enable)');
 }
 
+// Periodic channel summarizer (ADR-0023): summarizes watched WhatsApp groups
+// and pushes one summary per window to exponential. Opt-in via
+// ENABLE_CHANNEL_SUMMARIZER=true so it never fires against prod data on a local
+// `mastra dev` boot.
+startChannelSummarizer();
+
 // Daily prune of AI tracing spans (exponential-gnui). Railway-only: local
 // dev points at a shared DB it shouldn't be deleting from.
 if (isRailway) {
@@ -297,6 +303,7 @@ const shutdown = async (signal: string, error?: Error) => {
     
     // Stop proactive scheduler
     stopScheduler();
+    stopChannelSummarizer();
 
     // Flush Sentry events before exit
     await flushSentry();
