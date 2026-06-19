@@ -2002,6 +2002,9 @@ export const createCrmContactTool = createTool({
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
+    // Forward the active chat workspace so the contact lands in it, not an
+    // arbitrary one the server falls back to (see exponential thick.ocean).
+    const workspaceId = requestContext?.get("workspaceId");
 
     if (!authToken) {
       console.error("❌ [createCrmContact] No authentication token available");
@@ -2016,7 +2019,7 @@ export const createCrmContactTool = createTool({
         error?: string;
       }>(
         "mastra.createCrmContact",
-        { email, phone, firstName, lastName },
+        { email, phone, firstName, lastName, ...(workspaceId ? { workspaceId } : {}) },
         { authToken, sessionId, userId }
       );
 
@@ -2197,6 +2200,9 @@ export const createFullCrmContactTool = createTool({
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
+    // Forward the active chat workspace so the contact lands in it, not an
+    // arbitrary one the server falls back to (see exponential thick.ocean).
+    const workspaceId = requestContext?.get("workspaceId");
 
     console.log(`➕ [createFullCrmContact] Creating: ${inputData.firstName} ${inputData.lastName}`);
 
@@ -2211,7 +2217,7 @@ export const createFullCrmContactTool = createTool({
       email: string | null;
     }>(
       "mastra.createFullCrmContact",
-      inputData,
+      { ...inputData, ...(workspaceId ? { workspaceId } : {}) },
       { authToken, sessionId, userId }
     );
 
