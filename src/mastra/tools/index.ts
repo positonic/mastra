@@ -2493,6 +2493,8 @@ export { getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, d
 
 // Project & Action management tools
 export { createProjectTool, updateActionTool, deleteProjectTool, getUserWorkspacesTool, bulkCreateWorkspaceStructureTool } from "./project-tools.js";
+// Knowledge Page authoring tools (ADR-0033)
+export { knowledgeTools, createPageTool, updatePageTool } from "./knowledge-tools.js";
 
 // Product pipeline ticket tools
 export { listProductsTool, createTicketTool, bulkCreateTicketsTool } from "./ticket-tools.js";

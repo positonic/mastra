@@ -57,6 +57,9 @@ import {
   linkObjectiveToParentTool,
   addObjectiveCommentTool,
   addObjectiveUpdateTool,
+  // Knowledge Page authoring tools (ADR-0033)
+  createPageTool,
+  updatePageTool,
   // Project & Action management tools
   createProjectTool,
   updateActionTool,
@@ -506,6 +509,9 @@ const zoeTools = {
     deleteProjectTool,
     getUserWorkspacesTool,
     bulkCreateWorkspaceStructureTool,
+    // Knowledge Page authoring tools (ADR-0033)
+    createPageTool,
+    updatePageTool,
     // Product pipeline ticket tools
     listProductsTool,
     createTicketTool,
