@@ -31,6 +31,8 @@ export const createProjectTool = createTool({
       status: z.string(),
       priority: z.string(),
       slug: z.string(),
+      startDate: z.string().nullable(),
+      endDate: z.string().nullable(),
     }),
   }),
   async execute(inputData, { requestContext }) {
