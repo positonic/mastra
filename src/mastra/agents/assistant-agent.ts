@@ -54,6 +54,7 @@ import {
   getOkrStatsTool,
   // Project & Action management tools
   createProjectTool,
+  updateProjectTool,
   updateActionTool,
   deleteProjectTool,
   getUserWorkspacesTool,
@@ -324,6 +325,7 @@ export const assistantTools = {
     createProjectActionTool,
     quickCreateActionTool,
     createProjectTool,
+    updateProjectTool,
     updateActionTool,
     deleteProjectTool,
     getUserWorkspacesTool,

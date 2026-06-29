@@ -62,6 +62,7 @@ import {
   updatePageTool,
   // Project & Action management tools
   createProjectTool,
+  updateProjectTool,
   updateActionTool,
   deleteProjectTool,
   getUserWorkspacesTool,
@@ -505,6 +506,7 @@ const zoeTools = {
     createProjectActionTool,
     quickCreateActionTool,
     createProjectTool,
+    updateProjectTool,
     updateActionTool,
     deleteProjectTool,
     getUserWorkspacesTool,

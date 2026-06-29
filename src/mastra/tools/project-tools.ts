@@ -10,7 +10,7 @@ import { looseBoolean, looseEnum, looseNumber } from "./zod-loose.js";
 export const createProjectTool = createTool({
   id: "create-project",
   description:
-    "Create a new project in the user's workspace. Use this when the user asks to create, set up, or start a new project. Always confirm the project name with the user before creating.",
+    "Create a new project in the user's workspace. Use this when the user asks to create, set up, or start a new project. Optionally set a start and end date — useful for time-boxed projects like trips or events (e.g. \"Sailing in Croatia Sep 19-26\"). Always confirm the project name with the user before creating.",
   inputSchema: z.object({
     name: z.string().min(1).describe("The project name"),
     description: z.string().optional().describe("A brief description of the project's purpose"),
@@ -20,6 +20,8 @@ export const createProjectTool = createTool({
     priority: looseEnum(["HIGH", "MEDIUM", "LOW", "NONE"])
       .optional()
       .describe("Project priority (defaults to MEDIUM)"),
+    startDate: z.string().optional().describe("Project start date as an ISO datetime string. For a date-only value use noon UTC (e.g. \"2026-09-19T12:00:00Z\") to avoid timezone off-by-one shifts."),
+    endDate: z.string().optional().describe("Project end date as an ISO datetime string. For a date-only value use noon UTC (e.g. \"2026-09-26T12:00:00Z\") to avoid timezone off-by-one shifts."),
   }),
   outputSchema: z.object({
     project: z.object({
@@ -29,6 +31,8 @@ export const createProjectTool = createTool({
       status: z.string(),
       priority: z.string(),
       slug: z.string(),
+      startDate: z.string().nullable(),
+      endDate: z.string().nullable(),
     }),
   }),
   async execute(inputData, { requestContext }) {
@@ -51,6 +55,8 @@ export const createProjectTool = createTool({
           status: inputData.status || "ACTIVE",
           priority: inputData.priority || "MEDIUM",
           workspaceId: workspaceId || undefined,
+          startDate: inputData.startDate || undefined,
+          endDate: inputData.endDate || undefined,
         },
         { authToken, sessionId, userId }
       );
@@ -59,6 +65,61 @@ export const createProjectTool = createTool({
       return data;
     } catch (error) {
       console.error(`❌ [createProject] FAILED:`, error);
+      throw error;
+    }
+  },
+});
+
+export const updateProjectTool = createTool({
+  id: "update-project",
+  description:
+    "Update an existing project's fields. Use this to rename a project, change its description, status, or priority, or set/clear its start and end dates (e.g. assigning a trip's date range to its project). Only the fields you provide are changed. Pass a date as null to clear it.",
+  inputSchema: z.object({
+    projectId: z.string().describe("The ID of the project to update"),
+    name: z.string().min(1).optional().describe("New name for the project"),
+    description: z.string().nullable().optional().describe("New description (set null to clear)"),
+    status: looseEnum(["ACTIVE", "ON_HOLD", "COMPLETED", "CANCELLED"])
+      .optional()
+      .describe("New project status"),
+    priority: looseEnum(["HIGH", "MEDIUM", "LOW", "NONE"])
+      .optional()
+      .describe("New project priority"),
+    startDate: z.string().nullable().optional().describe("Project start date as an ISO datetime string, or null to clear. For a date-only value use noon UTC (e.g. \"2026-09-19T12:00:00Z\") to avoid timezone off-by-one shifts."),
+    endDate: z.string().nullable().optional().describe("Project end date as an ISO datetime string, or null to clear. For a date-only value use noon UTC (e.g. \"2026-09-26T12:00:00Z\") to avoid timezone off-by-one shifts."),
+  }),
+  outputSchema: z.object({
+    project: z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string().nullable(),
+      status: z.string(),
+      priority: z.string(),
+      slug: z.string(),
+      startDate: z.string().nullable(),
+      endDate: z.string().nullable(),
+    }),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`✏️ [updateProject] INPUT: projectId=${inputData.projectId}, changes=${JSON.stringify(inputData)}`);
+    console.log(`✏️ [updateProject] CONTEXT: authToken=${authToken ? "present" : "MISSING"}, userId=${userId || "none"}`);
+
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "mastra.updateProject",
+        inputData,
+        { authToken, sessionId, userId }
+      );
+
+      console.log(`✅ [updateProject] SUCCESS:`, JSON.stringify(data));
+      return data;
+    } catch (error) {
+      console.error(`❌ [updateProject] FAILED:`, error);
       throw error;
     }
   },

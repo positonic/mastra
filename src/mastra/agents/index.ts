@@ -21,7 +21,7 @@ export { actionItemsAgent } from './action-items-agent.js';
 export { meetingContextAgent } from './meeting-context-agent.js';
 // Export Document Tracker agent (workspace document knowledge base — ingest/search/list/delete)
 export { documentTrackerAgent } from './document-tracker-agent.js';
-import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, listSlackChannelsTool, getSlackChannelHistoryTool, getSlackThreadRepliesTool, searchSlackMessagesTool, getSlackMentionsTool, getSlackUnreadsTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateActionTool, deleteProjectTool, getUserWorkspacesTool, bulkCreateWorkspaceStructureTool, linkProjectToGoalTool, unlinkProjectFromGoalTool, listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool, getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from '../tools';
+import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, listSlackChannelsTool, getSlackChannelHistoryTool, getSlackThreadRepliesTool, searchSlackMessagesTool, getSlackMentionsTool, getSlackUnreadsTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateProjectTool, updateActionTool, deleteProjectTool, getUserWorkspacesTool, bulkCreateWorkspaceStructureTool, linkProjectToGoalTool, unlinkProjectFromGoalTool, listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool, getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
 export const weatherAgent = new Agent({
@@ -218,7 +218,8 @@ export const projectManagerAgent = new Agent({
     ### Project Management
     - Track project status, priority, and progress
     - **List all projects**: Use 'getAllProjectsTool' when asked about "What projects am I working on?" or similar project listing questions
-    - **Create new projects**: Use 'createProjectTool' when asked to create, set up, or start a new project. **IMPORTANT: Before creating any project, ALWAYS call 'getAllProjectsTool' first to check if a project with the same or very similar name already exists.** If a match is found, inform the user and ask whether they want to use the existing project or create a new one. Never create duplicate projects.
+    - **Create new projects**: Use 'createProjectTool' when asked to create, set up, or start a new project. You can set start/end dates at creation time for time-boxed projects (e.g. a trip with a date range). **IMPORTANT: Before creating any project, ALWAYS call 'getAllProjectsTool' first to check if a project with the same or very similar name already exists.** If a match is found, inform the user and ask whether they want to use the existing project or create a new one. Never create duplicate projects.
+    - **Update existing projects**: Use 'updateProjectTool' to rename a project, change its description/status/priority, or set/clear its start and end dates (e.g. assigning a trip's date range to its project). Only the fields you pass are changed.
     - Manage project timelines and deadlines
     - Coordinate actions across different projects
     - Monitor goal alignment and outcome achievement
@@ -628,6 +629,7 @@ export const projectManagerAgent = new Agent({
     getProjectActionsTool,
     quickCreateActionTool,
     createProjectTool,
+    updateProjectTool,
     updateActionTool,
     deleteProjectTool,
     getUserWorkspacesTool,
