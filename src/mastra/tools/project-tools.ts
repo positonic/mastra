@@ -187,6 +187,78 @@ export const updateActionTool = createTool({
   },
 });
 
+// Shape of a single action row returned by action.getTodaysActions. Dates
+// arrive as ISO strings over the wire (JSON), hence string|null.
+const todaysActionRowSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  status: z.string(),
+  scheduledStart: z.string().nullable(),
+  dueDate: z.string().nullable(),
+  projectName: z.string().nullable(),
+  workspaceName: z.string().nullable(),
+});
+
+const todaysActionGroupSchema = z.object({
+  count: z.number(),
+  actions: z.array(todaysActionRowSchema),
+});
+
+export const getTodaysActionsTool = createTool({
+  id: "get-todays-actions",
+  description:
+    "List the user's Today's actions — the tasks scheduled or due today, plus overdue ones and loose inbox items, across ALL of the user's workspaces (the exact set the /today page shows). " +
+    "Call this WHENEVER the user refers to what they have on today, e.g. \"today's actions\", \"what's on my plate\", \"what should I do today\", \"my tasks for today\", OR uses referential phrases — \"these\", \"those\", \"them\", \"the <X> ones\", \"mark them done\" — to mean tasks on their plate. " +
+    "It returns three groups (overdue / today / inbox); each action carries its id, name, status, scheduledStart, dueDate, projectName and workspaceName. The ids are authoritative and span workspaces: to complete or change an action, pass its id to update-action (e.g. set status to \"COMPLETED\"). " +
+    "NEVER ask the user which project or workspace a task is in, and NEVER tell them to check their own list — call this tool to find the matching actions yourself, then act by id. " +
+    "Optionally pass workspaceId to scope to a single workspace; omit it to see everything (the default, matching /today).",
+  inputSchema: z.object({
+    workspaceId: z
+      .string()
+      .optional()
+      .describe(
+        "Optional workspace id to scope the results to one workspace. Omit to list Today's actions across ALL of the user's workspaces (the default — /today is not workspace-scoped).",
+      ),
+  }),
+  outputSchema: z.object({
+    overdue: todaysActionGroupSchema,
+    today: todaysActionGroupSchema,
+    inbox: todaysActionGroupSchema,
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(
+      `📅 [getTodaysActions] Fetching Today's actions (workspaceId=${inputData.workspaceId ?? "all"})`,
+    );
+
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "action.getTodaysActions",
+        inputData,
+        { authToken, sessionId, userId },
+      );
+
+      const d = data as {
+        overdue?: { count?: number };
+        today?: { count?: number };
+        inbox?: { count?: number };
+      };
+      console.log(
+        `✅ [getTodaysActions] overdue=${d?.overdue?.count ?? 0} today=${d?.today?.count ?? 0} inbox=${d?.inbox?.count ?? 0}`,
+      );
+      return data;
+    } catch (error) {
+      console.error(`❌ [getTodaysActions] FAILED:`, error);
+      throw error;
+    }
+  },
+});
+
 export const deleteProjectTool = createTool({
   id: "delete-project",
   description:
