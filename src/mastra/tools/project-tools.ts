@@ -208,7 +208,8 @@ export const getTodaysActionsTool = createTool({
   id: "get-todays-actions",
   description:
     "List the user's Today's actions — the tasks scheduled or due today, plus overdue ones and loose inbox items, across ALL of the user's workspaces (the exact set the /today page shows). " +
-    "Call this WHENEVER the user refers to what they have on today, e.g. \"today's actions\", \"what's on my plate\", \"what should I do today\", \"my tasks for today\", OR uses referential phrases — \"these\", \"those\", \"them\", \"the <X> ones\", \"mark them done\" — to mean tasks on their plate. " +
+    "This is your FIRST tool — before get-all-projects or get-project-actions — whenever the user asks you to ACT ON or COMPLETE tasks they refer to without giving ids: \"mark the Malte ones done\", \"finish those\", \"these are done\", \"close out the X tasks\", \"mark them done\", or just \"today's actions\" / \"what's on my plate\" / \"what should I do today\". A name fragment like \"Malte\" is text to match against the action names this returns — NOT necessarily a project. " +
+    "Prefer it over a project-by-project search: a referenced task may be loose (no project) or live in a different workspace, so get-all-projects / get-project-actions can miss it, whereas get-todays-actions spans every workspace and returns the ids you need. " +
     "It returns three groups (overdue / today / inbox); each action carries its id, name, status, scheduledStart, dueDate, projectName and workspaceName. The ids are authoritative and span workspaces: to complete or change an action, pass its id to update-action (e.g. set status to \"COMPLETED\"). " +
     "NEVER ask the user which project or workspace a task is in, and NEVER tell them to check their own list — call this tool to find the matching actions yourself, then act by id. " +
     "Optionally pass workspaceId to scope to a single workspace; omit it to see everything (the default, matching /today).",
