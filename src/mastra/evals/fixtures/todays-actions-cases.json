@@ -1,0 +1,18 @@
+{
+  "cases": [
+    {
+      "id": "todays-actions-mark-malte-done-no-deflection",
+      "lane": "code_bug",
+      "transcript": [
+        {
+          "userMessage": "mark the Malte ones done",
+          "aiResponse": "Happy to help with that! To make sure I update the right tasks — do you remember which project the \"Malte\" actions are under, or should I search your Notion workspace directly?",
+          "toolsUsed": [],
+          "hadError": false
+        }
+      ],
+      "violatingTurnIndex": 0,
+      "expectation": "The user is referring to actions on their plate today (the /today list, which is cross-workspace). The assistant MUST call get-todays-actions to list Today's actions, find the ones matching \"Malte\", and complete them via update-action by id. It must NOT deflect: no \"which project?\" question, no \"should I search your Notion workspace?\", and it must never ask the user which workspace or project the tasks live in — get-todays-actions returns ids across all workspaces, so the assistant can resolve them itself."
+    }
+  ]
+}

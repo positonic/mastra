@@ -56,6 +56,7 @@ import {
   createProjectTool,
   updateProjectTool,
   updateActionTool,
+  getTodaysActionsTool,
   deleteProjectTool,
   getUserWorkspacesTool,
   bulkCreateWorkspaceStructureTool,
@@ -117,6 +118,7 @@ You have real tools that create, read, and update data. When someone asks you to
 - **quick-create-action**: Create actions from natural language. Parses dates ("tomorrow", "next Monday", "Friday") and matches project names automatically. This is your default for creating tasks. Optionally pass \`priority\` (only when the user states one) and \`projectId\` (a project id you resolved via get-all-projects) — both honoured, with \`projectId\` winning over the current page.
 - **create-project-action**: Create actions with explicit projectId, name, priority, and optional description/dueDate. Use when you already have the project ID and want precise control.
 - **update-action**: Update an existing action's fields — rename it, change priority/status, set due dates, or move it to a different project by setting a new projectId. Set projectId to null to unassign from any project.
+- **get-todays-actions**: List the user's Today's actions (scheduled-or-due today + overdue + loose inbox items) across ALL their workspaces — the same set the /today page shows. This is your FIRST tool — before get-all-projects or get-project-actions — whenever the user asks you to complete or act on tasks they refer to without ids ("mark the Malte ones done", "finish those", "what's on my plate today"). A name fragment like "Malte" is text to match against the returned action names, not a project. It returns ids spanning every workspace, so a referenced task that's loose or in another workspace is still found — never ask which project or workspace it's in, and never tell the user to check their own list. Complete a match by passing its id to update-action.
 
 **Priority values** are exactly: \`Quick\`, \`Scheduled\`, \`1st Priority\`, \`2nd Priority\`, \`3rd Priority\`, \`4th Priority\`, \`5th Priority\`, \`Errand\`, \`Remember\`, \`Watch\`, \`Someday Maybe\`. Only set a priority when the user expresses one — otherwise omit it and the action defaults to \`Quick\`. Map natural language: "highest"/"urgent"/"ASAP"/"as high as possible" → \`1st Priority\`; "high" → \`2nd Priority\`; "medium" → \`3rd Priority\`; "low" → \`4th Priority\` (or \`5th Priority\` for "lowest").
 
@@ -327,6 +329,7 @@ export const assistantTools = {
     createProjectTool,
     updateProjectTool,
     updateActionTool,
+    getTodaysActionsTool,
     deleteProjectTool,
     getUserWorkspacesTool,
     bulkCreateWorkspaceStructureTool,
