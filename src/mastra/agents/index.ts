@@ -15,6 +15,8 @@ export { assistantAgent, assistantAgentHaiku } from './assistant-agent.js';
 export { platformAgent } from './platform-agent.js';
 // Export One2b agent (CRM onboarding via voice and text)
 export { one2bAgent } from './one2b-agent.js';
+// Export Enrichment agent (headless CRM contact enrichment via web search)
+export { enrichmentAgent } from './enrichment-agent.js';
 // Export Action Items agent (extract/refine/track action items from meeting transcripts)
 export { actionItemsAgent } from './action-items-agent.js';
 // Export Meeting Context agent (semantic search + pre-meeting briefs over meeting knowledge base)
