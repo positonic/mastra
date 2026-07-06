@@ -2503,7 +2503,7 @@ export { createProjectTool, updateProjectTool, updateActionTool, getTodaysAction
 export { knowledgeTools, createPageTool, updatePageTool } from "./knowledge-tools.js";
 
 // Product pipeline ticket tools
-export { listProductsTool, createTicketTool, bulkCreateTicketsTool } from "./ticket-tools.js";
+export { listProductsTool, createTicketTool, bulkCreateTicketsTool, importNotionCycleTicketsTool } from "./ticket-tools.js";
 
 // WhatsApp search tools
 export { listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool } from "./whatsapp-tools.js";

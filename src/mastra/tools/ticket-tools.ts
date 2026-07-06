@@ -1,7 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
-import { looseEnum, looseNumber } from "./zod-loose.js";
+import { looseBoolean, looseEnum, looseNumber, looseStringArray } from "./zod-loose.js";
 
 // ==================== Product Pipeline Ticket Tools ====================
 // Tools for listing products and filing tickets into a product's pipeline
@@ -186,11 +186,17 @@ export const bulkCreateTicketsTool = createTool({
             .string()
             .optional()
             .describe("Owner name or email as written (e.g. 'James') — resolved to a workspace member server-side"),
+          labels: looseStringArray(z.array(z.string().min(1).max(50)).max(10))
+            .optional()
+            .describe("Labels for THIS ticket only (merged with the top-level labels)"),
         }),
       )
       .min(1)
       .max(100)
       .describe("The tickets to create"),
+    labels: looseStringArray(z.array(z.string().min(1).max(50)).max(10))
+      .optional()
+      .describe("Labels applied to EVERY created ticket (e.g. 'FROM-NOTION' for imports) — resolved to workspace tags by name, created when missing"),
   }),
   outputSchema: z.object({
     created: z.array(
@@ -229,6 +235,121 @@ export const bulkCreateTicketsTool = createTool({
       return data;
     } catch (error) {
       console.error(`❌ [bulkCreateTickets] FAILED:`, error);
+      throw error;
+    }
+  },
+});
+
+export const importNotionCycleTicketsTool = createTool({
+  id: "import-notion-cycle-tickets",
+  description:
+    "Import ONE Notion backlog cycle into a product's tickets in a SINGLE call — the whole flow runs server-side: it resolves the Notion cycle page, filters the backlog database on its cycle relation, maps fields (status, '1 - High' priorities, 'L (5pts)' efforts, types), labels every ticket (default FROM-NOTION), assigns the matching Exponential cycle, and SKIPS rows already imported (safe to re-run). ALWAYS prefer this over hand-querying Notion and bulk-creating when the user asks to import/sync a Notion cycle or backlog slice. You need: the productId (via list-products) and the Notion backlog database id (via notion-search for e.g. 'Backlog'). Pass the cycle by name (e.g. 'Cycle 11') — or cyclePageId if the name is ambiguous. Run with dryRun:true FIRST, show the user the preview, and only re-run without dryRun after they confirm (draft-and-confirm). Report skipped/failed/warnings honestly from the returned manifest — never claim more than it reports.",
+  inputSchema: z.object({
+    productId: z
+      .string()
+      .describe("The ID of the product to import into — use list-products to resolve it"),
+    notionDatabaseId: z
+      .string()
+      .describe("The Notion backlog database id — use notion-search (filter: database) to find it"),
+    cycleName: z
+      .string()
+      .optional()
+      .describe("Cycle title as written in Notion, e.g. 'Cycle 11' — resolved via Notion search server-side"),
+    cyclePageId: z
+      .string()
+      .optional()
+      .describe("Notion page id of the cycle (from the cycles database) — use instead of cycleName when ambiguous"),
+    relationProperty: z
+      .string()
+      .optional()
+      .describe("Name of the backlog database's relation property pointing at cycles (default 'Cycles')"),
+    labels: looseStringArray(z.array(z.string().min(1).max(50)).max(10))
+      .optional()
+      .describe("Labels applied to every imported ticket (default ['FROM-NOTION'])"),
+    targetCycleName: z
+      .string()
+      .optional()
+      .describe("Exponential cycle to assign tickets to, when its name differs from the Notion cycle title"),
+    properties: z
+      .object({
+        status: z.string().optional(),
+        priority: z.string().optional(),
+        type: z.string().optional(),
+        effort: z.string().optional(),
+        label: z.string().optional(),
+      })
+      .optional()
+      .describe("Notion property-name overrides when the backlog schema doesn't use Status/Priority/Type/Effort/Label"),
+    dryRun: looseBoolean()
+      .optional()
+      .describe("true = map and preview WITHOUT creating anything. Always do a dry run first and confirm with the user."),
+  }),
+  outputSchema: z.object({
+    connected: z.boolean(),
+    error: z.string().optional(),
+    candidates: z
+      .array(z.object({ id: z.string(), title: z.string(), url: z.string() }))
+      .optional(),
+    dryRun: z.boolean().optional(),
+    cycle: z
+      .object({
+        notionPageId: z.string(),
+        notionTitle: z.string(),
+        exponentialCycleId: z.string().nullable(),
+      })
+      .optional(),
+    totalFound: z.number().optional(),
+    created: z
+      .array(
+        z.object({
+          id: z.string(),
+          number: z.number(),
+          shortId: z.string().nullable(),
+          title: z.string(),
+          status: z.string(),
+          warnings: z.array(z.string()),
+        }),
+      )
+      .optional(),
+    skipped: z.array(z.object({ title: z.string(), reason: z.string() })).optional(),
+    failed: z.array(z.object({ title: z.string(), error: z.string() })).optional(),
+    preview: z
+      .array(
+        z.object({
+          title: z.string(),
+          status: z.string(),
+          type: z.string(),
+          priority: z.number().optional(),
+          points: z.number().optional(),
+          notionUrl: z.string(),
+          labels: z.array(z.string()),
+          warnings: z.array(z.string()),
+        }),
+      )
+      .optional(),
+    warnings: z.array(z.string()).optional(),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`📥 [importNotionCycleTickets] INPUT: productId=${inputData.productId}, cycle="${inputData.cycleName ?? inputData.cyclePageId}", dryRun=${inputData.dryRun ?? false}`);
+
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "mastra.importNotionCycleTickets",
+        inputData,
+        { authToken, sessionId, userId },
+      );
+
+      const result = data as { created?: unknown[]; skipped?: unknown[]; failed?: unknown[]; error?: string };
+      console.log(`✅ [importNotionCycleTickets] Done: created=${result.created?.length ?? 0}, skipped=${result.skipped?.length ?? 0}, failed=${result.failed?.length ?? 0}${result.error ? `, error=${result.error}` : ""}`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [importNotionCycleTickets] FAILED:`, error);
       throw error;
     }
   },

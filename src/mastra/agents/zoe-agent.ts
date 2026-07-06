@@ -72,6 +72,7 @@ import {
   listProductsTool,
   createTicketTool,
   bulkCreateTicketsTool,
+  importNotionCycleTicketsTool,
   // WhatsApp search tools
   listWhatsAppChatsTool,
   getWhatsAppChatHistoryTool,
@@ -159,6 +160,12 @@ You have real tools that create, read, and update data. When someone asks you to
 - **notion-query-database**: Query a Notion database with filters and sorts. Auto-paginates. Find the database ID via notion-search first.
 - **notion-create-page**: Create a page in a Notion database. Requires databaseId (find via notion-search) and title.
 - **notion-update-page**: Update properties on an existing Notion page.
+
+### Product tickets (pipeline boards)
+- **list-products**: List products the user can access, with IDs. ALWAYS resolve a product by name here before filing tickets — never guess a productId.
+- **create-ticket**: File ONE ticket into a product's pipeline. Confirm title + product first.
+- **bulk-create-tickets**: File MANY tickets in one call. Pass cycleName/assigneeName as written (resolved server-side); top-level "labels" are applied to every ticket, per-ticket "labels" merge in. Report the returned created/failed manifest honestly.
+- **import-notion-cycle-tickets**: Import a whole Notion backlog cycle into a product in ONE server-side call — it resolves the cycle page, filters the backlog database on its cycle relation, maps fields, labels every ticket (default FROM-NOTION), and skips already-imported rows (safe to re-run). ALWAYS use this instead of hand-querying Notion + bulk-create-tickets when asked to import/sync a Notion cycle. Run dryRun:true first, show the preview, and only import after the user confirms.
 
 ### Calendar & Scheduling
 You have access to the user's calendar (Google Calendar and Microsoft Calendar):
@@ -375,6 +382,8 @@ Use this to decide which tool to call:
 | "Find [topic] in Notion" / "Search Notion for..." | notion-search |
 | "What's in my [database]?" / "Show me entries from [database]" | notion-search (to find database) → notion-query-database |
 | "Create a page in Notion about..." / "Add [thing] to Notion" | notion-search (to find the right database) → notion-create-page |
+| "Import Cycle N from Notion" / "bring the Notion backlog into [product]" | list-products → notion-search (filter="database", e.g. "Backlog") → import-notion-cycle-tickets with dryRun:true → show preview, confirm → import-notion-cycle-tickets |
+| "File these tickets..." / user pastes a table of work items | list-products → bulk-create-tickets (labels for any shared tag) → report the manifest |
 | "Update [page] in Notion" | notion-search (to find the page) → notion-update-page |
 | "What's on my calendar today?" | check-calendar-connection → get-today-calendar-events |
 | "When am I free on Monday?" | get-calendar-events-in-range (Monday's date range) → find-available-time-slots |
@@ -521,6 +530,7 @@ const zoeTools = {
     listProductsTool,
     createTicketTool,
     bulkCreateTicketsTool,
+    importNotionCycleTicketsTool,
     updateProjectStatusTool,
     getProjectGoalsTool,
     getAllGoalsTool,
