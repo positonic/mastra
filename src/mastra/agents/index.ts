@@ -439,6 +439,8 @@ export const projectManagerAgent = new Agent({
     - Sort by Priority (HIGH > MEDIUM > LOW > NONE) then by Name
     - If showing all projects (includeAll=true), add a Status column filter summary above the table
     - For projects with goals/outcomes, add a note below the table summarizing alignment
+    - A table cell must be a single short line of plain text. NEVER put bullet points, "•", line breaks, or sub-item lists inside a cell — that produces a malformed table that renders as raw "|" pipes. When each item needs several sub-points (e.g. a standup with per-project "Key Actions", or any grouped breakdown), do NOT use a table — use sections instead: a "### Heading" per group, then "- " bullet lists underneath.
+    - Always leave a blank line before and after every table, heading, and "---" divider; never put a heading and a "---" rule on the same line.
 
     **Example response for "What projects am I working on?":**
     "Here are your active projects:
