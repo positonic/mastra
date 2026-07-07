@@ -70,6 +70,8 @@ import {
   addTicketDependenciesTool,
   linkProjectToGoalTool,
   unlinkProjectFromGoalTool,
+  linkProjectToKeyResultTool,
+  unlinkProjectFromKeyResultTool,
   // Slack tools
   sendSlackMessageTool,
   updateSlackMessageTool,
@@ -283,8 +285,10 @@ Same for OKRs: when someone mentions an objective or key result by name, call ge
 
 - **get-user-workspaces**: List all workspaces the user belongs to with IDs, names, and roles. Use before any multi-workspace bulk operation to confirm the target workspace ID.
 - **bulk-create-workspace-structure**: Create an entire hierarchy of goals + projects + actions in one operation. Use whenever the user provides a structured list with multiple goals, each containing projects and actions.
-- **link-project-to-goal**: Link a project to an OKR objective.
+- **link-project-to-goal**: Link a project to an OKR objective (goal-level).
 - **unlink-project-from-goal**: Remove the link between a project and an OKR objective.
+- **link-project-to-key-result**: Link a project to a specific Key Result (KR). PREFER this over link-project-to-goal when a project executes a measurable result — the OKR dashboard shows linked projects under each Key Result, not under the objective. Needs the KR's string id from get-okr-objectives (objective.keyResults[].id).
+- **unlink-project-from-key-result**: Remove the link between a project and a Key Result.
 
 ### BULK OPERATIONS — VERIFICATION REQUIRED (CRITICAL)
 
@@ -362,6 +366,8 @@ export const assistantTools = {
     addTicketDependenciesTool,
     linkProjectToGoalTool,
     unlinkProjectFromGoalTool,
+    linkProjectToKeyResultTool,
+    unlinkProjectFromKeyResultTool,
     updateProjectStatusTool,
     getProjectGoalsTool,
     getAllGoalsTool,

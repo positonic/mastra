@@ -23,7 +23,7 @@ export { actionItemsAgent } from './action-items-agent.js';
 export { meetingContextAgent } from './meeting-context-agent.js';
 // Export Document Tracker agent (workspace document knowledge base — ingest/search/list/delete)
 export { documentTrackerAgent } from './document-tracker-agent.js';
-import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, listSlackChannelsTool, getSlackChannelHistoryTool, getSlackThreadRepliesTool, searchSlackMessagesTool, getSlackMentionsTool, getSlackUnreadsTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateProjectTool, updateActionTool, deleteProjectTool, getUserWorkspacesTool, bulkCreateWorkspaceStructureTool, linkProjectToGoalTool, unlinkProjectFromGoalTool, listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool, getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from '../tools';
+import { weatherTool, binancePriceTool, pierreTradingQueryTool, binanceCandlestickTool, PRIORITY_VALUES, getProjectContextTool, getProjectActionsTool, quickCreateActionTool, updateProjectStatusTool, getProjectGoalsTool, getAllGoalsTool, getAllProjectsTool, sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, listSlackChannelsTool, getSlackChannelHistoryTool, getSlackThreadRepliesTool, searchSlackMessagesTool, getSlackMentionsTool, getSlackUnreadsTool, getMeetingTranscriptionsTool, queryMeetingContextTool, getMeetingInsightsTool, getCalendarEventsTool, getTodayCalendarEventsTool, getUpcomingCalendarEventsTool, getCalendarEventsInRangeTool, findAvailableTimeSlotsTool, createCalendarEventTool, checkCalendarConnectionTool, lookupContactByEmailTool, getWhatsAppContextTool, createCrmContactTool, getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, createProjectTool, updateProjectTool, updateActionTool, deleteProjectTool, getUserWorkspacesTool, bulkCreateWorkspaceStructureTool, linkProjectToGoalTool, unlinkProjectFromGoalTool, linkProjectToKeyResultTool, unlinkProjectFromKeyResultTool, listWhatsAppChatsTool, getWhatsAppChatHistoryTool, searchWhatsAppChatsTool, getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHubActivityTool, captureDailySnapshotTool } from '../tools';
 // import { curationAgent } from './ostrom-agent'; // Temporarily disabled due to MCP server down
 
 export const weatherAgent = new Agent({
@@ -324,8 +324,10 @@ export const projectManagerAgent = new Agent({
 
     - get-user-workspaces: List all workspaces the user belongs to with IDs. Use before bulk creation across multiple workspaces to confirm the target workspace ID.
     - bulk-create-workspace-structure: Create a full hierarchy of goals + projects + actions atomically. Use for any request involving 3+ goals or a structured setup list.
-    - link-project-to-goal: Link a project to an OKR objective.
+    - link-project-to-goal: Link a project to an OKR objective (goal-level).
     - unlink-project-from-goal: Remove a project-goal link.
+    - link-project-to-key-result: Link a project to a specific Key Result. PREFER this over link-project-to-goal when the project executes a measurable result — the OKR dashboard renders linked projects under each Key Result. Needs the KR's string id from get-okr-objectives (objective.keyResults[].id).
+    - unlink-project-from-key-result: Remove a project↔key-result link.
 
     ## ENHANCED QUESTION HANDLING:
     
@@ -640,6 +642,8 @@ export const projectManagerAgent = new Agent({
     bulkCreateWorkspaceStructureTool,
     linkProjectToGoalTool,
     unlinkProjectFromGoalTool,
+    linkProjectToKeyResultTool,
+    unlinkProjectFromKeyResultTool,
     updateProjectStatusTool,
     getProjectGoalsTool,
     getAllGoalsTool,
