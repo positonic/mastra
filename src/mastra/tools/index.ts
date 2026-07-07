@@ -2495,7 +2495,7 @@ export { notionTools, notionSearchTool, notionGetPageTool, notionQueryDatabaseTo
 export { checkEmailConnectionTool, getRecentEmailsTool, getEmailByIdTool, searchEmailsTool, sendEmailTool, replyToEmailTool } from "./email-tools.js";
 
 // OKR tools
-export { getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, linkProjectToGoalTool, unlinkProjectFromGoalTool, linkObjectiveToParentTool, addObjectiveCommentTool, addObjectiveUpdateTool } from "./okr-tools.js";
+export { getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, linkProjectToGoalTool, unlinkProjectFromGoalTool, linkProjectToKeyResultTool, unlinkProjectFromKeyResultTool, linkObjectiveToParentTool, addObjectiveCommentTool, addObjectiveUpdateTool } from "./okr-tools.js";
 
 // Project & Action management tools
 export { createProjectTool, updateProjectTool, updateActionTool, getTodaysActionsTool, deleteProjectTool, getUserWorkspacesTool, bulkCreateWorkspaceStructureTool } from "./project-tools.js";

@@ -54,6 +54,8 @@ import {
   getOkrStatsTool,
   linkProjectToGoalTool,
   unlinkProjectFromGoalTool,
+  linkProjectToKeyResultTool,
+  unlinkProjectFromKeyResultTool,
   linkObjectiveToParentTool,
   addObjectiveCommentTool,
   addObjectiveUpdateTool,
@@ -231,6 +233,10 @@ You can manage the user's OKR system — objectives are qualitative goals, key r
 - **update-okr-key-result**: Update a key result's fields. For progress updates, prefer check-in.
 - **delete-okr-key-result**: Delete a key result (ALWAYS confirm first)
 - **checkin-okr-key-result**: Record a progress check-in — updates value and auto-calculates status
+- **link-project-to-key-result**: Link a project to a specific Key Result so it shows as the work executing that KR. This is what the OKR dashboard renders (linked projects appear under each Key Result). When a user asks to attach/connect a project to a KR, use this — NOT link-project-to-goal. Needs the KR's string id from get-okr-objectives (objective.keyResults[].id).
+- **unlink-project-from-key-result**: Remove the link between a project and a Key Result.
+- **link-project-to-goal**: Link a project to an Objective at the goal level (not shown under a KR). Use only when the user explicitly wants an objective-level link rather than a KR-level one.
+- **unlink-project-from-goal**: Remove a project↔objective (goal-level) link.
 - **get-okr-stats**: Dashboard stats: totals, status breakdown, average progress
 - **add-objective-comment**: Post a narrative comment (a NOTE, no health, never moves the status badge) to an Objective's activity feed on the user's behalf. Use for narrative notes — a strategy summary, context, a recap of what was agreed — NOT for status/progress statements. Takes the goalId from the page context.
 - **add-objective-update**: Post a health-bearing update (a CHECK-IN with a health of on-track | at-risk | off-track) to an Objective's activity feed. An update MOVES the status badge — use it for status/progress statements ("we're behind", "back on track"). Takes the goalId from the page context plus the health you'll set.
@@ -597,6 +603,8 @@ const zoeTools = {
     getOkrStatsTool,
     linkProjectToGoalTool,
     unlinkProjectFromGoalTool,
+    linkProjectToKeyResultTool,
+    unlinkProjectFromKeyResultTool,
     linkObjectiveToParentTool,
     addObjectiveCommentTool,
     addObjectiveUpdateTool,

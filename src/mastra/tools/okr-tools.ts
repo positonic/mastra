@@ -573,3 +573,69 @@ export const unlinkProjectFromGoalTool = createTool({
     return data;
   },
 });
+
+export const linkProjectToKeyResultTool = createTool({
+  id: "link-project-to-key-result",
+  description:
+    "Link a project to a specific OKR Key Result (KR) — the concrete work that will move that KR. Prefer this over link-project-to-goal when the user wants a project attached to a measurable result: the OKR dashboard renders linked projects under each Key Result, not under the objective. You need the Key Result's string ID (from get-okr-objectives, each objective's keyResults[].id) and the project ID string.",
+  inputSchema: z.object({
+    keyResultId: z.string().describe("The ID of the OKR Key Result to link the project to"),
+    projectId: z.string().describe("The ID of the project to link to the key result"),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    keyResultId: z.string(),
+    projectId: z.string(),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`🔗 [linkProjectToKeyResult] Linking project ${inputData.projectId} to key result ${inputData.keyResultId}`);
+
+    const { data } = await authenticatedTrpcCall(
+      "mastra.linkProjectToKeyResult",
+      { keyResultId: inputData.keyResultId, projectId: inputData.projectId },
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [linkProjectToKeyResult] Success`);
+    return data;
+  },
+});
+
+export const unlinkProjectFromKeyResultTool = createTool({
+  id: "unlink-project-from-key-result",
+  description:
+    "Remove the link between a project and an OKR Key Result. Use this when the user wants to dissociate or disconnect a project from a specific key result. Needs the Key Result's string ID and the project ID string.",
+  inputSchema: z.object({
+    keyResultId: z.string().describe("The ID of the OKR Key Result to unlink the project from"),
+    projectId: z.string().describe("The ID of the project to unlink from the key result"),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    keyResultId: z.string(),
+    projectId: z.string(),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`🔗 [unlinkProjectFromKeyResult] Unlinking project ${inputData.projectId} from key result ${inputData.keyResultId}`);
+
+    const { data } = await authenticatedTrpcCall(
+      "mastra.unlinkProjectFromKeyResult",
+      { keyResultId: inputData.keyResultId, projectId: inputData.projectId },
+      { authToken, sessionId, userId }
+    );
+
+    console.log(`✅ [unlinkProjectFromKeyResult] Success`);
+    return data;
+  },
+});
