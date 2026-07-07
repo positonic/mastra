@@ -507,15 +507,9 @@ export const addTicketDependenciesTool = createTool({
     dependencies: z
       .array(
         z.object({
-          ticketNumber: z
-            .number()
-            .int()
-            .positive()
+          ticketNumber: looseNumber(z.number().int().positive())
             .describe("The dependent/blocked ticket's number (the one that depends on the other)"),
-          dependsOnNumber: z
-            .number()
-            .int()
-            .positive()
+          dependsOnNumber: looseNumber(z.number().int().positive())
             .describe("The blocker ticket's number (the prerequisite)"),
         }),
       )
