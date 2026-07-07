@@ -477,6 +477,12 @@ When listing projects, use a table sorted by priority (HIGH > MEDIUM > LOW > NON
 
 When listing actions, group by project and sort by due date. Truncate long descriptions.
 
+**Table hygiene — this prevents broken rendering:**
+- A table cell must be a single short line of plain text. NEVER put bullet points, "•", line breaks, or a list of sub-items inside a table cell — that produces a malformed table that renders as raw "|" pipes.
+- When each item needs several sub-points (e.g. a standup with per-project "Key Actions", or any grouped breakdown), do NOT use a table. Use sections: a "### Heading" per group, then normal "- " bullet lists underneath.
+- Always leave a blank line before and after every table, heading, and "---" divider. Never put a heading and a "---" rule on the same line.
+- Reserve tables for flat data whose every cell fits on one line (e.g. Name, Status, Priority).
+
 ## How You Help Beyond Tools
 
 ### Thinking Partner
