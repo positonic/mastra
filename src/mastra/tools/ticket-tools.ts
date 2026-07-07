@@ -354,3 +354,205 @@ export const importNotionCycleTicketsTool = createTool({
     }
   },
 });
+
+export const listCyclesTool = createTool({
+  id: "list-cycles",
+  description:
+    "List the cycles (sprints) in a workspace, with their status, dates, goal, and ticket count. Use this to see what cycles exist, resolve a cycle the user names, or find the current/upcoming cycle — before listing tickets or analysing a cycle. Pass a productId (from list-products) OR a workspaceId. Read-only; never creates cycles.",
+  inputSchema: z.object({
+    productId: z
+      .string()
+      .optional()
+      .describe("A product in the target workspace — use list-products to resolve it. Provide this OR workspaceId."),
+    workspaceId: z
+      .string()
+      .optional()
+      .describe("The workspace to list cycles for. Provide this OR productId."),
+  }),
+  outputSchema: z.object({
+    cycles: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        slug: z.string(),
+        status: z.string(),
+        startDate: z.string().nullable(),
+        endDate: z.string().nullable(),
+        cycleGoal: z.string().nullable(),
+        ticketCount: z.number(),
+      }),
+    ),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`🔄 [listCycles] Fetching cycles for ${inputData.productId ? `product ${inputData.productId}` : `workspace ${inputData.workspaceId}`}`);
+
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "mastra.listCycles",
+        { productId: inputData.productId, workspaceId: inputData.workspaceId },
+        { authToken, sessionId, userId },
+      );
+
+      console.log(`✅ [listCycles] Found ${(data as any)?.cycles?.length ?? 0} cycles`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [listCycles] FAILED:`, error);
+      throw error;
+    }
+  },
+});
+
+export const listTicketsTool = createTool({
+  id: "list-tickets",
+  description:
+    "READ a product's tickets — optionally scoped to one cycle, status, or type — WITH their dependency edges (dependsOn / requiredFor) and an isBlocked flag. This is the tool to answer 'what tickets are in cycle 10?', 'could any have dependencies?', 'what's blocked?', or to review/summarise a product's work. NEVER ask the user to paste their tickets — call this instead. You need a productId (use list-products). For a cycle, pass `cycle` as the user says it ('Cycle 10', 'cycle-10', or '10') — the server resolves the name; if it can't, the response lists availableCycles so you can retry. If totalCount exceeds the returned tickets, say the list is truncated rather than reasoning over a partial set.",
+  inputSchema: z.object({
+    productId: z
+      .string()
+      .describe("The product whose tickets to list — use list-products to resolve it"),
+    cycle: z
+      .string()
+      .optional()
+      .describe("Cycle to scope to, as a human reference: 'Cycle 10', 'cycle-10', '10', or a cycle id. Omit for all cycles."),
+    status: looseEnum([
+        "BACKLOG",
+        "NEEDS_REFINEMENT",
+        "READY_TO_PLAN",
+        "COMMITTED",
+        "IN_PROGRESS",
+        "BLOCKED",
+        "QA",
+        "DONE",
+        "DEPLOYED",
+        "ARCHIVED",
+      ])
+      .optional()
+      .describe("Only return tickets in this pipeline status"),
+    type: looseEnum(["BUG", "FEATURE", "CHORE", "IMPROVEMENT", "SPIKE", "RESEARCH"])
+      .optional()
+      .describe("Only return tickets of this type"),
+    limit: looseNumber(z.number().int().min(1).max(200))
+      .optional()
+      .describe("Max tickets to return (default 100, max 200)"),
+  }),
+  outputSchema: z.object({
+    cycle: z.object({ id: z.string(), name: z.string() }).nullable(),
+    totalCount: z.number(),
+    warning: z.string().optional(),
+    availableCycles: z.array(z.string()).optional(),
+    tickets: z.array(
+      z.object({
+        number: z.number(),
+        shortId: z.string().nullable(),
+        title: z.string(),
+        body: z.string().nullable(),
+        status: z.string(),
+        type: z.string(),
+        priority: z.number().nullable(),
+        points: z.number().nullable(),
+        assignee: z.string().nullable(),
+        cycle: z.string().nullable(),
+        feature: z.string().nullable(),
+        epic: z.string().nullable(),
+        dependsOn: z.array(
+          z.object({ number: z.number(), title: z.string(), status: z.string() }),
+        ),
+        requiredFor: z.array(
+          z.object({ number: z.number(), title: z.string(), status: z.string() }),
+        ),
+        isBlocked: z.boolean(),
+      }),
+    ),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`🎫 [listTickets] INPUT: productId=${inputData.productId}, cycle="${inputData.cycle ?? "(all)"}", status=${inputData.status ?? "(any)"}`);
+
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "mastra.listTickets",
+        inputData,
+        { authToken, sessionId, userId },
+      );
+
+      const result = data as { tickets?: unknown[]; totalCount?: number; warning?: string };
+      console.log(`✅ [listTickets] Returned ${result.tickets?.length ?? 0}/${result.totalCount ?? 0} tickets${result.warning ? ` (warning: ${result.warning})` : ""}`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [listTickets] FAILED:`, error);
+      throw error;
+    }
+  },
+});
+
+export const addTicketDependenciesTool = createTool({
+  id: "add-ticket-dependencies",
+  description:
+    "Create dependency links between tickets in ONE product, by ticket number — records that a ticket is blocked by (depends on) another. Use when the user asks to link tickets, mark blockers, or after you've proposed dependencies and they've confirmed. Each edge is {ticketNumber, dependsOnNumber} meaning ticketNumber depends on / is blocked by dependsOnNumber. The server rejects self-links and any edge that would create a cycle, and reports per-edge outcomes — relay added vs failed honestly. ALWAYS propose the edges to the user and get confirmation before calling this; it writes data.",
+  inputSchema: z.object({
+    productId: z
+      .string()
+      .describe("The product the tickets belong to — use list-products to resolve it"),
+    dependencies: z
+      .array(
+        z.object({
+          ticketNumber: z
+            .number()
+            .int()
+            .positive()
+            .describe("The dependent/blocked ticket's number (the one that depends on the other)"),
+          dependsOnNumber: z
+            .number()
+            .int()
+            .positive()
+            .describe("The blocker ticket's number (the prerequisite)"),
+        }),
+      )
+      .min(1)
+      .max(50)
+      .describe("The dependency edges to create"),
+  }),
+  outputSchema: z.object({
+    added: z.array(z.object({ ticket: z.number(), dependsOn: z.number() })),
+    failed: z.array(
+      z.object({ ticket: z.number(), dependsOn: z.number(), error: z.string() }),
+    ),
+    totalAdded: z.number(),
+    totalFailed: z.number(),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`🔗 [addTicketDependencies] INPUT: productId=${inputData.productId}, edges=${inputData.dependencies.length}`);
+
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "mastra.addTicketDependencies",
+        inputData,
+        { authToken, sessionId, userId },
+      );
+
+      const result = data as { totalAdded?: number; totalFailed?: number };
+      console.log(`✅ [addTicketDependencies] Done: added=${result.totalAdded ?? 0}, failed=${result.totalFailed ?? 0}`);
+      return data;
+    } catch (error) {
+      console.error(`❌ [addTicketDependencies] FAILED:`, error);
+      throw error;
+    }
+  },
+});
