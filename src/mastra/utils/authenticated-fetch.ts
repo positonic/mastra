@@ -1,3 +1,4 @@
+import SuperJSON from 'superjson';
 import { captureAuthFailure } from './sentry.js';
 import { verifyAndExtractUserId } from './gateway-shared.js';
 
@@ -224,6 +225,74 @@ export async function authenticatedFetch<T>(
 }
 
 /**
+ * superjson `meta.values` annotation tree (see superjson's plainer.ts):
+ * a node is either `{escapedPathKey: subtree}` or `[annotation, children?]`,
+ * where a leaf annotation is e.g. "undefined" / "Date" / "set".
+ */
+type SuperjsonTree = [unknown, Record<string, SuperjsonTree>?] | { [key: string]: SuperjsonTree };
+
+/**
+ * Keep only the "undefined" annotations of a superjson `meta.values` tree,
+ * dropping everything else (Date/bigint/set/map/class revivals). Returns
+ * undefined when nothing survives. Path keys are copied verbatim — they are
+ * escaped path strings that only superjson itself should parse.
+ */
+function filterUndefinedAnnotations(tree: SuperjsonTree): SuperjsonTree | undefined {
+  if (Array.isArray(tree)) {
+    const [annotation, children] = tree;
+    const keptChildren = children ? filterChildAnnotations(children) : undefined;
+    if (annotation === 'undefined') {
+      return keptChildren ? ['undefined', keptChildren] : ['undefined'];
+    }
+    return keptChildren;
+  }
+  return filterChildAnnotations(tree);
+}
+
+function filterChildAnnotations(
+  children: Record<string, SuperjsonTree>,
+): Record<string, SuperjsonTree> | undefined {
+  const kept: Record<string, SuperjsonTree> = {};
+  for (const [key, subtree] of Object.entries(children)) {
+    const filtered = filterUndefinedAnnotations(subtree);
+    if (filtered) kept[key] = filtered;
+  }
+  return Object.keys(kept).length > 0 ? kept : undefined;
+}
+
+/**
+ * Unwrap a tRPC response payload, honoring the superjson envelope.
+ *
+ * The backend serializes with superjson, which encodes `undefined` values as
+ * `null` in `json` plus an "undefined" annotation in `meta.values`. The old
+ * unwrap dropped `meta`, so optional fields the server left unset (e.g. a
+ * ticket preview with no points/priority) arrived as `null` and failed the
+ * tools' zod output schemas (`z.number().optional()` rejects null).
+ *
+ * We deliberately apply ONLY the "undefined" annotations: reviving Dates &co.
+ * would hand Date instances to output schemas that (correctly, for LLM-facing
+ * results) declare those fields as ISO strings.
+ */
+export function unwrapSuperjson<T>(rawData: unknown): T {
+  if (rawData && typeof rawData === 'object' && 'json' in rawData) {
+    const { json, meta } = rawData as {
+      json: unknown;
+      meta?: { values?: SuperjsonTree; v?: number };
+    };
+    const values = meta?.values ? filterUndefinedAnnotations(meta.values) : undefined;
+    if (values) {
+      return SuperJSON.deserialize({
+        json,
+        meta: { values, v: meta?.v },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any) as T;
+    }
+    return json as T;
+  }
+  return rawData as T;
+}
+
+/**
  * Convenience wrapper for tRPC POST endpoints (the most common pattern in tools).
  * Handles the tRPC response structure automatically.
  */
@@ -252,13 +321,9 @@ export async function authenticatedTrpcCall<T = any>(
 
   // tRPC responses can have different structures
   const rawData = result.data.result?.data || result.data.json || result.data;
-  // Unwrap superjson { json, meta } wrapper if present
-  const data = (rawData && typeof rawData === 'object' && 'json' in rawData && (rawData as any).json !== undefined)
-    ? (rawData as any).json as T
-    : rawData as T;
 
   return {
-    data,
+    data: unwrapSuperjson<T>(rawData),
     refreshedToken: result.refreshedToken,
   };
 }
@@ -286,13 +351,9 @@ export async function authenticatedTrpcQuery<T = any>(
 
   // tRPC responses can have different structures
   const rawData = result.data.result?.data || result.data.json || result.data;
-  // Unwrap superjson { json, meta } wrapper if present
-  const data = (rawData && typeof rawData === 'object' && 'json' in rawData && (rawData as any).json !== undefined)
-    ? (rawData as any).json as T
-    : rawData as T;
 
   return {
-    data,
+    data: unwrapSuperjson<T>(rawData),
     refreshedToken: result.refreshedToken,
   };
 }

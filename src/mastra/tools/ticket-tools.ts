@@ -319,8 +319,10 @@ export const importNotionCycleTicketsTool = createTool({
           title: z.string(),
           status: z.string(),
           type: z.string(),
-          priority: z.number().optional(),
-          points: z.number().optional(),
+          // nullish, not optional: rows without an estimate/priority in Notion
+          // must never fail the preview, whatever the transport encodes them as
+          priority: z.number().nullish(),
+          points: z.number().nullish(),
           notionUrl: z.string(),
           labels: z.array(z.string()),
           warnings: z.array(z.string()),
