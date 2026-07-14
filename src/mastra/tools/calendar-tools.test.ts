@@ -16,7 +16,9 @@ const {
   getTodayCalendarEventsTool,
   getUpcomingCalendarEventsTool,
   getCalendarEventsInRangeTool,
+  createCalendarEventTool,
 } = await import('./index.js');
+const { normalizeDateTime } = await import('./zod-loose.js');
 
 describe('calendar tool outputSchemas tolerate null wire fields', () => {
   it('get-today-calendar-events accepts timed + all-day events with null fields', () => {
@@ -101,5 +103,82 @@ describe('calendar tool outputSchemas tolerate null wire fields', () => {
       ],
     };
     expect(() => getCalendarEventsInRangeTool.outputSchema!.parse(payload)).not.toThrow();
+  });
+});
+
+// Regression for the Pyro "create calendar event" bug (2026-07-14): the model
+// passed `attendees` in a non-canonical shape (bare/array-of email strings),
+// the tool's strict `z.array(z.object({ email }))` inputSchema rejected it at
+// the input-validation layer, and after 4 failed attempts the agent gave up
+// and told the user to create the event by hand. The inputSchema must accept
+// every attendee shape models actually emit and normalize it to the canonical
+// `[{ email, displayName? }]` the backend expects.
+describe('create-calendar-event tolerates model-emitted attendee shapes', () => {
+  const base = {
+    summary: 'Splinternet grant',
+    startDateTime: '2026-07-14T12:00:00Z',
+    endDateTime: '2026-07-14T12:30:00Z',
+    userConfirmed: true,
+  };
+
+  const parseInput = (value: unknown): { attendees?: Array<{ email: string; displayName?: string }> } =>
+    (createCalendarEventTool.inputSchema as unknown as { parse: (v: unknown) => { attendees?: Array<{ email: string; displayName?: string }> } }).parse(value);
+
+  it('accepts the canonical array of attendee objects unchanged', () => {
+    const parsed = parseInput({ ...base, attendees: [{ email: 'andi@syntro.fi', displayName: 'Andy' }] });
+    expect(parsed.attendees).toEqual([{ email: 'andi@syntro.fi', displayName: 'Andy' }]);
+  });
+
+  it('accepts an array of bare email strings', () => {
+    const parsed = parseInput({ ...base, attendees: ['andi@syntro.fi'] });
+    expect(parsed.attendees).toEqual([{ email: 'andi@syntro.fi' }]);
+  });
+
+  it('accepts a single email string', () => {
+    const parsed = parseInput({ ...base, attendees: 'andi@syntro.fi' });
+    expect(parsed.attendees).toEqual([{ email: 'andi@syntro.fi' }]);
+  });
+
+  it('accepts a comma-string of emails', () => {
+    const parsed = parseInput({ ...base, attendees: 'andi@syntro.fi, james@syntro.fi' });
+    expect(parsed.attendees).toEqual([{ email: 'andi@syntro.fi' }, { email: 'james@syntro.fi' }]);
+  });
+
+  it('accepts "Name <email>" strings and extracts the display name', () => {
+    const parsed = parseInput({ ...base, attendees: ['Andy <andi@syntro.fi>'] });
+    expect(parsed.attendees).toEqual([{ email: 'andi@syntro.fi', displayName: 'Andy' }]);
+  });
+
+  it('accepts a single attendee object not wrapped in an array', () => {
+    const parsed = parseInput({ ...base, attendees: { email: 'andi@syntro.fi' } });
+    expect(parsed.attendees).toEqual([{ email: 'andi@syntro.fi' }]);
+  });
+
+  it('treats null attendees as an empty list', () => {
+    const parsed = parseInput({ ...base, attendees: null });
+    expect(parsed.attendees).toEqual([]);
+  });
+
+  it('still rejects garbage that is not an attendee (fail loud, never invent)', () => {
+    expect(() => parseInput({ ...base, attendees: [42] })).toThrow();
+    expect(() => parseInput({ ...base, attendees: ['not-an-email'] })).toThrow();
+  });
+});
+
+// The backend's createCalendarEvent validates start/end with
+// z.string().datetime(), which rejects offset timestamps ("+01:00") and
+// date-only strings. The tool normalizes with normalizeDateTime before
+// sending so any valid instant survives the trip.
+describe('create-calendar-event datetime normalization', () => {
+  it('converts offset timestamps to canonical UTC ISO', () => {
+    expect(normalizeDateTime('2026-07-14T12:00:00+01:00', 'start')).toBe('2026-07-14T11:00:00.000Z');
+  });
+
+  it('passes through UTC timestamps unchanged (canonicalized)', () => {
+    expect(normalizeDateTime('2026-07-14T12:00:00Z', 'start')).toBe('2026-07-14T12:00:00.000Z');
+  });
+
+  it('throws a model-actionable error on unparseable input', () => {
+    expect(() => normalizeDateTime('noon-ish', 'start')).toThrow(/ISO 8601/);
   });
 });
