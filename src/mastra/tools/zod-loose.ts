@@ -176,6 +176,63 @@ export const looseEnumArray = <U extends string, T extends Readonly<[U, ...U[]]>
 };
 
 /**
+ * Tolerant attendee-list input for calendar tools.
+ *
+ * Models emit attendee lists in several shapes besides the canonical
+ * `[{ email, displayName? }]`: a bare email string (`"andi@syntro.fi"`), an
+ * array of email strings, a comma-string of emails, a `"Name <email>"` string,
+ * or a single attendee object not wrapped in an array. Observed 2026-07-14:
+ * Pyro burned 4 consecutive create-calendar-event calls because
+ * `attendees` kept failing `z.array(z.object({ email }))` validation, then
+ * gave up and told the user to create the event by hand.
+ *
+ * `looseAttendees` normalizes all of those shapes to the canonical array of
+ * objects, then validates. `null` (a common model spelling of "no attendees")
+ * becomes `[]`. Anything unrecognizable is left unchanged so the inner schema
+ * fails loud with the real Zod error — coerce to preserve intent, never invent.
+ */
+const attendeeSchema = z.object({
+  email: z.string().email(),
+  displayName: z.string().optional(),
+});
+
+export type LooseAttendee = z.infer<typeof attendeeSchema>;
+
+const NAME_EMAIL = /^(.*?)\s*<([^<>\s]+@[^<>\s]+)>$/;
+
+const toAttendee = (el: unknown): unknown => {
+  if (typeof el !== "string") return el; // objects pass through to validation
+  const s = el.trim();
+  const named = NAME_EMAIL.exec(s);
+  if (named) {
+    const displayName = named[1]?.trim();
+    return displayName ? { email: named[2], displayName } : { email: named[2] };
+  }
+  return { email: s };
+};
+
+const toAttendeeArray = (v: unknown): unknown => {
+  if (v === null || v === undefined) return [];
+  // A single attendee object not wrapped in an array
+  if (typeof v === "object" && !Array.isArray(v) && "email" in (v as object)) {
+    return [v];
+  }
+  const arr = toStringArray(v); // native array pass-through, JSON-string, comma-string
+  return Array.isArray(arr) ? arr.map(toAttendee) : arr;
+};
+
+export const looseAttendees = (): z.ZodEffects<
+  z.ZodArray<typeof attendeeSchema>,
+  LooseAttendee[],
+  LooseAttendee[]
+> =>
+  z.preprocess(toAttendeeArray, z.array(attendeeSchema)) as z.ZodEffects<
+    z.ZodArray<typeof attendeeSchema>,
+    LooseAttendee[],
+    LooseAttendee[]
+  >;
+
+/**
  * Tolerant date-range resolution for tool parameters.
  *
  * Models invent argument names and shapes for date ranges: observed 2026-06-11,

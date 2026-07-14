@@ -9,7 +9,7 @@ import {
 } from "../utils/authenticated-fetch.js";
 import { prepareUntrustedContent, auditWriteAction } from "../utils/content-safety.js";
 import { asAppContext } from "../types/request-context.js";
-import { looseBoolean, looseNumber, looseEnum, looseStringArray, looseEnumArray, resolveDateRange } from "./zod-loose.js";
+import { looseBoolean, looseNumber, looseEnum, looseStringArray, looseEnumArray, looseAttendees, normalizeDateTime, resolveDateRange } from "./zod-loose.js";
 
 interface GeocodingResponse {
   results: {
@@ -1731,10 +1731,9 @@ export const createCalendarEventTool = createTool({
     startDateTime: z.string().describe("Start date/time in ISO 8601 format"),
     endDateTime: z.string().describe("End date/time in ISO 8601 format"),
     location: z.string().optional().describe("Event location"),
-    attendees: z.array(z.object({
-      email: z.string().email(),
-      displayName: z.string().optional(),
-    })).optional().describe("List of attendees"),
+    // looseAttendees tolerates the shapes models actually emit (bare email
+    // string, array of strings, "Name <email>", single object, null).
+    attendees: looseAttendees().optional().describe("List of attendees, e.g. [{\"email\": \"person@example.com\"}]"),
     provider: looseEnum(['google', 'microsoft']).default('google').describe("Calendar provider to use"),
     userConfirmed: looseBoolean()
       .describe("REQUIRED: Must be true. You MUST show the user the event details and receive explicit confirmation before setting this to true."),
@@ -1775,11 +1774,14 @@ export const createCalendarEventTool = createTool({
       {
         summary: inputData.summary,
         description: inputData.description,
+        // The backend validates with z.string().datetime(), which rejects
+        // offset timestamps ("+02:00") and date-only strings; normalize to
+        // canonical UTC ISO so a valid instant is never bounced.
         start: {
-          dateTime: inputData.startDateTime,
+          dateTime: normalizeDateTime(inputData.startDateTime, "start"),
         },
         end: {
-          dateTime: inputData.endDateTime,
+          dateTime: normalizeDateTime(inputData.endDateTime, "end"),
         },
         location: inputData.location,
         attendees: inputData.attendees,
