@@ -37,6 +37,7 @@
     "ai": "^6.0.73",
     "jsonwebtoken": "^9.0.2",
     "mastra": "^1.5.0",
+    "matrix-js-sdk": "^37.5.0",
     "node-cron": "^4.2.1",
     "node-telegram-bot-api": "^0.66.0",
     "pg": "^8.21.0",
