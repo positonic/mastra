@@ -754,11 +754,15 @@ export class MatrixGateway {
     if (!room) return;
 
     if (this.isRoomEncrypted(room)) {
-      // The notice goes out as a plain (unencrypted) event, which clients render.
-      await this.client.sendTextMessage(
-        roomId,
-        `I can't read encrypted rooms yet — message me in our direct chat instead (or pair at https://www.exponential.im/settings/assistant and I'll create one).`,
-      );
+      // Best-effort only: matrix-js-sdk REFUSES to send any event into an
+      // encrypted room from a crypto-less client (verified live against
+      // Synapse) — so the leave must never depend on the notice succeeding.
+      await this.client
+        .sendTextMessage(
+          roomId,
+          `I can't read encrypted rooms yet — message me in our direct chat instead (or pair at https://www.exponential.im/settings/assistant and I'll create one).`,
+        )
+        .catch(() => undefined);
       await this.client.leave(roomId);
       logger.info(`🚪 [${INSTANCE_ID}] Declined encrypted room ${roomId}`);
       return;
