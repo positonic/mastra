@@ -2,15 +2,18 @@ import { createServer, IncomingMessage, ServerResponse, Server } from 'http';
 import crypto from 'crypto';
 
 import { createLogger } from '../utils/logger.js';
+import { RequestContext } from '@mastra/core/request-context';
 
 import {
   type AgentIdentifier,
   verifyAndExtractUserId,
+  parseMessageForMention,
   sendJsonResponse,
   handleGatewayError,
   setCorsHeaders,
 } from '../utils/gateway-shared.js';
-import { captureException } from '../utils/sentry.js';
+import { markdownToMatrixHtml } from '../utils/matrix-format.js';
+import { captureException, captureAuthFailure } from '../utils/sentry.js';
 
 const logger = createLogger({
   name: 'MatrixGateway',
@@ -35,6 +38,17 @@ function gatewaySecret(): string | undefined {
 
 const MXID_PATTERN = /^@[^:\s]+:\S+$/;
 const PAIRING_CODE_PATTERN = /^[0-9A-F]{6}$/;
+
+const CONVERSATION_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes (Telegram parity)
+const MAX_HISTORY_MESSAGES = 10;
+const TYPING_TIMEOUT_MS = 30_000;
+const NON_TEXT_REPLY_COOLDOWN_MS = 60 * 1000; // one polite reply per attachment burst
+
+// Matrix renders real HTML (formatted_body), so unlike WhatsApp/Telegram the
+// agent may use full standard markdown — links, lists, code blocks, tables.
+const MATRIX_SYSTEM_CONTEXT = `You are responding via Matrix (rendered as rich HTML in clients like Element). Format your responses in standard markdown:
+- Links, lists, **bold**, _italic_, \`code\`, fenced code blocks and tables all render properly
+- Keep responses conversational and reasonably concise — this is a chat, not a document`;
 
 // ─── Minimal matrix-js-sdk surface ──────────────────────────────────────────
 // The gateway depends on this narrow interface (not the full MatrixClient) so
@@ -99,6 +113,43 @@ export interface MatrixUserMapping {
   lastActive: string | null;
 }
 
+interface HistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+interface ConversationState {
+  agentId: AgentIdentifier;
+  lastInteraction: number;
+  history: HistoryMessage[];
+}
+
+/** The slice of a Mastra agent the gateway needs — injectable for tests. */
+export interface AgentLike {
+  generate(
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    opts: { requestContext: RequestContext<any>; memory: { resource: string; thread: string } },
+  ): Promise<{ text: string }>;
+}
+
+export type AgentResolver = (agentId: AgentIdentifier) => Promise<AgentLike>;
+
+/** Default resolver — lazy import so unit tests never load the real agents. */
+const defaultAgentResolver: AgentResolver = async (agentId) => {
+  const agents = await import('../agents/index.js');
+  const { assistantAgent } = await import('../agents/assistant-agent.js');
+  const registry: Record<AgentIdentifier, AgentLike> = {
+    weather: agents.weatherAgent as unknown as AgentLike,
+    pierre: agents.pierreAgent as unknown as AgentLike,
+    ash: agents.ashAgent as unknown as AgentLike,
+    paddy: agents.projectManagerAgent as unknown as AgentLike,
+    zoe: agents.zoeAgent as unknown as AgentLike,
+    one2b: agents.one2bAgent as unknown as AgentLike,
+    assistant: assistantAgent as unknown as AgentLike,
+  };
+  return registry[agentId];
+};
+
 interface PendingPairing {
   userId: string;
   authToken: string;
@@ -135,11 +186,16 @@ export class MatrixGateway {
   private pendingPairings: Map<string, PendingPairing> = new Map(); // code → pairing
   private authTokens: Map<string, string> = new Map(); // userId → JWT (in-memory only)
   private lastInstructedAt: Map<string, number> = new Map(); // mxid → ts (anti-spam)
+  private conversations: Map<string, ConversationState> = new Map(); // userId → state
+  private lastNonTextReplyAt: Map<string, number> = new Map(); // roomId → ts
   private httpServer: Server | null = null;
   private pairingCleanupInterval: ReturnType<typeof setInterval> | null = null;
   private started = false;
 
-  constructor(private readonly injectedClient: MatrixClientLike | null = null) {
+  constructor(
+    private readonly injectedClient: MatrixClientLike | null = null,
+    private readonly agentResolver: AgentResolver = defaultAgentResolver,
+  ) {
     logger.info(`🚀 [${INSTANCE_ID}] Matrix Gateway initializing...`);
     // Tests inject a fake client and drive the class without initialize()
     // (which binds the HTTP port and hits the real SDK).
@@ -330,7 +386,22 @@ export class MatrixGateway {
     if (!sender || sender === this.client.getUserId()) return;
 
     const content = event.getContent();
-    if (content.msgtype !== 'm.text' || typeof content.body !== 'string') return;
+    const senderMapping = this.mappings.get(sender);
+
+    // Media / non-text from a paired user in their DM: polite decline, once per burst
+    if (content.msgtype !== 'm.text' || typeof content.body !== 'string') {
+      if (senderMapping && senderMapping.roomId === room.roomId && content.msgtype) {
+        const last = this.lastNonTextReplyAt.get(room.roomId) ?? 0;
+        if (Date.now() - last > NON_TEXT_REPLY_COOLDOWN_MS) {
+          this.lastNonTextReplyAt.set(room.roomId, Date.now());
+          await this.client.sendTextMessage(
+            room.roomId,
+            "I can only handle text messages for now — attachments and voice notes are on the roadmap.",
+          );
+        }
+      }
+      return;
+    }
     const text = content.body.trim();
     if (!text) return;
 
@@ -368,17 +439,251 @@ export class MatrixGateway {
     }
   }
 
-  /**
-   * Paired-DM handling. Agent routing (memory, JWT refresh, HTML replies)
-   * lands in the follow-up ticket; the core gateway acknowledges so the
-   * pairing slice is independently verifiable end-to-end.
-   */
-  protected async handlePairedMessage(mapping: MatrixUserMapping, _text: string): Promise<void> {
+  /** Paired-DM handling: commands, agent selection, then agent routing. */
+  protected async handlePairedMessage(mapping: MatrixUserMapping, text: string): Promise<void> {
     mapping.lastActive = new Date().toISOString();
-    await this.client?.sendTextMessage(
-      mapping.roomId!,
-      "I'm connected to your Exponential account. Agent chat arrives in the next update — hold tight!",
-    );
+
+    if (text.startsWith('!')) {
+      await this.handleCommand(mapping, text);
+      return;
+    }
+
+    // Parse for @mention to override agent (Telegram parity)
+    const parsed = parseMessageForMention(text);
+
+    let conversation = this.conversations.get(mapping.userId);
+    const now = Date.now();
+
+    let agentId: AgentIdentifier;
+    if (parsed.agent) {
+      agentId = parsed.agent;
+    } else if (conversation && (now - conversation.lastInteraction) < CONVERSATION_TIMEOUT_MS) {
+      agentId = conversation.agentId;
+    } else {
+      agentId = mapping.agentId;
+    }
+
+    if (!conversation || (now - conversation.lastInteraction) >= CONVERSATION_TIMEOUT_MS) {
+      conversation = { agentId, lastInteraction: now, history: [] };
+    } else {
+      conversation.agentId = agentId;
+      conversation.lastInteraction = now;
+    }
+    this.conversations.set(mapping.userId, conversation);
+
+    await this.processMessage(mapping, parsed.text, agentId, conversation);
+  }
+
+  private async handleCommand(mapping: MatrixUserMapping, text: string): Promise<void> {
+    const roomId = mapping.roomId!;
+    const parts = text.split(/\s+/);
+    const command = parts[0].toLowerCase();
+
+    switch (command) {
+      case '!agent': {
+        const agentName = parts[1]?.toLowerCase();
+        const validAgents: AgentIdentifier[] = ['assistant', 'zoe', 'paddy', 'pierre', 'ash', 'weather', 'one2b'];
+        if (!agentName || !validAgents.includes(agentName as AgentIdentifier)) {
+          await this.client?.sendTextMessage(
+            roomId,
+            `Switch your default agent with: !agent NAME\nAvailable: ${validAgents.join(', ')}\n(Current: ${mapping.agentId})`,
+          );
+          return;
+        }
+        mapping.agentId = agentName as AgentIdentifier;
+        await this.client?.sendTextMessage(roomId, `Default agent switched to ${agentName}. You can also @mention an agent inline.`);
+        break;
+      }
+      case '!help': {
+        await this.client?.sendTextMessage(
+          roomId,
+          'Exponential Matrix Bot\n\nCommands:\n!agent NAME — switch default agent\n!help — this help\n\nYou can also @mention an agent inline, e.g. "@zoe how is my week looking?"\nManage the connection at https://www.exponential.im/settings/assistant',
+        );
+        break;
+      }
+      default:
+        // Unknown ! command — treat as a normal message? No: ignore quietly.
+        break;
+    }
+  }
+
+  private async processMessage(
+    mapping: MatrixUserMapping,
+    text: string,
+    agentId: AgentIdentifier,
+    conversation: ConversationState,
+  ): Promise<void> {
+    const roomId = mapping.roomId!;
+    if (!this.client) return;
+    let typing = false;
+
+    try {
+      let authToken = this.authTokens.get(mapping.userId) ?? null;
+      if (!authToken) {
+        // Post-restart: tokens are memory-only, mint a fresh one
+        authToken = await this.refreshAuthToken(mapping.userId);
+        if (!authToken) {
+          await this.client.sendTextMessage(
+            roomId,
+            'Your session has expired. Please reconnect from the Exponential app (Settings > Assistant).',
+          );
+          return;
+        }
+      }
+
+      const agent = await this.agentResolver(agentId);
+      logger.info(`🤖 [${INSTANCE_ID}] Routing to @${agentId} for user ${mapping.userId}`);
+
+      await this.client.sendTyping(roomId, true, TYPING_TIMEOUT_MS);
+      typing = true;
+
+      const history = conversation.history;
+      history.push({ role: 'user', content: text });
+      while (history.length > MAX_HISTORY_MESSAGES) {
+        history.shift();
+      }
+
+      const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+        { role: 'system', content: MATRIX_SYSTEM_CONTEXT },
+        ...history,
+      ];
+
+      const createRequestContext = (token: string) => {
+        return new RequestContext([
+          ['authToken', token],
+          ['userId', mapping.userId],
+          ['matrixRoomId', roomId],
+          ...(mapping.workspaceId ? [['workspaceId', mapping.workspaceId] as [string, string]] : []),
+        ]);
+      };
+
+      const memoryScope = {
+        resource: mapping.userId,
+        thread: `matrix-${mapping.userId}-${roomId}`,
+      };
+
+      let response;
+      try {
+        response = await agent.generate(messages, {
+          requestContext: createRequestContext(authToken),
+          memory: memoryScope,
+        });
+      } catch (error) {
+        if (this.isUnauthorizedError(error)) {
+          logger.warn(`⚠️ [${INSTANCE_ID}] Auth error for user ${mapping.userId}, refreshing token...`);
+          const newToken = await this.refreshAuthToken(mapping.userId);
+          if (newToken) {
+            authToken = newToken;
+            response = await agent.generate(messages, {
+              requestContext: createRequestContext(authToken),
+              memory: memoryScope,
+            });
+          } else {
+            throw error;
+          }
+        } else {
+          throw error;
+        }
+      }
+
+      const agentResponse = response.text;
+
+      if (agentResponse) {
+        history.push({ role: 'assistant', content: agentResponse });
+        while (history.length > MAX_HISTORY_MESSAGES) {
+          history.shift();
+        }
+
+        await this.sendMarkdownMessage(roomId, agentResponse);
+        logger.info(`✅ [${INSTANCE_ID}] Sent response to user ${mapping.userId} (history: ${history.length} msgs)`);
+      } else {
+        await this.client.sendTextMessage(roomId, "Sorry, I couldn't process your request. Please try again.");
+      }
+    } catch (error) {
+      logger.error(`❌ [${INSTANCE_ID}] Error processing message for user ${mapping.userId}:`, error);
+      captureException(error, {
+        userId: mapping.userId,
+        operation: 'processMessage',
+        extra: { agentId, roomId, textPreview: text.substring(0, 100) },
+      });
+      await this.client.sendTextMessage(roomId, 'Sorry, I encountered an error. Please try again later.');
+    } finally {
+      if (typing) {
+        await this.client.sendTyping(roomId, false, 0).catch(() => undefined);
+      }
+    }
+  }
+
+  /**
+   * Send agent markdown as a Matrix message: markdown source in `body`
+   * (spec-intended plain-text fallback), rendered HTML in `formatted_body`.
+   */
+  private async sendMarkdownMessage(roomId: string, markdown: string): Promise<void> {
+    let formatted: string | null = null;
+    try {
+      formatted = markdownToMatrixHtml(markdown);
+    } catch {
+      formatted = null; // rendering failed — fall back to plain text
+    }
+
+    if (formatted) {
+      await this.client?.sendEvent(roomId, 'm.room.message', {
+        msgtype: 'm.text',
+        body: markdown,
+        format: 'org.matrix.custom.html',
+        formatted_body: formatted,
+      });
+    } else {
+      await this.client?.sendTextMessage(roomId, markdown);
+    }
+  }
+
+  private async refreshAuthToken(userId: string): Promise<string | null> {
+    if (!gatewaySecret()) {
+      logger.warn(`⚠️ [${INSTANCE_ID}] Cannot refresh token: GATEWAY_SECRET not configured`);
+      return null;
+    }
+
+    try {
+      logger.info(`🔄 [${INSTANCE_ID}] Refreshing auth token for user ${userId}`);
+
+      const response = await fetch(`${appBaseUrl()}/api/matrix-gateway/refresh-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Gateway-Secret': gatewaySecret()!,
+        },
+        body: JSON.stringify({ userId }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error(`❌ [${INSTANCE_ID}] Token refresh failed: ${response.status} - ${errorText}`);
+        captureAuthFailure(new Error(`Token refresh failed: ${response.status}`), {
+          userId,
+          endpoint: `${appBaseUrl()}/api/matrix-gateway/refresh-token`,
+          statusCode: response.status,
+        });
+        return null;
+      }
+
+      const data = await response.json() as { token: string; expiresAt: string };
+      this.authTokens.set(userId, data.token);
+      logger.info(`✅ [${INSTANCE_ID}] Token refreshed for user ${userId}, expires at ${data.expiresAt}`);
+      return data.token;
+    } catch (error) {
+      logger.error(`❌ [${INSTANCE_ID}] Error refreshing token:`, error);
+      captureException(error, { userId, operation: 'refreshAuthToken' });
+      return null;
+    }
+  }
+
+  private isUnauthorizedError(error: unknown): boolean {
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase();
+      return message.includes('unauthorized') || message.includes('401');
+    }
+    return false;
   }
 
   // ─── Pairing flow ──────────────────────────────────────────────────────
