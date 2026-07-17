@@ -365,6 +365,21 @@ describe('invite guardrails (DM-only)', () => {
     expect(client.leave).toHaveBeenCalledWith('!enc:syntro.fi');
   });
 
+  it('still leaves an encrypted room when the notice itself is refused by the SDK', async () => {
+    const room = makeInvitableRoom('!enc2:syntro.fi', [BOT_MXID, USER_MXID], { encrypted: true });
+    const client = makeFakeClient({
+      getRoom: vi.fn(() => room),
+      sendTextMessage: vi.fn(async () => {
+        throw new Error('This room is configured to use encryption, but your client does not support encryption.');
+      }),
+    });
+    const gateway = new MatrixGateway(client);
+
+    await gateway._handleMembershipForTest({ userId: BOT_MXID, membership: 'invite', roomId: '!enc2:syntro.fi' });
+
+    expect(client.leave).toHaveBeenCalledWith('!enc2:syntro.fi');
+  });
+
   it('declines a multi-user room invite (counting invited members too) and leaves', async () => {
     const room = makeInvitableRoom('!group:syntro.fi', [BOT_MXID, USER_MXID], { invitedAndJoined: 5 });
     const client = makeFakeClient({ getRoom: vi.fn(() => room) });
