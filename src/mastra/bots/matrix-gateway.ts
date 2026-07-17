@@ -64,9 +64,16 @@ export interface MatrixRoomLike {
   roomId: string;
   getJoinedMembers(): MatrixRoomMemberLike[];
   getMyMembership(): string | null;
+  getInvitedAndJoinedMemberCount?(): number;
   currentState?: {
     getStateEvents(eventType: string, stateKey: string): unknown;
   };
+}
+
+export interface MatrixMembershipLike {
+  userId: string;
+  membership: string | undefined;
+  roomId: string;
 }
 
 export interface MatrixEventLike {
@@ -261,6 +268,20 @@ export class MatrixGateway {
         logger.warn(`⚠️ [${INSTANCE_ID}] Sync error state (client will retry)`);
       }
     });
+
+    this.client.on(
+      'RoomMember.membership',
+      (_event: unknown, member: MatrixMembershipLike) => {
+        void (async () => {
+          try {
+            await this.handleMembershipChange(member);
+          } catch (error) {
+            logger.error(`❌ [${INSTANCE_ID}] Membership handler error:`, error);
+            captureException(error, { operation: 'matrixGateway.membership' });
+          }
+        })();
+      },
+    );
 
     this.client.on(
       'Room.timeline',
@@ -686,6 +707,74 @@ export class MatrixGateway {
     return false;
   }
 
+  // ─── Invite guardrails (DM-only, ADR-0043) ────────────────────────────
+  // V3 (room capture via ChannelLink) will relax the multi-user rule — keep
+  // this the single place that decides which rooms the bot stays in.
+
+  private isRoomEncrypted(room: MatrixRoomLike): boolean {
+    return Boolean(room.currentState?.getStateEvents('m.room.encryption', ''));
+  }
+
+  private roomMemberCount(room: MatrixRoomLike): number {
+    return room.getInvitedAndJoinedMemberCount?.() ?? room.getJoinedMembers().length;
+  }
+
+  private async handleMembershipChange(member: MatrixMembershipLike): Promise<void> {
+    if (!this.client) return;
+    const botUserId = this.client.getUserId();
+
+    // Bot invited somewhere → join, inspect, decline if not a viable DM
+    if (member.userId === botUserId && member.membership === 'invite') {
+      await this.handleInvite(member.roomId);
+      return;
+    }
+
+    // A third participant joined a canonical DM → the room stops being a DM
+    if (member.membership === 'join' && member.userId !== botUserId) {
+      const mapping = [...this.mappings.values()].find((m) => m.roomId === member.roomId);
+      if (!mapping || member.userId === mapping.mxid) return;
+      const room = this.client.getRoom(member.roomId);
+      if (!room) return;
+      if (this.roomMemberCount(room) > 2) {
+        await this.client.sendTextMessage(
+          member.roomId,
+          'This room now has more than two members, and I only work in direct messages for now — leaving. Re-pair from https://www.exponential.im/settings/assistant to get a fresh DM.',
+        );
+        await this.client.leave(member.roomId);
+        mapping.roomId = null;
+        logger.info(`🚪 [${INSTANCE_ID}] Left canonical DM ${member.roomId} (grew past 2 members)`);
+      }
+    }
+  }
+
+  private async handleInvite(roomId: string): Promise<void> {
+    if (!this.client) return;
+    await this.client.joinRoom(roomId);
+    const room = this.client.getRoom(roomId);
+    if (!room) return;
+
+    if (this.isRoomEncrypted(room)) {
+      // The notice goes out as a plain (unencrypted) event, which clients render.
+      await this.client.sendTextMessage(
+        roomId,
+        `I can't read encrypted rooms yet — message me in our direct chat instead (or pair at https://www.exponential.im/settings/assistant and I'll create one).`,
+      );
+      await this.client.leave(roomId);
+      logger.info(`🚪 [${INSTANCE_ID}] Declined encrypted room ${roomId}`);
+      return;
+    }
+
+    if (this.roomMemberCount(room) > 2) {
+      await this.client.sendTextMessage(
+        roomId,
+        'I only work in direct messages for now. DM me, or pair at https://www.exponential.im/settings/assistant.',
+      );
+      await this.client.leave(roomId);
+      logger.info(`🚪 [${INSTANCE_ID}] Declined multi-user room ${roomId}`);
+    }
+    // 2-member unencrypted room: stay — the timeline handler takes it from here.
+  }
+
   // ─── Pairing flow ──────────────────────────────────────────────────────
 
   /**
@@ -982,6 +1071,11 @@ export class MatrixGateway {
   /** Test-only: drive a timeline event without a real sync loop. */
   async _handleTimelineEventForTest(event: MatrixEventLike, room: MatrixRoomLike): Promise<void> {
     await this.handleTimelineEvent(event, room);
+  }
+
+  /** Test-only: drive a membership change without a real sync loop. */
+  async _handleMembershipForTest(member: MatrixMembershipLike): Promise<void> {
+    await this.handleMembershipChange(member);
   }
 
   /** Test-only: age a pending pairing so expiry paths can be exercised. */

@@ -335,6 +335,71 @@ describe('paired DM agent chat', () => {
   });
 });
 
+function makeInvitableRoom(
+  roomId: string,
+  memberIds: string[],
+  opts: { encrypted?: boolean; invitedAndJoined?: number } = {},
+): MatrixRoomLike {
+  return {
+    roomId,
+    getJoinedMembers: () => memberIds.map((userId) => ({ userId })),
+    getMyMembership: () => 'join',
+    getInvitedAndJoinedMemberCount: () => opts.invitedAndJoined ?? memberIds.length,
+    currentState: {
+      getStateEvents: (type: string) =>
+        type === 'm.room.encryption' && opts.encrypted ? { type } : null,
+    },
+  };
+}
+
+describe('invite guardrails (DM-only)', () => {
+  it('declines an encrypted-room invite with a plaintext notice and leaves', async () => {
+    const room = makeInvitableRoom('!enc:syntro.fi', [BOT_MXID, USER_MXID], { encrypted: true });
+    const client = makeFakeClient({ getRoom: vi.fn(() => room) });
+    const gateway = new MatrixGateway(client);
+
+    await gateway._handleMembershipForTest({ userId: BOT_MXID, membership: 'invite', roomId: '!enc:syntro.fi' });
+
+    expect(client.joinRoom).toHaveBeenCalledWith('!enc:syntro.fi');
+    expect(client.sendTextMessage).toHaveBeenCalledWith('!enc:syntro.fi', expect.stringContaining("encrypted"));
+    expect(client.leave).toHaveBeenCalledWith('!enc:syntro.fi');
+  });
+
+  it('declines a multi-user room invite (counting invited members too) and leaves', async () => {
+    const room = makeInvitableRoom('!group:syntro.fi', [BOT_MXID, USER_MXID], { invitedAndJoined: 5 });
+    const client = makeFakeClient({ getRoom: vi.fn(() => room) });
+    const gateway = new MatrixGateway(client);
+
+    await gateway._handleMembershipForTest({ userId: BOT_MXID, membership: 'invite', roomId: '!group:syntro.fi' });
+
+    expect(client.sendTextMessage).toHaveBeenCalledWith('!group:syntro.fi', expect.stringContaining('direct messages'));
+    expect(client.leave).toHaveBeenCalledWith('!group:syntro.fi');
+  });
+
+  it('stays in a 2-member unencrypted room', async () => {
+    const room = makeInvitableRoom('!dm2:syntro.fi', [BOT_MXID, USER_MXID]);
+    const client = makeFakeClient({ getRoom: vi.fn(() => room) });
+    const gateway = new MatrixGateway(client);
+
+    await gateway._handleMembershipForTest({ userId: BOT_MXID, membership: 'invite', roomId: '!dm2:syntro.fi' });
+
+    expect(client.joinRoom).toHaveBeenCalled();
+    expect(client.leave).not.toHaveBeenCalled();
+  });
+
+  it('leaves a canonical DM that grows past 2 members and clears the room binding', async () => {
+    const grownRoom = makeInvitableRoom(DM_ROOM, [BOT_MXID, USER_MXID, '@third:syntro.fi']);
+    const client = makeFakeClient({ getRoom: vi.fn(() => grownRoom) });
+    const gateway = new MatrixGateway(client);
+    await pairUser(gateway);
+
+    await gateway._handleMembershipForTest({ userId: '@third:syntro.fi', membership: 'join', roomId: DM_ROOM });
+
+    expect(client.leave).toHaveBeenCalledWith(DM_ROOM);
+    expect(gateway.getMappingByMxid(USER_MXID)?.roomId).toBeNull();
+  });
+});
+
 describe('markdownToMatrixHtml', () => {
   it('renders links, emphasis and code to real HTML', () => {
     const html = markdownToMatrixHtml('**bold** with [a link](https://example.com) and `code`');
