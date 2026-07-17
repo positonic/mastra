@@ -7,6 +7,7 @@ import { memory, storage } from './memory/index.js';
 import { createLogger } from './utils/logger.js';
 import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js';
 import { createTelegramGateway, cleanupTelegramGateway } from './bots/telegram-gateway.js';
+import { createMatrixGateway, cleanupMatrixGateway } from './bots/matrix-gateway.js';
 import { createWhatsAppGateway, cleanupWhatsAppGateway } from './bots/whatsapp-gateway.js';
 import { startSignalGateway, getSignalGateway } from './bots/signal-gateway.js';
 import { startVoiceGateway, cleanupVoiceGateway } from './bots/voice-gateway.js';
@@ -235,6 +236,13 @@ if (!enableTelegramGateway) {
   logger.info('📵 [MAIN] Telegram gateway disabled (set ENABLE_TELEGRAM_GATEWAY=true to enable)');
 }
 
+// Initialize Matrix gateway (multi-tenant, for Exponential app users; ADR-0043)
+const enableMatrixGateway = process.env.ENABLE_MATRIX_GATEWAY === 'true';
+export const matrixGateway = enableMatrixGateway ? createMatrixGateway() : null;
+if (!enableMatrixGateway) {
+  logger.info('📵 [MAIN] Matrix gateway disabled (set ENABLE_MATRIX_GATEWAY=true to enable)');
+}
+
 // Initialize WhatsApp gateway
 export const whatsAppGateway = createWhatsAppGateway();
 
@@ -291,6 +299,9 @@ const shutdown = async (signal: string, error?: Error) => {
     }
     if (enableTelegramGateway) {
       await cleanupTelegramGateway();
+    }
+    if (enableMatrixGateway) {
+      await cleanupMatrixGateway();
     }
     await cleanupWhatsAppGateway();
     await cleanupVoiceGateway();
