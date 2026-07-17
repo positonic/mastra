@@ -3,10 +3,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   MatrixGateway,
   createMatrixGateway,
+  type AgentLike,
+  type AgentResolver,
   type MatrixClientLike,
   type MatrixEventLike,
   type MatrixRoomLike,
 } from '../matrix-gateway.js';
+import { markdownToMatrixHtml } from '../../utils/matrix-format.js';
 
 const BOT_MXID = '@zoe:syntro.fi';
 const USER_MXID = '@james:syntro.fi';
@@ -194,6 +197,150 @@ describe('unpaired senders', () => {
     );
 
     expect(client.sendTextMessage).not.toHaveBeenCalled();
+  });
+});
+
+async function pairUser(gateway: MatrixGateway): Promise<void> {
+  const { pairingCode } = await gateway.beginPairing('u1', 'jwt-1', USER_MXID);
+  await gateway._handleTimelineEventForTest(
+    makeEvent(USER_MXID, pairingCode),
+    makeRoom(DM_ROOM, [BOT_MXID, USER_MXID]),
+  );
+}
+
+describe('paired DM agent chat', () => {
+  let fakeAgent: { generate: ReturnType<typeof vi.fn> };
+  let resolver: AgentResolver;
+
+  beforeEach(() => {
+    fakeAgent = { generate: vi.fn(async () => ({ text: '**Hello** from the _agent_' })) };
+    resolver = vi.fn(async () => fakeAgent as unknown as AgentLike) as unknown as AgentResolver;
+  });
+
+  it('routes a paired DM to the agent with Matrix memory scoping and replies with HTML formatted_body', async () => {
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client, resolver);
+    await pairUser(gateway);
+
+    await gateway._handleTimelineEventForTest(
+      makeEvent(USER_MXID, 'what is on my plate today?'),
+      makeRoom(DM_ROOM, [BOT_MXID, USER_MXID]),
+    );
+
+    expect(resolver).toHaveBeenCalledWith('assistant');
+    const [messages, opts] = fakeAgent.generate.mock.calls[0];
+    expect(messages[0].role).toBe('system');
+    expect(messages.at(-1)).toEqual({ role: 'user', content: 'what is on my plate today?' });
+    expect(opts.memory).toEqual({ resource: 'u1', thread: `matrix-u1-${DM_ROOM}` });
+
+    const htmlEvent = (client.sendEvent as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[1] === 'm.room.message',
+    );
+    expect(htmlEvent).toBeDefined();
+    expect(htmlEvent![2]).toMatchObject({
+      msgtype: 'm.text',
+      body: '**Hello** from the _agent_',
+      format: 'org.matrix.custom.html',
+    });
+    expect(String(htmlEvent![2].formatted_body)).toContain('<strong>Hello</strong>');
+  });
+
+  it('shows a typing indicator during generation and clears it after', async () => {
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client, resolver);
+    await pairUser(gateway);
+
+    await gateway._handleTimelineEventForTest(
+      makeEvent(USER_MXID, 'hi'),
+      makeRoom(DM_ROOM, [BOT_MXID, USER_MXID]),
+    );
+
+    const typingCalls = (client.sendTyping as ReturnType<typeof vi.fn>).mock.calls;
+    expect(typingCalls[0][1]).toBe(true);
+    expect(typingCalls.at(-1)![1]).toBe(false);
+  });
+
+  it('refreshes the JWT exactly once and retries on a 401 from the agent', async () => {
+    fakeAgent.generate
+      .mockRejectedValueOnce(new Error('Request failed: 401 Unauthorized'))
+      .mockResolvedValueOnce({ text: 'after refresh' });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes('/refresh-token')) {
+        return okJson({ token: 'fresh-jwt', expiresAt: new Date(Date.now() + 3600_000).toISOString() });
+      }
+      return okJson({ mapping: {} });
+    });
+
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client, resolver);
+    await pairUser(gateway);
+
+    await gateway._handleTimelineEventForTest(
+      makeEvent(USER_MXID, 'hi'),
+      makeRoom(DM_ROOM, [BOT_MXID, USER_MXID]),
+    );
+
+    expect(fakeAgent.generate).toHaveBeenCalledTimes(2);
+    const refreshCalls = fetchMock.mock.calls.filter((c) => String(c[0]).includes('/refresh-token'));
+    expect(refreshCalls).toHaveLength(1);
+    // The retried call carries the fresh token in its request context
+    const retryOpts = fakeAgent.generate.mock.calls[1][1];
+    expect(retryOpts.requestContext.get('authToken')).toBe('fresh-jwt');
+  });
+
+  it('@mention overrides the default agent', async () => {
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client, resolver);
+    await pairUser(gateway);
+
+    await gateway._handleTimelineEventForTest(
+      makeEvent(USER_MXID, '@zoe how is my week?'),
+      makeRoom(DM_ROOM, [BOT_MXID, USER_MXID]),
+    );
+
+    expect(resolver).toHaveBeenCalledWith('zoe');
+    expect(fakeAgent.generate.mock.calls[0][0].at(-1).content).toBe('how is my week?');
+  });
+
+  it('politely declines non-text messages from a paired user', async () => {
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client, resolver);
+    await pairUser(gateway);
+
+    await gateway._handleTimelineEventForTest(
+      {
+        getType: () => 'm.room.message',
+        getSender: () => USER_MXID,
+        getContent: () => ({ msgtype: 'm.image', url: 'mxc://x' }),
+        getRoomId: () => DM_ROOM,
+      },
+      makeRoom(DM_ROOM, [BOT_MXID, USER_MXID]),
+    );
+
+    expect(fakeAgent.generate).not.toHaveBeenCalled();
+    expect(client.sendTextMessage).toHaveBeenCalledWith(DM_ROOM, expect.stringContaining('text messages'));
+  });
+
+  it('!agent switches the default agent', async () => {
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client, resolver);
+    await pairUser(gateway);
+
+    await gateway._handleTimelineEventForTest(
+      makeEvent(USER_MXID, '!agent zoe'),
+      makeRoom(DM_ROOM, [BOT_MXID, USER_MXID]),
+    );
+    expect(gateway.getMappingByMxid(USER_MXID)?.agentId).toBe('zoe');
+    expect(fakeAgent.generate).not.toHaveBeenCalled();
+  });
+});
+
+describe('markdownToMatrixHtml', () => {
+  it('renders links, emphasis and code to real HTML', () => {
+    const html = markdownToMatrixHtml('**bold** with [a link](https://example.com) and `code`');
+    expect(html).toContain('<strong>bold</strong>');
+    expect(html).toContain('<a href="https://example.com"');
+    expect(html).toContain('<code>code</code>');
   });
 });
 

@@ -36,6 +36,7 @@
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "ai": "^6.0.73",
     "jsonwebtoken": "^9.0.2",
+    "marked": "^18.0.6",
     "mastra": "^1.5.0",
     "matrix-js-sdk": "^37.5.0",
     "node-cron": "^4.2.1",
