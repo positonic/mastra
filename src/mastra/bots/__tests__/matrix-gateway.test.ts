@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { Readable } from 'stream';
 
 import {
   MatrixGateway,
@@ -412,6 +413,89 @@ describe('invite guardrails (DM-only)', () => {
 
     expect(client.leave).toHaveBeenCalledWith(DM_ROOM);
     expect(gateway.getMappingByMxid(USER_MXID)?.roomId).toBeNull();
+  });
+});
+
+function fakeReq(body: unknown, headers: Record<string, string> = {}) {
+  const stream = Readable.from([JSON.stringify(body)]) as unknown as {
+    headers: Record<string, string>;
+    method: string;
+    on: (...a: unknown[]) => unknown;
+  };
+  stream.headers = headers;
+  stream.method = 'POST';
+  return stream;
+}
+
+function fakeRes() {
+  const res = {
+    statusCode: 0,
+    body: undefined as unknown,
+    writeHead(status: number) {
+      res.statusCode = status;
+      return res;
+    },
+    end(payload?: string) {
+      res.body = payload ? JSON.parse(payload) : undefined;
+      return res;
+    },
+  };
+  return res;
+}
+
+describe('POST /notify (outbound delivery)', () => {
+  it('rejects a missing/wrong gateway secret', async () => {
+    const gateway = new MatrixGateway(makeFakeClient());
+    const res = fakeRes();
+    await gateway._handleNotifyForTest(
+      fakeReq({ userId: 'u1', message: 'hi' }, { 'x-gateway-secret': 'wrong' }) as never,
+      res as never,
+    );
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('400s when userId or message is missing', async () => {
+    const gateway = new MatrixGateway(makeFakeClient());
+    const res = fakeRes();
+    await gateway._handleNotifyForTest(
+      fakeReq({ userId: 'u1' }, { 'x-gateway-secret': 'test-gateway-secret' }) as never,
+      res as never,
+    );
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('404s when the user has no paired Matrix DM', async () => {
+    const gateway = new MatrixGateway(makeFakeClient());
+    const res = fakeRes();
+    await gateway._handleNotifyForTest(
+      fakeReq({ userId: 'nope', message: 'hi' }, { 'x-gateway-secret': 'test-gateway-secret' }) as never,
+      res as never,
+    );
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('delivers an HTML-rendered notification to the paired user\'s canonical DM', async () => {
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client);
+    await pairUser(gateway);
+
+    const res = fakeRes();
+    await gateway._handleNotifyForTest(
+      fakeReq(
+        { userId: 'u1', title: 'Due soon', message: '**Pay Malte** is due today' },
+        { 'x-gateway-secret': 'test-gateway-secret' },
+      ) as never,
+      res as never,
+    );
+
+    expect(res.statusCode).toBe(200);
+    const htmlEvent = (client.sendEvent as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[1] === 'm.room.message',
+    );
+    expect(htmlEvent).toBeDefined();
+    expect(htmlEvent![0]).toBe(DM_ROOM);
+    expect(String(htmlEvent![2].formatted_body)).toContain('<strong>Due soon</strong>');
+    expect(String(htmlEvent![2].body)).toContain('Pay Malte');
   });
 });
 
