@@ -943,6 +943,7 @@ export class MatrixGateway {
       logger.info(`   POST   /pair     — Begin pairing (creates the unencrypted DM)`);
       logger.info(`   DELETE /pair     — Unpair account`);
       logger.info(`   GET    /status   — Check pairing status`);
+      logger.info(`   POST   /notify   — Deliver an outbound notification (gateway-secret)`);
       logger.info(`   GET    /health   — Liveness (no auth)`);
     });
   }
@@ -956,6 +957,14 @@ export class MatrixGateway {
         status: 'ok',
         matrixConnected: this.started && this.client !== null,
       });
+      return;
+    }
+
+    // Server-to-server outbound: the app posts a notification for a user; the
+    // gateway resolves that user's canonical DM room. Gateway-secret guarded
+    // (not a user JWT) — the bot token never leaves the gateway (V2, ADR-0043).
+    if (req.method === 'POST' && pathname === '/notify') {
+      await this.handleNotifyRequest(req, res);
       return;
     }
 
@@ -983,6 +992,58 @@ export class MatrixGateway {
       this.handleStatusRequest(userId, res);
     } else {
       sendJsonResponse(res, 404, { error: 'Not found' });
+    }
+  }
+
+  private async handleNotifyRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const secret = gatewaySecret();
+    if (!secret) {
+      sendJsonResponse(res, 500, { error: 'Gateway secret not configured' });
+      return;
+    }
+    if (req.headers['x-gateway-secret'] !== secret) {
+      sendJsonResponse(res, 401, { error: 'Invalid gateway secret' });
+      return;
+    }
+
+    let body: { userId?: string; title?: string; message?: string };
+    try {
+      const raw = await readBody(req);
+      body = raw ? JSON.parse(raw) : {};
+    } catch {
+      sendJsonResponse(res, 400, { error: 'Invalid JSON' });
+      return;
+    }
+
+    const { userId, title, message } = body;
+    if (!userId || !message) {
+      sendJsonResponse(res, 400, { error: 'userId and message are required' });
+      return;
+    }
+
+    if (!this.client) {
+      sendJsonResponse(res, 503, { error: 'Matrix client is not connected' });
+      return;
+    }
+
+    // Resolve the user's canonical DM room from the in-memory mapping. A user
+    // who hasn't paired (or whose room hasn't been rebuilt) has no destination.
+    const mxid = this.userIdToMxid.get(userId);
+    const mapping = mxid ? this.mappings.get(mxid) : undefined;
+    if (!mapping?.roomId) {
+      sendJsonResponse(res, 404, { error: 'User has no paired Matrix DM' });
+      return;
+    }
+
+    try {
+      const rendered = title ? `**${title}**\n\n${message}` : message;
+      await this.sendMarkdownMessage(mapping.roomId, rendered);
+      sendJsonResponse(res, 200, { delivered: true, roomId: mapping.roomId });
+      logger.info(`📤 [${INSTANCE_ID}] Notification delivered to user ${userId}`);
+    } catch (error) {
+      logger.error(`❌ [${INSTANCE_ID}] Notify delivery failed for ${userId}:`, error);
+      captureException(error, { userId, operation: 'matrixGateway.notify' });
+      sendJsonResponse(res, 502, { error: 'Delivery to Matrix failed' });
     }
   }
 
@@ -1080,6 +1141,11 @@ export class MatrixGateway {
   /** Test-only: drive a membership change without a real sync loop. */
   async _handleMembershipForTest(member: MatrixMembershipLike): Promise<void> {
     await this.handleMembershipChange(member);
+  }
+
+  /** Test-only: drive a /notify request without binding the HTTP port. */
+  async _handleNotifyForTest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    await this.handleNotifyRequest(req, res);
   }
 
   /** Test-only: age a pending pairing so expiry paths can be exercised. */
