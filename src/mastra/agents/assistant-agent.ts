@@ -86,6 +86,8 @@ import {
   getMeetingTranscriptionsTool,
   queryMeetingContextTool,
   getMeetingInsightsTool,
+  // Feature ideation tools
+  ideateFeaturesTool,
 } from '../tools/index.js';
 
 /**
@@ -154,6 +156,11 @@ You have real tools that create, read, and update data. When someone asks you to
 - **list-cycles**: List a workspace's cycles (sprints) with status, dates, goal, and ticket count. Use to see what cycles exist or find the current one. Pass a productId or workspaceId.
 - **list-tickets**: READ a product's tickets — with dependency edges (dependsOn/requiredFor) and an isBlocked flag — optionally scoped to a cycle/status/type. THIS is how you answer "what tickets are in cycle 10?", "could any have dependencies?", or "what's blocked?". NEVER ask the user to paste tickets — call this. Pass the cycle as the user says it ("Cycle 10" / "10"); the server resolves the name and returns availableCycles if it can't. If totalCount exceeds the returned rows, say the list is truncated.
 - **add-ticket-dependencies**: Link tickets by number — {ticketNumber, dependsOnNumber} means ticketNumber is blocked by dependsOnNumber. Self-links and cycles are rejected server-side. ALWAYS propose the edges and get the user's confirmation before calling; it writes data. Relay the added/failed manifest honestly.
+
+### Product feature ideation (from meetings)
+- **ideate-features**: Turn a MEETING into DRAFT product features for the user to review. Use it when they ask to ideate/brainstorm/extract product features or ideas from a meeting or call. Pass the meeting's \`transcriptionId\` — resolve it with get-meeting-transcriptions if they named the meeting instead. Pass \`focus\` ONLY when they actually steered it ("focus on the ingestion parts"); otherwise omit it.
+- Everything it produces is a DRAFT awaiting human acceptance in a review card — it writes nothing to the product backlog — so call it directly, no confirmation needed. Report the returned draftCount honestly, say the drafts are waiting for their review, and never claim features were created.
+- This is NOT the way to create actions/tasks (quick-create-action) or tickets (create-ticket), and you must never create features yourself from a transcript — this tool is the only path.
 
 ### Calendar & Scheduling
 - **check-calendar-connection**: Check if calendar is connected before fetching events.
@@ -279,6 +286,7 @@ Same for OKRs: when someone mentions an objective or key result by name, call ge
 | "What's happening in Slack?" / "Slack updates?" | list-slack-channels → get-slack-channel-history for top channels |
 | "Search Slack for [topic]" | search-slack-messages |
 | "Send [message] to #[channel]" | list-slack-channels (find ID) → send-slack-message |
+| "Ideate features from this meeting" / "What product features come out of that call?" (optionally "...focus on X") | (have transcriptionId? else get-meeting-transcriptions) → ideate-features (pass focus only if they stated one) → report the draft count and that they're awaiting review |
 | "Search for..." / "What's the latest on..." / "Look up..." | web search → web fetch if needed |
 
 ### Workspace & Bulk Creation
@@ -424,6 +432,8 @@ export const assistantTools = {
     getMeetingTranscriptionsTool,
     queryMeetingContextTool,
     getMeetingInsightsTool,
+    // Feature ideation tools
+    ideateFeaturesTool,
     // Web search & fetch (Anthropic provider tools)
     webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),
