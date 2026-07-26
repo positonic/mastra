@@ -96,6 +96,8 @@ import {
   getMeetingTranscriptionsTool,
   queryMeetingContextTool,
   getMeetingInsightsTool,
+  // Feature ideation tools
+  ideateFeaturesTool,
 } from '../tools/index.js';
 
 /**
@@ -320,6 +322,15 @@ You can search and analyze meeting transcriptions:
 - "Show me recent meeting notes" / "What meetings have I had?" → get-meeting-transcriptions with 'includeTranscript: false'
 - "Summarize my last meeting" / "What did we decide in the [name] call?" → get-meeting-transcriptions with 'includeTranscript: true'
 - "What decisions were made last week?" / "Any blockers from meetings?" → get-meeting-insights with appropriate insightTypes
+
+### Product feature ideation (from meetings)
+- **ideate-features**: Turn a MEETING into DRAFT product features for the user to review. Reach for it when they ask to ideate, brainstorm, or pull product features/ideas out of a meeting or call. Needs the meeting's 'transcriptionId' — resolve it with get-meeting-transcriptions if they named the meeting instead. Pass 'focus' ONLY when they actually steered it ("focus on the ingestion parts"); otherwise omit it.
+- Everything it produces is a DRAFT awaiting human acceptance in a review card — it writes NOTHING to the product backlog — so just call it, no confirmation needed. Report the returned draftCount honestly, say the drafts are waiting on their review, and never claim features were created.
+- This is NOT how you create actions/tasks (quick-create-action) or tickets (create-ticket), and you must never hand-create features from a transcript — this tool is the only path.
+
+**Usage patterns:**
+- "Ideate features from this meeting" / "What features come out of that call?" → ideate-features with the transcriptionId
+- "Ideate features from the ingestion call, focus on the ingestion parts" → get-meeting-transcriptions (find it) → ideate-features with focus
 
 ### Slack
 You can read, search, and send Slack messages:
@@ -622,6 +633,8 @@ const zoeTools = {
     getMeetingTranscriptionsTool,
     queryMeetingContextTool,
     getMeetingInsightsTool,
+    // Feature ideation tools
+    ideateFeaturesTool,
     // Web search & fetch (Anthropic provider tools)
     webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),

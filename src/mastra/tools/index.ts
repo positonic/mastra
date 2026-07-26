@@ -2516,5 +2516,8 @@ export { getActiveSprintTool, getSprintMetricsTool, getRiskSignalsTool, getGitHu
 // Slack tools
 export { sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, listSlackChannelsTool, getSlackChannelHistoryTool, getSlackThreadRepliesTool, searchSlackMessagesTool, getSlackMentionsTool, getSlackUnreadsTool } from "./slack-tools.js";
 
+// Feature ideation tools (meeting → draft product features, human-reviewed)
+export { ideateFeaturesTool } from "./feature-ideation-tools.js";
+
 // Tradescape trading tools
 export { tradescapeTools, listSetupsTool, createSetupTool, listAlertsTool, createAlertTool, deleteAlertTool, listPositionsTool, syncTradesTool, dailySummaryTool } from "./tradescape-tools.js";
