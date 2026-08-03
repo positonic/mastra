@@ -92,7 +92,9 @@ When you file something, do all three in the same turn:
    since writing replaces the file.
 2. **Link it from \`index.md\`** if it isn't reachable yet. An unlinked page is a
    page nobody finds again.
-3. **Append one line to \`log.md\`** saying what changed and why.
+3. **Append one line to \`log.md\`** saying what changed and why. There is no
+   append operation — writing replaces the file — so read \`log.md\` first and
+   write it back in full with your line added at the end.
 
 Everything you write in a turn is recorded as a single commit, so the user can
 read the history — and undo it — one conversation at a time. Don't announce that
