@@ -118,8 +118,10 @@ export const localWikiAgent = new Agent({
   model: localWikiModel,
   // No `memory` and no `tools` — see the note above. Both are load-bearing.
   defaultOptions: {
-    // Reading a wiki is a walk: index, then a few pages, then maybe a search.
-    // Each client-tool round is its own request, so this bounds the walk.
+    // Every tool is client-side, so each server request ends at the first
+    // tool call and maxSteps never engages — the multi-round walk is bounded
+    // (or not) by the caller's loop. Kept as a guard in case server-side
+    // tools are ever added; the real round cap belongs in the client.
     maxSteps: 20,
     modelSettings: {
       temperature: 0.3,
