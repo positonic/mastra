@@ -34,12 +34,13 @@ function makeFakeClient(overrides: Partial<MatrixClientLike> = {}): MatrixClient
   };
 }
 
-function makeEvent(sender: string, body: string, msgtype = 'm.text'): MatrixEventLike {
+function makeEvent(sender: string, body: string, msgtype = 'm.text', ts = Date.now()): MatrixEventLike {
   return {
     getType: () => 'm.room.message',
     getSender: () => sender,
     getContent: () => ({ msgtype, body }),
     getRoomId: () => DM_ROOM,
+    getTs: () => ts,
   };
 }
 
@@ -199,6 +200,51 @@ describe('unpaired senders', () => {
 
     expect(client.sendTextMessage).not.toHaveBeenCalled();
   });
+
+  it('stays quiet in a group room — unpaired members there are not prospects', async () => {
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client);
+    const teamRoom = makeRoom('!team:syntro.fi', [
+      BOT_MXID,
+      USER_MXID,
+      '@stranger:matrix.org',
+      '@someone-else:matrix.org',
+    ]);
+
+    await gateway._handleTimelineEventForTest(makeEvent('@stranger:matrix.org', 'standup: ...'), teamRoom);
+
+    expect(client.sendTextMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('initial-sync replay', () => {
+  it('ignores timeline events that predate the sync — the previous instance handled them', async () => {
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client);
+    gateway._setSyncStartedAtForTest(Date.now());
+    const room = makeRoom(DM_ROOM, [BOT_MXID, '@stranger:matrix.org']);
+
+    await gateway._handleTimelineEventForTest(
+      makeEvent('@stranger:matrix.org', 'sent yesterday', 'm.text', Date.now() - 24 * 60 * 60 * 1000),
+      room,
+    );
+
+    expect(client.sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('still handles a message sent just before the restart — it never got a reply', async () => {
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client);
+    gateway._setSyncStartedAtForTest(Date.now());
+    const room = makeRoom(DM_ROOM, [BOT_MXID, '@stranger:matrix.org']);
+
+    await gateway._handleTimelineEventForTest(
+      makeEvent('@stranger:matrix.org', 'hello?', 'm.text', Date.now() - 5000),
+      room,
+    );
+
+    expect(client.sendTextMessage).toHaveBeenCalledWith(DM_ROOM, expect.stringContaining('pairing code'));
+  });
 });
 
 async function pairUser(gateway: MatrixGateway): Promise<void> {
@@ -314,6 +360,7 @@ describe('paired DM agent chat', () => {
         getSender: () => USER_MXID,
         getContent: () => ({ msgtype: 'm.image', url: 'mxc://x' }),
         getRoomId: () => DM_ROOM,
+        getTs: () => Date.now(),
       },
       makeRoom(DM_ROOM, [BOT_MXID, USER_MXID]),
     );
