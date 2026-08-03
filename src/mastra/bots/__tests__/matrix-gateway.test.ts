@@ -44,12 +44,21 @@ function makeEvent(sender: string, body: string, msgtype = 'm.text', ts = Date.n
   };
 }
 
-function makeRoom(roomId: string, memberIds: string[]): MatrixRoomLike {
+function makeRoom(roomId: string, memberIds: string[], membership = 'join'): MatrixRoomLike {
   return {
     roomId,
     getJoinedMembers: () => memberIds.map((userId) => ({ userId })),
-    getMyMembership: () => 'join',
+    getMyMembership: () => membership,
   };
+}
+
+/**
+ * The gateway only claims someone is unpaired once it has actually read the
+ * mapping table, so tests that exercise that branch must establish it first.
+ */
+async function loadEmptyMappingTable(gateway: MatrixGateway, mock = fetchMock): Promise<void> {
+  mock.mockResolvedValueOnce(okJson({ mappings: [] }));
+  await gateway.loadMappingsFromApp();
 }
 
 function okJson(body: unknown): Response {
@@ -179,6 +188,7 @@ describe('unpaired senders', () => {
   it('sends pairing instructions, with a cooldown against loops', async () => {
     const client = makeFakeClient();
     const gateway = new MatrixGateway(client);
+    await loadEmptyMappingTable(gateway);
     const room = makeRoom(DM_ROOM, [BOT_MXID, '@stranger:matrix.org']);
 
     await gateway._handleTimelineEventForTest(makeEvent('@stranger:matrix.org', 'hello?'), room);
@@ -235,6 +245,7 @@ describe('initial-sync replay', () => {
   it('still handles a message sent just before the restart — it never got a reply', async () => {
     const client = makeFakeClient();
     const gateway = new MatrixGateway(client);
+    await loadEmptyMappingTable(gateway);
     gateway._setSyncStartedAtForTest(Date.now());
     const room = makeRoom(DM_ROOM, [BOT_MXID, '@stranger:matrix.org']);
 
@@ -244,6 +255,169 @@ describe('initial-sync replay', () => {
     );
 
     expect(client.sendTextMessage).toHaveBeenCalledWith(DM_ROOM, expect.stringContaining('pairing code'));
+  });
+});
+
+describe('invite guardrail is state-driven', () => {
+  const GROUP_ROOM = '!group:syntro.fi';
+
+  it('ignores a replayed invite for a room it is already in', async () => {
+    // The initial sync re-emits historical membership events. Acting on them
+    // made the bot announce itself out of rooms it had been sitting in.
+    const room = makeRoom(GROUP_ROOM, [BOT_MXID, USER_MXID, '@third:syntro.fi'], 'join');
+    const client = makeFakeClient({ getRoom: vi.fn(() => room) });
+    const gateway = new MatrixGateway(client);
+
+    await gateway._handleMembershipForTest({ userId: BOT_MXID, membership: 'invite', roomId: GROUP_ROOM });
+
+    expect(client.joinRoom).not.toHaveBeenCalled();
+    expect(client.leave).not.toHaveBeenCalled();
+    expect(client.sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('ignores a replayed invite for a room it already left, instead of re-joining', async () => {
+    // Current room state cannot decide this one: the SDK sets selfMembership in
+    // recalculate(), after the membership event fires, so a genuine new invite
+    // also reads as "leave" here. The event's age is the signal that works.
+    const room = makeRoom(GROUP_ROOM, [USER_MXID, '@third:syntro.fi'], 'leave');
+    const client = makeFakeClient({ getRoom: vi.fn(() => room) });
+    const gateway = new MatrixGateway(client);
+    gateway._setSyncStartedAtForTest(Date.now());
+
+    await gateway._handleMembershipForTest(
+      { userId: BOT_MXID, membership: 'invite', roomId: GROUP_ROOM },
+      makeEvent(USER_MXID, '', 'm.room.member', Date.now() - 24 * 60 * 60 * 1000),
+    );
+
+    expect(client.joinRoom).not.toHaveBeenCalled();
+    expect(client.sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('accepts a live invite even though the SDK has not settled membership yet', async () => {
+    // Brand-new invite rooms report "leave" from getMyMembership() at this
+    // point — dropping those would silently ignore every real invite.
+    const room = makeRoom(GROUP_ROOM, [BOT_MXID, USER_MXID], 'leave');
+    const client = makeFakeClient({ getRoom: vi.fn(() => room) });
+    const gateway = new MatrixGateway(client);
+    gateway._setSyncStartedAtForTest(Date.now());
+
+    await gateway._handleMembershipForTest(
+      { userId: BOT_MXID, membership: 'invite', roomId: GROUP_ROOM },
+      makeEvent(USER_MXID, '', 'm.room.member', Date.now()),
+    );
+
+    expect(client.joinRoom).toHaveBeenCalledWith(GROUP_ROOM);
+    expect(client.leave).not.toHaveBeenCalled(); // 2-member room: stay
+  });
+
+  it('still declines a genuine invite to a multi-user room', async () => {
+    const invited = makeRoom(GROUP_ROOM, [BOT_MXID, USER_MXID, '@third:syntro.fi'], 'invite');
+    const client = makeFakeClient({ getRoom: vi.fn(() => invited) });
+    const gateway = new MatrixGateway(client);
+
+    await gateway._handleMembershipForTest({ userId: BOT_MXID, membership: 'invite', roomId: GROUP_ROOM });
+
+    expect(client.joinRoom).toHaveBeenCalledWith(GROUP_ROOM);
+    expect(client.sendTextMessage).toHaveBeenCalledWith(GROUP_ROOM, expect.stringContaining('direct messages'));
+    expect(client.leave).toHaveBeenCalledWith(GROUP_ROOM);
+  });
+
+  it('picks up invites that arrived while the gateway was down', async () => {
+    const invited = makeRoom(GROUP_ROOM, [BOT_MXID, USER_MXID, '@third:syntro.fi'], 'invite');
+    const joined = makeRoom(DM_ROOM, [BOT_MXID, USER_MXID], 'join');
+    const client = makeFakeClient({
+      getRooms: vi.fn(() => [joined, invited]),
+      getRoom: vi.fn(() => invited),
+    });
+    const gateway = new MatrixGateway(client);
+
+    await gateway._reconcilePendingInvitesForTest();
+
+    expect(client.joinRoom).toHaveBeenCalledTimes(1);
+    expect(client.joinRoom).toHaveBeenCalledWith(GROUP_ROOM);
+    expect(client.leave).toHaveBeenCalledWith(GROUP_ROOM);
+  });
+});
+
+describe('mapping table is a cache, not a boot snapshot', () => {
+  it('retries a failed load at boot instead of running blind', async () => {
+    const gateway = new MatrixGateway(makeFakeClient());
+    fetchMock.mockResolvedValueOnce(errorResponse(503));
+    fetchMock.mockResolvedValueOnce(okJson({ mappings: [{ mxid: USER_MXID, userId: 'u1' }] }));
+
+    expect(await gateway.loadMappingsFromApp()).toBe(false);
+    expect(await gateway.loadMappingsFromApp()).toBe(true);
+    expect(gateway.getMappingByMxid(USER_MXID)).toMatchObject({ userId: 'u1' });
+  });
+
+  it('re-reads from the app before telling a DM sender they are not connected', async () => {
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client);
+    await loadEmptyMappingTable(gateway); // table read, but this user is not in it yet
+    // ...because they paired elsewhere after our last read
+    fetchMock.mockResolvedValueOnce(okJson({ mappings: [{ mxid: USER_MXID, userId: 'u1' }] }));
+
+    await gateway._handleTimelineEventForTest(
+      makeEvent(USER_MXID, 'what is on my plate today?'),
+      makeRoom(DM_ROOM, [BOT_MXID, USER_MXID]),
+    );
+
+    expect(gateway.getMappingByMxid(USER_MXID)).toMatchObject({ userId: 'u1' });
+    const nags = (client.sendTextMessage as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c) => String(c[1]).includes("haven't connected"));
+    expect(nags).toHaveLength(0);
+  });
+
+  it('stays silent when the table could never be read at all', async () => {
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client);
+    fetchMock.mockResolvedValue(errorResponse(500));
+
+    await gateway._handleTimelineEventForTest(
+      makeEvent('@stranger:matrix.org', 'hello?'),
+      makeRoom(DM_ROOM, [BOT_MXID, '@stranger:matrix.org']),
+    );
+
+    expect(client.sendTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('keeps live session state for mappings the app still knows about', async () => {
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client);
+    await pairUser(gateway); // sets roomId + agentId in memory
+    fetchMock.mockResolvedValueOnce(okJson({ mappings: [{ mxid: USER_MXID, userId: 'u1' }] }));
+
+    await gateway.loadMappingsFromApp();
+
+    expect(gateway.getMappingByMxid(USER_MXID)).toMatchObject({ roomId: DM_ROOM, userId: 'u1' });
+  });
+
+  it('does not evict someone who paired while the read was in flight', async () => {
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client);
+    let releaseRead: (value: Response) => void = () => undefined;
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => { releaseRead = resolve; }));
+
+    const read = gateway.loadMappingsFromApp(); // in flight, app does not know USER_MXID yet
+    await pairUser(gateway); // ...they pair right now
+    releaseRead(okJson({ mappings: [] }));
+    await read;
+
+    expect(gateway.getMappingByMxid(USER_MXID)).toMatchObject({ userId: 'u1' });
+  });
+
+  it('evicts a mapping the app has dropped', async () => {
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client);
+    await pairUser(gateway);
+    // The pairing must predate the read, or the concurrency guard above
+    // (correctly) protects it from eviction.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    fetchMock.mockResolvedValueOnce(okJson({ mappings: [] }));
+
+    await gateway.loadMappingsFromApp();
+
+    expect(gateway.getMappingByMxid(USER_MXID)).toBeUndefined();
   });
 });
 
@@ -386,12 +560,14 @@ describe('paired DM agent chat', () => {
 function makeInvitableRoom(
   roomId: string,
   memberIds: string[],
-  opts: { encrypted?: boolean; invitedAndJoined?: number } = {},
+  opts: { encrypted?: boolean; invitedAndJoined?: number; membership?: string } = {},
 ): MatrixRoomLike {
   return {
     roomId,
     getJoinedMembers: () => memberIds.map((userId) => ({ userId })),
-    getMyMembership: () => 'join',
+    // Defaults to a room we have actually been invited to — the guardrail acts
+    // on membership state, so a fake that always says "join" cannot exercise it.
+    getMyMembership: () => opts.membership ?? 'invite',
     getInvitedAndJoinedMemberCount: () => opts.invitedAndJoined ?? memberIds.length,
     currentState: {
       getStateEvents: (type: string) =>
@@ -451,7 +627,7 @@ describe('invite guardrails (DM-only)', () => {
   });
 
   it('leaves a canonical DM that grows past 2 members and clears the room binding', async () => {
-    const grownRoom = makeInvitableRoom(DM_ROOM, [BOT_MXID, USER_MXID, '@third:syntro.fi']);
+    const grownRoom = makeInvitableRoom(DM_ROOM, [BOT_MXID, USER_MXID, '@third:syntro.fi'], { membership: 'join' });
     const client = makeFakeClient({ getRoom: vi.fn(() => grownRoom) });
     const gateway = new MatrixGateway(client);
     await pairUser(gateway);

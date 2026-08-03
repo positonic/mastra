@@ -46,6 +46,13 @@ const PAIRING_CODE_PATTERN = /^[0-9A-F]{6}$/;
 // since those are the ones that never got a reply.
 const REPLAY_GRACE_MS = 60 * 1000;
 
+// The mapping table is a cache of app state, not a boot-time snapshot to be
+// trusted forever: a failed load must be retried, and a miss must be re-checked
+// against the app before the gateway tells anyone they aren't connected.
+const MAPPING_LOAD_ATTEMPTS = 3;
+const MAPPING_LOAD_BACKOFF_MS = 2000; // × attempt number
+const MAPPING_REFRESH_COOLDOWN_MS = 60 * 1000;
+
 const CONVERSATION_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes (Telegram parity)
 const MAX_HISTORY_MESSAGES = 10;
 const TYPING_TIMEOUT_MS = 30_000;
@@ -209,6 +216,9 @@ export class MatrixGateway {
   private started = false;
   private syncStartedAt = 0; // ts of startClient(); 0 = never synced (tests drive the class directly)
   private replaysSkipped = 0;
+  private mappingsLoadedAt = 0; // last successful read from the app; 0 = never
+  private lastMappingRefreshAt = 0; // rate-limits miss-driven re-reads
+  private mappingRefreshInFlight: Promise<boolean> | null = null;
 
   constructor(
     private readonly injectedClient: MatrixClientLike | null = null,
@@ -237,7 +247,7 @@ export class MatrixGateway {
       return;
     }
 
-    await this.loadMappingsFromApp();
+    await this.loadMappingsWithRetry();
 
     try {
       if (this.injectedClient) {
@@ -275,6 +285,10 @@ export class MatrixGateway {
         } catch (error) {
           logger.error(`❌ [${INSTANCE_ID}] Canonical-room rebuild failed:`, error);
         }
+        void this.reconcilePendingInvites().catch((error: unknown) => {
+          logger.error(`❌ [${INSTANCE_ID}] Invite reconciliation failed:`, error);
+          captureException(error, { operation: 'matrixGateway.reconcileInvites' });
+        });
       } else if (state === 'ERROR') {
         // startClient retries transient sync errors itself; just log.
         logger.warn(`⚠️ [${INSTANCE_ID}] Sync error state (client will retry)`);
@@ -283,10 +297,10 @@ export class MatrixGateway {
 
     this.client.on(
       'RoomMember.membership',
-      (_event: unknown, member: MatrixMembershipLike) => {
+      (event: MatrixEventLike, member: MatrixMembershipLike) => {
         void (async () => {
           try {
-            await this.handleMembershipChange(member);
+            await this.handleMembershipChange(member, event);
           } catch (error) {
             logger.error(`❌ [${INSTANCE_ID}] Membership handler error:`, error);
             captureException(error, { operation: 'matrixGateway.membership' });
@@ -313,21 +327,41 @@ export class MatrixGateway {
 
   // ─── Mappings (persisted app-side, ADR-0043: no gateway-local file) ──────
 
-  async loadMappingsFromApp(): Promise<void> {
+  /**
+   * Read the mapping table from the app. The app is the source of truth
+   * (ADR-0043); `this.mappings` is only a cache of it, so this merges rather
+   * than replaces: live per-session state (canonical roomId, chosen agent) is
+   * kept for mxids the app still knows about, and entries the app has dropped
+   * (unpaired elsewhere) are evicted.
+   *
+   * Returns false when the app could not be reached — the caller must not
+   * treat a failed read as "nobody is paired".
+   */
+  async loadMappingsFromApp(): Promise<boolean> {
     if (!gatewaySecret()) {
       logger.warn(`⚠️ [${INSTANCE_ID}] GATEWAY_SECRET not set — cannot load mappings`);
-      return;
+      return false;
     }
+    const readStartedAt = Date.now();
     try {
       const response = await fetch(`${appBaseUrl()}/api/matrix-gateway/mappings`, {
         headers: { 'X-Gateway-Secret': gatewaySecret()! },
       });
       if (!response.ok) {
         logger.error(`❌ [${INSTANCE_ID}] Failed to load mappings: ${response.status}`);
-        return;
+        return false;
       }
-      const data = await response.json() as { mappings: Array<{ mxid: string; userId: string }> };
+      const data = await response.json() as { mappings?: Array<{ mxid: string; userId: string }> };
+      if (!Array.isArray(data.mappings)) {
+        logger.error(`❌ [${INSTANCE_ID}] Mapping response had no mappings array`);
+        return false;
+      }
+
+      const seen = new Set<string>();
       for (const { mxid, userId } of data.mappings) {
+        seen.add(mxid);
+        const existing = this.mappings.get(mxid);
+        if (existing?.userId === userId) continue; // already live — keep roomId/agentId
         this.mappings.set(mxid, {
           mxid,
           userId,
@@ -338,10 +372,67 @@ export class MatrixGateway {
         });
         this.userIdToMxid.set(userId, mxid);
       }
+      for (const [mxid, mapping] of [...this.mappings]) {
+        if (seen.has(mxid)) continue;
+        // Someone who paired while this read was in flight is legitimately
+        // absent from the response — evicting them would unpair them for real.
+        // >= because both stamps are millisecond-granular: a pairing in the
+        // same millisecond the read began is still concurrent with it.
+        if (mapping.pairedAt && Date.parse(mapping.pairedAt) >= readStartedAt) continue;
+        this.mappings.delete(mxid);
+        if (this.userIdToMxid.get(mapping.userId) === mxid) this.userIdToMxid.delete(mapping.userId);
+        logger.info(`🧹 [${INSTANCE_ID}] Dropped mapping ${mxid} — no longer paired app-side`);
+      }
+
+      this.mappingsLoadedAt = Date.now();
       logger.info(`✅ [${INSTANCE_ID}] Loaded ${this.mappings.size} mapping(s) from app`);
+      return true;
     } catch (error) {
       logger.error(`❌ [${INSTANCE_ID}] Error loading mappings:`, error);
+      return false;
     }
+  }
+
+  /**
+   * Boot-time load. A cold or briefly-unhealthy app must not leave the gateway
+   * running with an empty table for the rest of its life — every paired user
+   * would be told they aren't connected.
+   */
+  private async loadMappingsWithRetry(): Promise<void> {
+    for (let attempt = 1; attempt <= MAPPING_LOAD_ATTEMPTS; attempt++) {
+      if (await this.loadMappingsFromApp()) return;
+      if (attempt === MAPPING_LOAD_ATTEMPTS) break;
+      const backoff = MAPPING_LOAD_BACKOFF_MS * attempt;
+      logger.warn(`⏳ [${INSTANCE_ID}] Mapping load attempt ${attempt} failed — retrying in ${backoff}ms`);
+      await new Promise((resolve) => setTimeout(resolve, backoff));
+    }
+    logger.error(
+      `❌ [${INSTANCE_ID}] Could not load mappings after ${MAPPING_LOAD_ATTEMPTS} attempts — paired users will be resolved lazily`,
+    );
+    captureException(new Error('Matrix gateway could not load mappings at boot'), {
+      operation: 'matrixGateway.loadMappings',
+    });
+  }
+
+  /**
+   * Resolve an mxid against the app when the cache has no entry for it.
+   *
+   * A cache hit is authoritative (pairing writes through it). A cache MISS is
+   * not: the table may predate a pairing made elsewhere, or the boot-time load
+   * may have failed outright. Re-reading before concluding "this user isn't
+   * connected" is what keeps that claim honest. Rate-limited so a stranger
+   * cannot turn message volume into app traffic.
+   */
+  private async resolveMappingFromApp(mxid: string): Promise<MatrixUserMapping | undefined> {
+    if (Date.now() - this.lastMappingRefreshAt < MAPPING_REFRESH_COOLDOWN_MS) {
+      return this.mappings.get(mxid);
+    }
+    this.lastMappingRefreshAt = Date.now();
+    this.mappingRefreshInFlight ??= this.loadMappingsFromApp().finally(() => {
+      this.mappingRefreshInFlight = null;
+    });
+    await this.mappingRefreshInFlight;
+    return this.mappings.get(mxid);
   }
 
   private async persistMapping(mxid: string, userId: string): Promise<boolean> {
@@ -447,8 +538,12 @@ export class MatrixGateway {
       return;
     }
 
-    // 2. Paired user in their canonical DM
-    const mapping = this.mappings.get(sender);
+    // 2. Paired user in their canonical DM. In a DM a cache miss is re-checked
+    // against the app before we act on it — the mapping table is a cache, and
+    // wrongly deciding a connected user is a stranger is the one mistake here
+    // that reaches them as a false statement.
+    const isDm = this.classifyRoom(room) === 'dm';
+    const mapping = this.mappings.get(sender) ?? (isDm ? await this.resolveMappingFromApp(sender) : undefined);
     if (mapping) {
       if (!mapping.roomId) {
         // Mapping loaded from app but room not rebuilt yet — adopt this room if
@@ -467,7 +562,14 @@ export class MatrixGateway {
     // Group rooms are off-limits: the bot sits in team rooms whose members are
     // mostly not Exponential users, and nagging each of them there is noise for
     // everyone else. Paired users get the same silence outside their DM (above).
-    if (this.roomMemberCount(room) > 2) return;
+    if (!isDm) return;
+
+    // Never loaded the table successfully → we don't know who this is. Say
+    // nothing rather than assert something we can't back up.
+    if (!this.mappingsLoadedAt) {
+      logger.warn(`⚠️ [${INSTANCE_ID}] Mappings unavailable — staying silent for ${sender} instead of claiming they are unpaired`);
+      return;
+    }
 
     const last = this.lastInstructedAt.get(sender) ?? 0;
     if (Date.now() - last > INSTRUCTION_COOLDOWN_MS) {
@@ -753,8 +855,26 @@ export class MatrixGateway {
     return room.getInvitedAndJoinedMemberCount?.() ?? room.getJoinedMembers().length;
   }
 
-  private async handleMembershipChange(member: MatrixMembershipLike): Promise<void> {
+  /**
+   * The one place that decides whether a room is somewhere the bot operates.
+   * Both the invite guardrail and the timeline handler consult it, so the
+   * DM-only rule cannot drift between "rooms we stay in" and "rooms we talk in".
+   */
+  private classifyRoom(room: MatrixRoomLike): 'dm' | 'encrypted' | 'multi-user' {
+    if (this.isRoomEncrypted(room)) return 'encrypted';
+    if (this.roomMemberCount(room) > 2) return 'multi-user';
+    return 'dm';
+  }
+
+  private async handleMembershipChange(member: MatrixMembershipLike, event?: MatrixEventLike): Promise<void> {
     if (!this.client) return;
+    // Membership events replay on every initial sync exactly like messages do.
+    // They cannot be filtered by current room state instead: the SDK settles
+    // `selfMembership` in recalculate(), AFTER this event fires, so a genuine
+    // new invite still reads as "leave" here. Invites that were pending while
+    // we were down are picked up by reconcilePendingInvites() after sync, where
+    // room state IS reliable.
+    if (event && this.isInitialSyncReplay(event)) return;
     const botUserId = this.client.getUserId();
 
     // Bot invited somewhere → join, inspect, decline if not a viable DM
@@ -769,6 +889,7 @@ export class MatrixGateway {
       if (!mapping || member.userId === mapping.mxid) return;
       const room = this.client.getRoom(member.roomId);
       if (!room) return;
+      if (room.getMyMembership() !== 'join') return; // already gone (or a replayed join)
       if (this.roomMemberCount(room) > 2) {
         await this.client.sendTextMessage(
           member.roomId,
@@ -781,13 +902,23 @@ export class MatrixGateway {
     }
   }
 
+  /**
+   * Decide on a room the bot has been invited to. Idempotent: a room we are
+   * already in has nothing left to decide, so re-running this (from a repeat
+   * invite, or from the post-sync reconciliation) is a no-op rather than an
+   * announce-and-leave in a room where we are a settled member.
+   */
   private async handleInvite(roomId: string): Promise<void> {
     if (!this.client) return;
+    if (this.client.getRoom(roomId)?.getMyMembership() === 'join') return;
+
     await this.client.joinRoom(roomId);
     const room = this.client.getRoom(roomId);
     if (!room) return;
 
-    if (this.isRoomEncrypted(room)) {
+    const verdict = this.classifyRoom(room);
+
+    if (verdict === 'encrypted') {
       // Best-effort only: matrix-js-sdk REFUSES to send any event into an
       // encrypted room from a crypto-less client (verified live against
       // Synapse) — so the leave must never depend on the notice succeeding.
@@ -802,7 +933,7 @@ export class MatrixGateway {
       return;
     }
 
-    if (this.roomMemberCount(room) > 2) {
+    if (verdict === 'multi-user') {
       await this.client.sendTextMessage(
         roomId,
         'I only work in direct messages for now. DM me, or pair at https://www.exponential.im/settings/assistant.',
@@ -811,6 +942,31 @@ export class MatrixGateway {
       logger.info(`🚪 [${INSTANCE_ID}] Declined multi-user room ${roomId}`);
     }
     // 2-member unencrypted room: stay — the timeline handler takes it from here.
+  }
+
+  /**
+   * Process invites that are still pending after a sync.
+   *
+   * Invites that arrive while the gateway is down were previously picked up by
+   * accident, via replayed membership events. Now that replays are ignored,
+   * this is the deliberate version: it reads invite state, so it converges on
+   * whatever is actually outstanding rather than on what the event stream
+   * happens to repeat. Already-joined rooms are untouched — this reconciles
+   * pending invites only, not the bot's existing memberships.
+   */
+  private async reconcilePendingInvites(): Promise<void> {
+    if (!this.client) return;
+    const pending = this.client.getRooms().filter((room) => room.getMyMembership() === 'invite');
+    if (pending.length === 0) return;
+    logger.info(`📥 [${INSTANCE_ID}] Reconciling ${pending.length} pending invite(s)`);
+    for (const room of pending) {
+      try {
+        await this.handleInvite(room.roomId);
+      } catch (error) {
+        logger.error(`❌ [${INSTANCE_ID}] Failed to process pending invite ${room.roomId}:`, error);
+        captureException(error, { operation: 'matrixGateway.reconcileInvites' });
+      }
+    }
   }
 
   // ─── Pairing flow ──────────────────────────────────────────────────────
@@ -1177,9 +1333,14 @@ export class MatrixGateway {
     this.syncStartedAt = ts;
   }
 
+  /** Test-only: run the post-sync invite reconciliation directly. */
+  async _reconcilePendingInvitesForTest(): Promise<void> {
+    await this.reconcilePendingInvites();
+  }
+
   /** Test-only: drive a membership change without a real sync loop. */
-  async _handleMembershipForTest(member: MatrixMembershipLike): Promise<void> {
-    await this.handleMembershipChange(member);
+  async _handleMembershipForTest(member: MatrixMembershipLike, event?: MatrixEventLike): Promise<void> {
+    await this.handleMembershipChange(member, event);
   }
 
   /** Test-only: drive a /notify request without binding the HTTP port. */
