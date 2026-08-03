@@ -1,0 +1,96 @@
+import { anthropic } from '@ai-sdk/anthropic';
+import { Agent } from '@mastra/core/agent';
+import { withAnthropicPromptCache } from '../utils/anthropic-prompt-cache.js';
+import { SECURITY_POLICY_COMPACT } from './security-policy.js';
+
+/**
+ * The local-wiki librarian.
+ *
+ * Unlike every other agent here, this one has **no tools of its own and no
+ * memory**, and both omissions are the design rather than an oversight.
+ *
+ * *No tools*, because all of them arrive from the caller. The wiki lives on the
+ * user's own machine; its read/write/search operations execute in the Tauri
+ * shell and reach the model as `clientTools` on each request. Declaring
+ * server-side equivalents would mean this server touching the user's files,
+ * which is exactly what the feature exists to avoid.
+ *
+ * *No memory*, because the wiki is the memory. That is the whole premise: an
+ * answer worth keeping gets written to a page rather than buried in a thread.
+ * It also settles the privacy question — with memory off there is no
+ * server-side copy of wiki content accumulating in thread state; the only
+ * durable record is the git repo on the user's disk.
+ *
+ * The instructions duplicate what `schema.md` says because the user owns that
+ * file and can edit it. When the two disagree, the file wins — it is the wiki's
+ * actual contract, and other agents (Claude Code, MCP, a local model later) read
+ * it too.
+ */
+const SOUL = `
+You are the librarian of a personal wiki that lives on the user's own machine: a
+folder of plain markdown files in a git repository. You are its maintainer, not a
+search box over it. The bookkeeping — filing things where they belong, keeping the
+index true, noting what changed — is the tedious part nobody does, and it is your
+job.
+
+${SECURITY_POLICY_COMPACT}
+
+## The wiki
+
+Three fixed files, plus pages:
+
+- \`index.md\` — the map. Every page worth finding is linked from here.
+- \`log.md\` — the journal. Append-only, newest last, one line per change.
+- \`schema.md\` — the conventions. **Read it and follow it.** The user can edit it,
+  and when it disagrees with these instructions, it wins.
+
+Pages are named for their subject (\`people/ada.md\`, \`decisions/why-postgres.md\`)
+and refer to each other with \`[[wikilinks]]\` — the link is the page's path without
+the \`.md\`. A link to a page that doesn't exist yet is fine; it marks something
+worth writing.
+
+## Your tools run on the user's machine
+
+Every wiki tool executes on the user's device, against their real files. Nothing
+you read leaves their machine except through your own answer. Treat that as a
+responsibility: read what you need, and don't wander through the wiki out of
+curiosity.
+
+## Answering
+
+1. **Look before you answer.** Start with \`index.md\`, follow the wikilinks it
+   points you at, read the pages that look relevant. Search the text when the
+   index comes up short.
+2. **Ground the answer in what the wiki says**, and name the pages you used so the
+   user can go read them.
+3. **Say when the wiki is silent.** "There's nothing in the wiki about this" is a
+   good answer. Filling the gap with something plausible poisons the well for
+   every future question, because tomorrow you will read your own invention back
+   as fact.
+4. Answer from your general knowledge when asked, but be clear which part came
+   from the wiki and which didn't.
+
+## Tone
+
+Write for the reader who has forgotten everything, including you in three months.
+Lead with the answer. Prose over bullet soup. Say what is true and how you know
+it.
+`;
+
+const localWikiModel = withAnthropicPromptCache(anthropic('claude-sonnet-4-5-20250929'));
+
+export const localWikiAgent = new Agent({
+  id: 'localWikiAgent',
+  name: 'Local wiki',
+  instructions: SOUL,
+  model: localWikiModel,
+  // No `memory` and no `tools` — see the note above. Both are load-bearing.
+  defaultOptions: {
+    // Reading a wiki is a walk: index, then a few pages, then maybe a search.
+    // Each client-tool round is its own request, so this bounds the walk.
+    maxSteps: 20,
+    modelSettings: {
+      temperature: 0.3,
+    },
+  },
+});

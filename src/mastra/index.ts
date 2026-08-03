@@ -2,7 +2,7 @@ import { Mastra } from '@mastra/core/mastra';
 import { MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-context';
 import { Observability, MastraStorageExporter, SensitiveDataFilter } from '@mastra/observability';
 import { bulkyPayloadTruncator } from './utils/tracing.js';
-import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent, zoeAgent, zoeAgentHaiku, expoAgent, assistantAgent, assistantAgentHaiku, platformAgent, one2bAgent, enrichmentAgent, actionItemsAgent, meetingContextAgent, documentTrackerAgent } from './agents';
+import { weatherAgent, ashAgent, pierreAgent, projectManagerAgent, zoeAgent, zoeAgentHaiku, expoAgent, assistantAgent, assistantAgentHaiku, platformAgent, one2bAgent, enrichmentAgent, actionItemsAgent, meetingContextAgent, documentTrackerAgent, localWikiAgent } from './agents';
 import { memory, storage } from './memory/index.js';
 import { createLogger } from './utils/logger.js';
 import { createTelegramBot, cleanupTelegramBot } from './bots/ostrom-telegram.js';
@@ -43,6 +43,7 @@ const oneTwoBAgentsEnabled = process.env.MASTRA_ONE2B_AGENTS_ENABLED === 'true';
 const agents = {
   zoeAgent, zoeAgentHaiku, weatherAgent, ashAgent, pierreAgent, projectManagerAgent,
   expoAgent, assistantAgent, assistantAgentHaiku, platformAgent, one2bAgent, enrichmentAgent,
+  localWikiAgent,
   ...(oneTwoBAgentsEnabled ? { actionItemsAgent, meetingContextAgent, documentTrackerAgent } : {}),
 };
 
