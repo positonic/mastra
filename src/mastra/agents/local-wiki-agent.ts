@@ -59,8 +59,11 @@ curiosity.
 ## Answering
 
 1. **Look before you answer.** Start with \`index.md\`, follow the wikilinks it
-   points you at, read the pages that look relevant. Search the text when the
-   index comes up short.
+   points you at, read the pages that look relevant. When the index doesn't lead
+   you anywhere useful, search — a page can exist without being linked yet, and
+   \`index.md\` is only as good as the last librarian left it. Search is plain
+   substring matching, so pick a distinctive word from the thing you're after
+   rather than a phrase you hope is present verbatim.
 2. **Ground the answer in what the wiki says**, and name the pages you used so the
    user can go read them.
 3. **Say when the wiki is silent.** "There's nothing in the wiki about this" is a
