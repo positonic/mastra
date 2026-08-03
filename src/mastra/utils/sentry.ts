@@ -15,14 +15,23 @@ export function initSentry(): void {
     return;
   }
 
+  // Railway injects RAILWAY_ENVIRONMENT_NAME ("production") but not
+  // NODE_ENV, so NODE_ENV alone tags every deployed event "development".
+  const environment =
+    process.env.RAILWAY_ENVIRONMENT_NAME ??
+    process.env.NODE_ENV ??
+    'development';
+
   try {
     Sentry.init({
       dsn,
-      environment: process.env.NODE_ENV || 'development',
-      // Capture 100% of transactions for performance monitoring
-      tracesSampleRate: 1.0,
-      // Add release info if available
-      release: process.env.npm_package_version,
+      environment,
+      // Errors are always captured; sample traces low in production — this
+      // DSN shares the exponential-frontend project's quota.
+      tracesSampleRate: environment === 'production' ? 0.1 : 1.0,
+      // Prefer the deployed commit (Railway) over the static package version.
+      release:
+        process.env.RAILWAY_GIT_COMMIT_SHA ?? process.env.npm_package_version,
     });
 
     isInitialized = true;
