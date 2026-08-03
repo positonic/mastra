@@ -39,6 +39,13 @@ function gatewaySecret(): string | undefined {
 const MXID_PATTERN = /^@[^:\s]+:\S+$/;
 const PAIRING_CODE_PATTERN = /^[0-9A-F]{6}$/;
 
+// startClient({ initialSyncLimit }) re-emits the tail of every room's timeline
+// as live events, so a restart would otherwise re-answer messages the previous
+// instance already handled. Events older than (boot - grace) are dropped; the
+// grace window deliberately lets messages sent just before the restart through,
+// since those are the ones that never got a reply.
+const REPLAY_GRACE_MS = 60 * 1000;
+
 const CONVERSATION_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes (Telegram parity)
 const MAX_HISTORY_MESSAGES = 10;
 const TYPING_TIMEOUT_MS = 30_000;
@@ -81,6 +88,8 @@ export interface MatrixEventLike {
   getSender(): string | undefined;
   getContent(): Record<string, unknown>;
   getRoomId(): string | undefined;
+  /** origin_server_ts — used to discard initial-sync replays (see REPLAY_GRACE_MS). */
+  getTs(): number;
 }
 
 export interface MatrixClientLike {
@@ -198,6 +207,8 @@ export class MatrixGateway {
   private httpServer: Server | null = null;
   private pairingCleanupInterval: ReturnType<typeof setInterval> | null = null;
   private started = false;
+  private syncStartedAt = 0; // ts of startClient(); 0 = never synced (tests drive the class directly)
+  private replaysSkipped = 0;
 
   constructor(
     private readonly injectedClient: MatrixClientLike | null = null,
@@ -242,6 +253,7 @@ export class MatrixGateway {
       }
 
       this.attachClientHandlers();
+      this.syncStartedAt = Date.now();
       await this.client.startClient({ initialSyncLimit: 10 });
       this.started = true;
       logger.info(`✅ [${INSTANCE_ID}] Matrix client started as ${this.client.getUserId()}`);
@@ -406,6 +418,8 @@ export class MatrixGateway {
     const sender = event.getSender();
     if (!sender || sender === this.client.getUserId()) return;
 
+    if (this.isInitialSyncReplay(event)) return;
+
     const content = event.getContent();
     const senderMapping = this.mappings.get(sender);
 
@@ -449,7 +463,12 @@ export class MatrixGateway {
       return; // paired user talking somewhere else — DM-only (guardrails handle rooms)
     }
 
-    // 3. Unpaired sender → pairing instructions (cooldown to avoid loops)
+    // 3. Unpaired sender in a DM → pairing instructions (cooldown to avoid loops).
+    // Group rooms are off-limits: the bot sits in team rooms whose members are
+    // mostly not Exponential users, and nagging each of them there is noise for
+    // everyone else. Paired users get the same silence outside their DM (above).
+    if (this.roomMemberCount(room) > 2) return;
+
     const last = this.lastInstructedAt.get(sender) ?? 0;
     if (Date.now() - last > INSTRUCTION_COOLDOWN_MS) {
       this.lastInstructedAt.set(sender, Date.now());
@@ -457,7 +476,22 @@ export class MatrixGateway {
         room.roomId,
         "You haven't connected your Exponential account yet.\n\nConnect here: https://www.exponential.im/settings/assistant\n\nOnce you have a pairing code, send it here.",
       );
+      logger.info(`🔌 [${INSTANCE_ID}] Sent pairing instructions to unpaired ${sender} in ${room.roomId}`);
     }
+  }
+
+  /**
+   * True for events the homeserver replayed to us during the initial sync —
+   * messages the previous instance already saw. Without this a restart
+   * re-answers the tail of every room (and re-nags unpaired senders).
+   */
+  private isInitialSyncReplay(event: MatrixEventLike): boolean {
+    if (!this.syncStartedAt) return false; // never synced (tests) → nothing to replay
+    if (event.getTs() >= this.syncStartedAt - REPLAY_GRACE_MS) return false;
+    if (this.replaysSkipped++ === 0) {
+      logger.info(`⏭️ [${INSTANCE_ID}] Ignoring pre-boot timeline events replayed by the initial sync`);
+    }
+    return true;
   }
 
   /** Paired-DM handling: commands, agent selection, then agent routing. */
@@ -1136,6 +1170,11 @@ export class MatrixGateway {
   /** Test-only: drive a timeline event without a real sync loop. */
   async _handleTimelineEventForTest(event: MatrixEventLike, room: MatrixRoomLike): Promise<void> {
     await this.handleTimelineEvent(event, room);
+  }
+
+  /** Test-only: pretend the initial sync started at `ts` so replays can be exercised. */
+  _setSyncStartedAtForTest(ts: number): void {
+    this.syncStartedAt = ts;
   }
 
   /** Test-only: drive a membership change without a real sync loop. */
