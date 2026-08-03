@@ -13,6 +13,7 @@ import { startSignalGateway, getSignalGateway } from './bots/signal-gateway.js';
 import { startVoiceGateway, cleanupVoiceGateway } from './bots/voice-gateway.js';
 import { initSentry, captureException, flushSentry } from './utils/sentry.js';
 import { assertAgentsValid } from './utils/validate-agents.js';
+import { CORS_ALLOWED_ORIGINS } from './utils/cors-origins.js';
 import { computeBrainVersions, agentIdFromPath, BRAIN_VERSION_HEADER } from './utils/brain-version.js';
 import { startScheduler, stopScheduler, triggerCheck, deliverWhatsAppBriefings, startChannelSummarizer, stopChannelSummarizer } from './proactive/index.js';
 import { startSpanRetention, stopSpanRetention } from './utils/span-retention.js';
@@ -103,6 +104,19 @@ export const mastra = new Mastra({
   server: {
     port: parseInt(process.env.PORT || '4111', 10),
     host: '0.0.0.0', // Required for Railway deployment
+    // Every caller so far has been server-to-server, where CORS never applies,
+    // so this server has been running on Mastra's default of `origin: '*'`. The
+    // local-wiki work makes the *browser* a first-class caller — it streams
+    // straight here so wiki content never passes through Vercel — which is the
+    // moment to name the origins we actually serve instead of all of them.
+    //
+    // Both apex and www are listed because exponential.im 301s to www, so a page
+    // (and the Tauri shell's webview, which loads that same remote URL) reports
+    // www as its origin. Mastra always merges Authorization into allowHeaders,
+    // so the bearer token the browser sends is covered without restating it.
+    cors: {
+      origin: [...CORS_ALLOWED_ORIGINS],
+    },
     apiRoutes: [
       {
         path: '/api/proactive/trigger',
