@@ -42,6 +42,7 @@ import {
 } from '../utils/gateway-shared.js';
 import { WhatsAppMessageStore, getWhatsAppMessageStore } from './whatsapp-store.js';
 import { NotionCaptureSync } from './notion-capture.js';
+import { ClearCaptureSync } from './clear-capture.js';
 
 const logger = createLogger({
   name: 'WhatsAppGateway',
@@ -305,6 +306,7 @@ export class WhatsAppGateway {
   private sessionsMetadata: SessionsFile = {};
   private messageStore: WhatsAppMessageStore | null = null;
   private notionCapture: NotionCaptureSync | null = null;
+  private clearCapture: ClearCaptureSync | null = null;
 
   constructor() {
     logger.info(`🚀 [${INSTANCE_ID}] WhatsApp Gateway initializing...`);
@@ -327,12 +329,17 @@ export class WhatsAppGateway {
       this.messageStore = null;
     }
 
-    // Initialize Notion capture sync (no-op if env not configured)
+    // Initialize capture mirrors (each no-ops with a log if env not configured)
     this.notionCapture = NotionCaptureSync.fromEnv();
+    this.clearCapture = ClearCaptureSync.fromEnv();
     if (CAPTURE_GROUP_JIDS.size > 0) {
+      const mirrors = [
+        this.notionCapture ? 'Notion' : null,
+        this.clearCapture ? 'clear-api' : null,
+      ].filter(Boolean);
       logger.info(
         `📥 [${INSTANCE_ID}] Group capture enabled for: ${[...CAPTURE_GROUP_JIDS].join(', ')}` +
-        `${this.notionCapture ? ' → Notion' : ' (store only; Notion not configured)'}`,
+        `${mirrors.length > 0 ? ` → ${mirrors.join(' + ')}` : ' (store only; no mirrors configured)'}`,
       );
     }
 
@@ -731,6 +738,25 @@ export class WhatsAppGateway {
               timestamp: msgTimestamp,
               fromMe: msg.key.fromMe ?? false,
             });
+          }
+
+          // Mirror allowlisted group messages to clear-api ground ingest
+          // (fire-and-forget; consent is enforced server-side per group JID).
+          // The sender JID is required by the ingest contract — it is hashed
+          // into a pseudonymous ref server-side, never persisted raw.
+          if (isGroup && this.clearCapture) {
+            if (senderJid) {
+              this.clearCapture.enqueue({
+                groupJid: remoteJid,
+                messageId: msg.key.id,
+                senderJid,
+                senderName: msg.pushName || null,
+                timestamp: msgTimestamp,
+                text: textForCache,
+              });
+            } else {
+              logger.debug(`[${INSTANCE_ID}] Skipping clear-api mirror for ${msg.key.id}: no participant JID`);
+            }
           }
         }
 
