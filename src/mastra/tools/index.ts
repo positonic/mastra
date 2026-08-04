@@ -2500,7 +2500,7 @@ export { checkEmailConnectionTool, getRecentEmailsTool, getEmailByIdTool, search
 export { getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, deleteOkrObjectiveTool, createOkrKeyResultTool, updateOkrKeyResultTool, deleteOkrKeyResultTool, checkInOkrKeyResultTool, getOkrStatsTool, linkProjectToGoalTool, unlinkProjectFromGoalTool, linkProjectToKeyResultTool, unlinkProjectFromKeyResultTool, linkObjectiveToParentTool, addObjectiveCommentTool, addObjectiveUpdateTool } from "./okr-tools.js";
 
 // Project & Action management tools
-export { createProjectTool, updateProjectTool, updateActionTool, getTodaysActionsTool, deleteProjectTool, getUserWorkspacesTool, bulkCreateWorkspaceStructureTool } from "./project-tools.js";
+export { createProjectTool, updateProjectTool, updateActionTool, getTodaysActionsTool, getOverdueTriageTool, deferActionsTool, rescheduleActionsTool, deleteProjectTool, getUserWorkspacesTool, bulkCreateWorkspaceStructureTool } from "./project-tools.js";
 // Knowledge Page authoring tools (ADR-0033)
 export { knowledgeTools, createPageTool, updatePageTool } from "./knowledge-tools.js";
 
