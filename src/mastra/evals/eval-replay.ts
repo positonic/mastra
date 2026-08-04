@@ -51,7 +51,11 @@ const args = process.argv.slice(2);
 const outFlagIndex = args.indexOf('--out');
 const outPath = outFlagIndex >= 0 ? args[outFlagIndex + 1] : undefined;
 if (outFlagIndex >= 0 && !outPath) usage();
-const casesPath = args.find((a, i) => !a.startsWith('--') && i !== outFlagIndex + 1);
+// Skip the value that belongs to --out, but only when --out is actually
+// present: with outFlagIndex === -1 the guard would exclude index 0, which is
+// the cases file itself, so every invocation without --out printed usage.
+const outValueIndex = outFlagIndex >= 0 ? outFlagIndex + 1 : -1;
+const casesPath = args.find((a, i) => !a.startsWith('--') && i !== outValueIndex);
 if (!casesPath) usage();
 
 const parsed = casesFileSchema.safeParse(JSON.parse(readFileSync(casesPath, 'utf8')));

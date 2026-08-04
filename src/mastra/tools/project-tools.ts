@@ -1,7 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
-import { looseBoolean, looseEnum, looseNumber } from "./zod-loose.js";
+import { looseBoolean, looseEnum, looseNumber, looseStringArray } from "./zod-loose.js";
 
 // ==================== Project & Action Management Tools ====================
 // Tools for creating projects and updating actions (including moving between projects).
@@ -128,7 +128,8 @@ export const updateProjectTool = createTool({
 export const updateActionTool = createTool({
   id: "update-action",
   description:
-    "Update an existing action's fields. Use this to rename actions, change priority/status, set due dates, or move actions between projects by changing the projectId. Set projectId to null to unassign an action from its project.",
+    "Update an existing action's fields. Use this to rename actions, change priority/status, set due dates, reschedule an action to a specific time, or move actions between projects by changing the projectId. Set projectId to null to unassign an action from its project. " +
+    "To MOVE AN ACTION TO A NEW TIME — \"move this to tomorrow morning\", \"do this at 9am\", \"push it to Friday\" — set scheduledStart, not dueDate. scheduledStart is the \"do date\" and it is what /today partitions on; it takes precedence over dueDate, so changing dueDate alone will NOT move an action out of the overdue group. To clear a schedule entirely, set scheduledStart to null (or use defer-actions for several at once).",
   inputSchema: z.object({
     actionId: z.string().describe("The ID of the action to update"),
     name: z.string().min(1).optional().describe("New name for the action"),
@@ -144,7 +145,10 @@ export const updateActionTool = createTool({
     status: looseEnum(["ACTIVE", "COMPLETED", "CANCELLED"])
       .optional()
       .describe("New status"),
-    dueDate: z.string().nullable().optional().describe("New due date in ISO format, or null to clear"),
+    dueDate: z.string().nullable().optional().describe("New deadline in ISO format, or null to clear"),
+    scheduledStart: z.string().nullable().optional().describe("The do-date: when the user plans to work on this, in ISO format (e.g. 2026-08-05T09:00:00Z). This is what /today partitions on and it wins over dueDate. Null to clear."),
+    scheduledEnd: z.string().nullable().optional().describe("End of the time block in ISO format, or null to clear"),
+    duration: looseNumber(z.number().int().positive()).nullable().optional().describe("Length of the time block in minutes"),
   }),
   outputSchema: z.object({
     action: z.object({
@@ -153,7 +157,10 @@ export const updateActionTool = createTool({
       description: z.string().nullable(),
       status: z.string(),
       priority: z.string(),
-      dueDate: z.string().nullable().optional(),
+      dueDate: z.string().nullish(),
+      scheduledStart: z.string().nullish(),
+      scheduledEnd: z.string().nullish(),
+      duration: z.number().nullish(),
       projectId: z.string().nullable(),
       project: z.object({
         id: z.string(),
@@ -255,6 +262,162 @@ export const getTodaysActionsTool = createTool({
       return data;
     } catch (error) {
       console.error(`❌ [getTodaysActions] FAILED:`, error);
+      throw error;
+    }
+  },
+});
+
+const overdueTriageRowSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  priority: z.string().nullish(),
+  scheduledStart: z.string().nullish(),
+  dueDate: z.string().nullish(),
+  projectName: z.string().nullish(),
+  daysOverdue: z.number(),
+});
+
+export const getOverdueTriageTool = createTool({
+  id: "get-overdue-triage",
+  description:
+    "Explain WHY the user's overdue pile is the size it is, before you propose what to do about it. Call this whenever get-todays-actions comes back with a lot of overdue actions, or the user says they are overwhelmed / behind / drowning / buried, or asks you to help them clean up or catch up. " +
+    "It splits overdue actions into two kinds. COHORTS are groups that share one exact timestamp — the fingerprint of a single bulk write, like a generated project plan or an import that stamped every row with the same date. Those were never individually due, so the honest disposition is amnesty: call defer-actions on the cohort's actionIds. Rescheduling a cohort is the WRONG move; it just re-inflicts the same pile tomorrow. LOOSE actions were dated one at a time and are real missed commitments — surface those individually and let the user decide. " +
+    "Lead with the reframe, not the raw number: say \"17 of these were created in one batch on 25 July and were never really due — want them back in their project backlogs?\" rather than \"you have 43 overdue actions\". Each cohort carries stampedAt, count, daysOverdue, projectNames and actionIds; loose actions carry daysOverdue. " +
+    "Optionally pass workspaceId to scope to one workspace; omit it to span all (the default).",
+  inputSchema: z.object({
+    workspaceId: z
+      .string()
+      .optional()
+      .describe(
+        "Optional workspace id to scope to one workspace. Omit to span ALL of the user's workspaces (the default, matching /today).",
+      ),
+  }),
+  outputSchema: z.object({
+    totalOverdue: z.number(),
+    cohortCount: z.number().describe("How many of totalOverdue sit inside a cohort"),
+    cohorts: z.array(
+      z.object({
+        stampedAt: z.string(),
+        daysOverdue: z.number(),
+        count: z.number(),
+        projectNames: z.array(z.string()),
+        actionIds: z.array(z.string()),
+        actions: z.array(overdueTriageRowSchema),
+      }),
+    ),
+    loose: z.array(overdueTriageRowSchema),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(
+      `🔍 [getOverdueTriage] Triaging overdue (workspaceId=${inputData.workspaceId ?? "all"})`,
+    );
+
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "action.getOverdueTriage",
+        inputData,
+        { authToken, sessionId, userId },
+      );
+
+      const d = data as { totalOverdue?: number; cohortCount?: number; cohorts?: unknown[] };
+      console.log(
+        `✅ [getOverdueTriage] total=${d?.totalOverdue ?? 0} inCohorts=${d?.cohortCount ?? 0} cohorts=${d?.cohorts?.length ?? 0}`,
+      );
+      return data;
+    } catch (error) {
+      console.error(`❌ [getOverdueTriage] FAILED:`, error);
+      throw error;
+    }
+  },
+});
+
+export const deferActionsTool = createTool({
+  id: "defer-actions",
+  description:
+    "Amnesty: clear the dates on a set of actions so they fall back to their project backlog untimed, and stop counting as overdue. " +
+    "This is the right tool for a COHORT from get-overdue-triage — work that was bulk-created with a blanket date and was never individually due. Prefer it over reschedule-actions whenever the dates were not a real commitment, because rescheduling only moves the pile to tomorrow. " +
+    "The actions stay ACTIVE: nothing is deleted, archived, or cancelled, and their kanban status is untouched. They simply lose their dates. Always tell the user how many you deferred and that the work is still there in the backlog. " +
+    "Confirm with the user before deferring actions they did not explicitly point at.",
+  inputSchema: z.object({
+    actionIds: looseStringArray(z.array(z.string()).min(1).max(200))
+      .describe("Ids of the actions to defer — typically a cohort's actionIds from get-overdue-triage"),
+  }),
+  outputSchema: z.object({
+    count: z.number(),
+    actionIds: z.array(z.string()),
+    message: z.string(),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    console.log(`🗓️ [deferActions] Deferring ${inputData.actionIds.length} action(s)`);
+
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "action.bulkDefer",
+        inputData,
+        { authToken, sessionId, userId },
+      );
+      console.log(`✅ [deferActions] SUCCESS:`, JSON.stringify(data));
+      return data;
+    } catch (error) {
+      console.error(`❌ [deferActions] FAILED:`, error);
+      throw error;
+    }
+  },
+});
+
+export const rescheduleActionsTool = createTool({
+  id: "reschedule-actions",
+  description:
+    "Move several actions to a new do-date at once — for work that genuinely is still due, just later. Sets scheduledStart on every action, and pushes dueDate forward only where it would otherwise fall before the new date. " +
+    "Use this when the user says \"move all of these to tomorrow\", \"push this week's tasks to Monday\", or accepts a plan you proposed. For a SINGLE action prefer update-action; for a bulk-created cohort from get-overdue-triage prefer defer-actions, because rescheduling a cohort re-inflicts the same pile tomorrow rather than resolving it.",
+  inputSchema: z.object({
+    actionIds: looseStringArray(z.array(z.string()).min(1)).describe("Ids of the actions to reschedule"),
+    date: z
+      .string()
+      .describe("The new do-date in ISO format, e.g. 2026-08-05T09:00:00Z"),
+  }),
+  outputSchema: z.object({
+    count: z.number(),
+    actionIds: z.array(z.string()),
+  }),
+  async execute(inputData, { requestContext }) {
+    const authToken = requestContext?.get("authToken") as string | undefined;
+    const sessionId = requestContext?.get("whatsappSession") as string | undefined;
+    const userId = requestContext?.get("userId") as string | undefined;
+
+    if (!authToken) throw new Error("No authentication token available");
+
+    const when = new Date(inputData.date);
+    if (isNaN(when.getTime())) {
+      throw new Error(`Invalid date "${inputData.date}". Use an ISO datetime.`);
+    }
+
+    console.log(
+      `🗓️ [rescheduleActions] Moving ${inputData.actionIds.length} action(s) to ${when.toISOString()}`,
+    );
+
+    try {
+      const { data } = await authenticatedTrpcCall(
+        "action.bulkReschedule",
+        { actionIds: inputData.actionIds, dueDate: when.toISOString() },
+        { authToken, sessionId, userId },
+      );
+      console.log(`✅ [rescheduleActions] SUCCESS:`, JSON.stringify(data));
+      return data;
+    } catch (error) {
+      console.error(`❌ [rescheduleActions] FAILED:`, error);
       throw error;
     }
   },

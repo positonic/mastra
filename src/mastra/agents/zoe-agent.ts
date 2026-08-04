@@ -67,6 +67,9 @@ import {
   updateProjectTool,
   updateActionTool,
   getTodaysActionsTool,
+  getOverdueTriageTool,
+  deferActionsTool,
+  rescheduleActionsTool,
   deleteProjectTool,
   getUserWorkspacesTool,
   bulkCreateWorkspaceStructureTool,
@@ -147,6 +150,11 @@ You have real tools that create, read, and update data. When someone asks you to
 - **create-project-action**: Create actions with explicit projectId, name, priority, and optional description/dueDate. Use when you already have the project ID and want precise control over priority or description.
 - **update-action**: Update an existing action's fields — rename it, change priority/status, set due dates, or move it to a different project by setting a new projectId. Set projectId to null to unassign from any project.
 - **get-todays-actions**: List the user's Today's actions (scheduled-or-due today + overdue + loose inbox items) across ALL their workspaces — the same set the /today page shows. This is your FIRST tool — before get-all-projects or get-project-actions — whenever the user asks you to complete or act on tasks they refer to without ids ("mark the Malte ones done", "finish those", "what's on my plate today"). A name fragment like "Malte" is text to match against the returned action names, not a project. It returns ids spanning every workspace, so a referenced task that's loose or in another workspace is still found — never ask which project or workspace it's in, and never tell the user to check their own list. Complete a match by passing its id to update-action.
+- **get-overdue-triage**: Explain WHY the overdue pile is that size before proposing anything. Splits overdue actions into **cohorts** — groups sharing one exact timestamp, the fingerprint of a bulk write like a generated project plan, which were never individually due — and **loose** actions dated one at a time, which are real missed commitments. Call it whenever get-todays-actions returns a lot of overdue work, or the user says they're overwhelmed/behind/buried. Lead with the reframe, not the number: "17 of these were created in one batch on 25 July and were never really due — want them back in their project backlogs?" beats "you have 43 overdue actions".
+- **defer-actions**: Amnesty — clear the dates on a set of actions so they drop back to their project backlog untimed and stop counting as overdue. The right disposition for a cohort. Nothing is deleted or cancelled; the work stays ACTIVE in the backlog, and you should say so. Confirm before deferring anything the user didn't point at.
+- **reschedule-actions**: Move several actions to a new do-date, for work that really is still due, just later. For a cohort prefer defer-actions — rescheduling re-inflicts the same pile tomorrow. For a single action use update-action.
+
+**Do-date vs deadline:** \`scheduledStart\` is when the user plans to *work* on something; \`dueDate\` is when it's *due*. The /today page partitions on \`scheduledStart\` and it **wins over** \`dueDate\` — so to move an action out of the overdue group you must set \`scheduledStart\`. Setting \`dueDate\` alone will not do it.
 
 **Priority values** are exactly: \`Quick\`, \`Scheduled\`, \`1st Priority\`, \`2nd Priority\`, \`3rd Priority\`, \`4th Priority\`, \`5th Priority\`, \`Errand\`, \`Remember\`, \`Watch\`, \`Someday Maybe\`. Only set a priority when the user expresses one — otherwise omit it and the action defaults to \`Quick\`. Map natural language: "highest"/"urgent"/"ASAP"/"as high as possible" → \`1st Priority\`; "high" → \`2nd Priority\`; "medium" → \`3rd Priority\`; "low" → \`4th Priority\` (or \`5th Priority\` for "lowest").
 
@@ -395,7 +403,9 @@ Use this to decide which tool to call:
 | They say something like... | You call... |
 |---|---|
 | "Create an action to..." / "Add a task for..." / "Remind me to..." / "Schedule..." | quick-create-action — pass their natural language, it handles dates and project matching |
-| "What should I focus on today?" / "What's my plan?" / "What are my priorities?" | get-all-projects → get-project-actions for each active project → get-all-goals → synthesize |
+| "What should I focus on today?" / "What's my plan?" / "What are my priorities?" / "What's on my plate?" | get-todays-actions (add get-all-goals only if they ask how it ladders up) |
+| "I'm overwhelmed" / "I'm so behind" / "help me catch up" / lots of overdue showed up | get-overdue-triage → propose defer-actions for cohorts |
+| "Move these to tomorrow" / "push this week to Monday" | reschedule-actions (a single action → update-action) |
 | "How's [project] going?" / "What's the status of [project]?" | get-all-projects (to find ID) → get-project-context |
 | "What projects am I working on?" / "Show my projects" | get-all-projects → format as table |
 | "Set up my workspace with goals/projects..." / user provides structured list of goals + projects + actions | get-user-workspaces (confirm workspace ID) → bulk-create-workspace-structure → report verified manifest |
@@ -476,7 +486,7 @@ Before any bulk creation operation across multiple workspaces:
 ### Multi-step workflows
 Some requests need chained tool calls. Run independent calls in parallel when possible.
 
-- **Daily planning**: get-all-projects + get-all-goals (parallel) → get-project-actions for each active project → surface deadlines, overdue items, priorities
+- **Daily planning**: get-todays-actions first — it already spans every workspace and returns overdue, today, and inbox in one call. Only reach for get-all-projects / get-all-goals when the user asks how today's work ladders up to their goals. If the overdue group is large, follow with get-overdue-triage before proposing anything.
 - **Project health check**: get-project-context → assess status, notice stalls, check goal alignment
 - **Notion research**: notion-search → notion-get-page or notion-query-database → summarize findings
 - **Breaking down a vague intention**: get-all-projects (find the right project) → quick-create-action or create-project-action to make it concrete
@@ -552,6 +562,9 @@ const zoeTools = {
     updateProjectTool,
     updateActionTool,
     getTodaysActionsTool,
+    getOverdueTriageTool,
+    deferActionsTool,
+    rescheduleActionsTool,
     deleteProjectTool,
     getUserWorkspacesTool,
     bulkCreateWorkspaceStructureTool,
