@@ -498,3 +498,168 @@ describe('ClearCaptureSync media upload', () => {
     expect('mediaKeys' in ingestedMessages()[0]!).toBe(false);
   });
 });
+
+describe('ClearCaptureSync media failure posture', () => {
+  const REFS = ['image (image/jpeg, 3 B)'];
+
+  function makeMediaMessage(
+    messageId: string,
+    media: ClearCaptureMessage['media'],
+  ): ClearCaptureMessage {
+    return makeMessage({ messageId, text: null, mediaRefs: REFS, media });
+  }
+
+  function expectDegradedIngest(messageId: string): void {
+    const message = ingestedMessages().find(m => m.messageId === messageId);
+    expect(message).toBeDefined();
+    expect('mediaKeys' in message!).toBe(false);
+    expect(message!.mediaRefs).toEqual(REFS);
+  }
+
+  it('skips the download and upload entirely when the declared size exceeds 50 MB', async () => {
+    routeFetch(() => okJson(mediaOkBody()));
+    const download = vi.fn().mockResolvedValue(new Uint8Array(1));
+
+    const sync = makeMediaSync();
+    sync.enqueue(
+      makeMediaMessage('MSG-TOO-BIG', {
+        info: makeMediaInfo({ sizeBytes: 51 * 1024 * 1024 }),
+        download,
+      }),
+    );
+    await flushDrain();
+
+    expect(download).not.toHaveBeenCalled();
+    expect(callsTo(MEDIA_URL)).toHaveLength(0);
+    expectDegradedIngest('MSG-TOO-BIG');
+  });
+
+  it('rechecks the real byte count after download (proto sizes can lie)', async () => {
+    routeFetch(() => okJson(mediaOkBody()));
+
+    const sync = makeMediaSync();
+    sync.enqueue(
+      makeMediaMessage('MSG-LIED', {
+        info: makeMediaInfo({ sizeBytes: null }),
+        download: vi.fn().mockResolvedValue(new Uint8Array(50 * 1024 * 1024 + 1)),
+      }),
+    );
+    await flushDrain();
+
+    expect(callsTo(MEDIA_URL)).toHaveLength(0);
+    expectDegradedIngest('MSG-LIED');
+  });
+
+  it('degrades to metadata refs when the download itself fails', async () => {
+    routeFetch(() => okJson(mediaOkBody()));
+
+    const sync = makeMediaSync();
+    expect(() =>
+      sync.enqueue(
+        makeMediaMessage('MSG-DL-FAIL', {
+          info: makeMediaInfo(),
+          download: vi.fn().mockRejectedValue(new Error('media no longer available')),
+        }),
+      ),
+    ).not.toThrow();
+    await flushDrain();
+
+    expect(callsTo(MEDIA_URL)).toHaveLength(0);
+    expectDegradedIngest('MSG-DL-FAIL');
+  });
+
+  it('degrades on a media 500 with exactly one upload attempt (no hot retry)', async () => {
+    routeFetch(() => new Response('boom', { status: 500 }));
+
+    const sync = makeMediaSync();
+    sync.enqueue(
+      makeMediaMessage('MSG-UP-500', {
+        info: makeMediaInfo(),
+        download: vi.fn().mockResolvedValue(new Uint8Array(3)),
+      }),
+    );
+    await flushDrain();
+
+    expect(callsTo(MEDIA_URL)).toHaveLength(1);
+    expectDegradedIngest('MSG-UP-500');
+  });
+
+  it('treats a media 403 consent rejection as final: no retry, ingest still runs', async () => {
+    routeFetch(() =>
+      okJson({ error: 'Consent gate', reason: 'no message-content consent for this group' }, 403),
+    );
+
+    const sync = makeMediaSync();
+    sync.enqueue(
+      makeMediaMessage('MSG-UP-403', {
+        info: makeMediaInfo(),
+        download: vi.fn().mockResolvedValue(new Uint8Array(3)),
+      }),
+    );
+    await flushDrain();
+
+    expect(callsTo(MEDIA_URL)).toHaveLength(1);
+    expectDegradedIngest('MSG-UP-403');
+  });
+
+  it('degrades when the download hangs past the media timeout', async () => {
+    routeFetch(() => okJson(mediaOkBody()));
+
+    const sync = makeMediaSync({ mediaTimeoutMs: 20 });
+    sync.enqueue(
+      makeMediaMessage('MSG-HANG', {
+        info: makeMediaInfo(),
+        download: () => new Promise<Uint8Array>(() => { /* never resolves */ }),
+      }),
+    );
+
+    await until(() => ingestedMessages().some(m => m.messageId === 'MSG-HANG'));
+    expect(callsTo(MEDIA_URL)).toHaveLength(0);
+    expectDegradedIngest('MSG-HANG');
+  });
+
+  it('never delays text mirroring behind a pending media upload', async () => {
+    routeFetch(() => okJson(mediaOkBody()));
+
+    const sync = makeMediaSync({ mediaTimeoutMs: 50 });
+    sync.enqueue(
+      makeMediaMessage('MSG-SLOW-MEDIA', {
+        info: makeMediaInfo(),
+        download: () => new Promise<Uint8Array>(() => { /* pending */ }),
+      }),
+    );
+    sync.enqueue(makeMessage({ messageId: 'MSG-FAST-TEXT' }));
+
+    // The text message ships while the media download is still pending.
+    await until(() => ingestedMessages().some(m => m.messageId === 'MSG-FAST-TEXT'));
+    expect(ingestedMessages().some(m => m.messageId === 'MSG-SLOW-MEDIA')).toBe(false);
+
+    // ...and the media message still arrives (degraded) after the timeout.
+    await until(() => ingestedMessages().some(m => m.messageId === 'MSG-SLOW-MEDIA'));
+    expectDegradedIngest('MSG-SLOW-MEDIA');
+  });
+
+  it('falls back straight to metadata refs when the media queue is saturated', async () => {
+    routeFetch(() => okJson(mediaOkBody()));
+    // The busy slot hangs (generous timeout so it outlives the assertions);
+    // the queued ones resolve instantly so nothing lingers after the test.
+    const hanging = { info: makeMediaInfo(), download: () => new Promise<Uint8Array>(() => { /* pending */ }) };
+    const quick = { info: makeMediaInfo(), download: () => Promise.resolve(new Uint8Array(1)) };
+
+    const sync = makeMediaSync({ mediaTimeoutMs: 1000 });
+    // First message occupies the single-flight worker...
+    sync.enqueue(makeMediaMessage('MSG-BUSY', hanging));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    // ...the next 200 fill the media queue to its cap...
+    for (let i = 0; i < 200; i++) {
+      sync.enqueue(makeMediaMessage(`MSG-QUEUED-${i}`, quick));
+    }
+    // ...so this one skips its upload and ships immediately with refs only.
+    sync.enqueue(makeMediaMessage('MSG-OVERFLOW', quick));
+
+    await until(() => ingestedMessages().some(m => m.messageId === 'MSG-OVERFLOW'));
+    expectDegradedIngest('MSG-OVERFLOW');
+    // The saturated queue is still waiting behind the busy worker.
+    expect(ingestedMessages().some(m => m.messageId === 'MSG-QUEUED-0')).toBe(false);
+  });
+});
