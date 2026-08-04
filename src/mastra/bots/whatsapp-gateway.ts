@@ -42,7 +42,7 @@ import {
 } from '../utils/gateway-shared.js';
 import { WhatsAppMessageStore, getWhatsAppMessageStore } from './whatsapp-store.js';
 import { NotionCaptureSync } from './notion-capture.js';
-import { ClearCaptureSync } from './clear-capture.js';
+import { ClearCaptureSync, describeCaptureMedia, formatMediaRef } from './clear-capture.js';
 
 const logger = createLogger({
   name: 'WhatsAppGateway',
@@ -701,8 +701,12 @@ export class WhatsAppGateway {
         // Cache ALL messages (individual chats + allowlisted groups) for context.
         // This happens before other filtering so we capture incoming and outgoing.
         const textForCache = extractText(msg.message);
+        // Media metadata (image/video/document) for the clear-api mirror.
+        // Metadata only — the live-ingest endpoint accepts JSON refs, not
+        // bytes, so nothing is downloaded (see clear-capture.ts).
+        const captureMedia = isGroup && this.clearCapture ? describeCaptureMedia(msg.message) : null;
+        const msgTimestamp = new Date(msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now());
         if (textForCache && msg.key.id) {
-          const msgTimestamp = new Date(msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now());
           // In groups the author is key.participant, not remoteJid.
           const senderJid = isGroup ? (msg.key.participant ?? undefined) : undefined;
 
@@ -739,24 +743,30 @@ export class WhatsAppGateway {
               fromMe: msg.key.fromMe ?? false,
             });
           }
+        }
 
-          // Mirror allowlisted group messages to clear-api ground ingest
-          // (fire-and-forget; consent is enforced server-side per group JID).
-          // The sender JID is required by the ingest contract — it is hashed
-          // into a pseudonymous ref server-side, never persisted raw.
-          if (isGroup && this.clearCapture) {
-            if (senderJid) {
-              this.clearCapture.enqueue({
-                groupJid: remoteJid,
-                messageId: msg.key.id,
-                senderJid,
-                senderName: msg.pushName || null,
-                timestamp: msgTimestamp,
-                text: textForCache,
-              });
-            } else {
-              logger.debug(`[${INSTANCE_ID}] Skipping clear-api mirror for ${msg.key.id}: no participant JID`);
-            }
+        // Mirror allowlisted group messages to clear-api ground ingest
+        // (fire-and-forget; consent is enforced server-side per group JID).
+        // Unlike the Notion mirror this also fires for caption-less media:
+        // the ingest contract treats media-only messages as signals. The
+        // sender JID is required by the contract — it is hashed into a
+        // pseudonymous ref server-side, never persisted raw.
+        if (isGroup && this.clearCapture && msg.key.id && (textForCache || captureMedia)) {
+          const participantJid = msg.key.participant;
+          if (participantJid) {
+            this.clearCapture.enqueue({
+              groupJid: remoteJid,
+              messageId: msg.key.id,
+              senderJid: participantJid,
+              senderName: msg.pushName || null,
+              timestamp: msgTimestamp,
+              // extractText misses document captions; the media describer
+              // carries them, so caption-bearing documents keep their text.
+              text: textForCache ?? captureMedia?.caption ?? null,
+              mediaRefs: captureMedia ? [formatMediaRef(captureMedia)] : undefined,
+            });
+          } else {
+            logger.debug(`[${INSTANCE_ID}] Skipping clear-api mirror for ${msg.key.id}: no participant JID`);
           }
         }
 

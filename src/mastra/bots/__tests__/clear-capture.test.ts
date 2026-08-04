@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-import { ClearCaptureSync, type ClearCaptureMessage } from '../clear-capture.js';
+import {
+  ClearCaptureSync,
+  describeCaptureMedia,
+  formatMediaRef,
+  type CaptureMediaInfo,
+  type ClearCaptureMessage,
+} from '../clear-capture.js';
 
 const BASE_URL = 'https://clear-api.test';
 const INGEST_URL = 'https://clear-api.test/api/ground/ingest';
@@ -162,6 +168,123 @@ describe('ClearCaptureSync posting', () => {
       'MSG-2',
       'MSG-3',
     ]);
+  });
+});
+
+describe('describeCaptureMedia', () => {
+  it('returns null for pure text messages', () => {
+    expect(describeCaptureMedia({ })).toBeNull();
+    expect(describeCaptureMedia(null)).toBeNull();
+    expect(describeCaptureMedia(undefined)).toBeNull();
+  });
+
+  it('describes an image with mimetype and size (no filename in the proto)', () => {
+    const info = describeCaptureMedia({
+      imageMessage: { mimetype: 'image/jpeg', fileLength: 251000, caption: 'a caption' },
+    });
+    expect(info).toEqual({
+      kind: 'image',
+      fileName: null,
+      mimetype: 'image/jpeg',
+      sizeBytes: 251000,
+      caption: 'a caption',
+    });
+  });
+
+  it('describes a video and tolerates a Long-style fileLength', () => {
+    const info = describeCaptureMedia({
+      videoMessage: { mimetype: 'video/mp4', fileLength: { toString: () => '1048576' } },
+    });
+    expect(info).toEqual({
+      kind: 'video',
+      fileName: null,
+      mimetype: 'video/mp4',
+      sizeBytes: 1048576,
+      caption: null,
+    });
+  });
+
+  it('describes a document with its filename', () => {
+    const info = describeCaptureMedia({
+      documentMessage: {
+        fileName: 'report.pdf',
+        mimetype: 'application/pdf',
+        fileLength: 1258291,
+      },
+    });
+    expect(info).toEqual({
+      kind: 'document',
+      fileName: 'report.pdf',
+      mimetype: 'application/pdf',
+      sizeBytes: 1258291,
+      caption: null,
+    });
+  });
+
+  it('unwraps documentWithCaptionMessage and keeps its caption', () => {
+    const info = describeCaptureMedia({
+      documentWithCaptionMessage: {
+        message: {
+          documentMessage: {
+            fileName: 'notes.docx',
+            mimetype: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            fileLength: 2048,
+            caption: 'the caption lives on the document',
+          },
+        },
+      },
+    });
+    expect(info?.kind).toBe('document');
+    expect(info?.fileName).toBe('notes.docx');
+    expect(info?.caption).toBe('the caption lives on the document');
+  });
+
+  it('ignores media kinds the mirror does not cover', () => {
+    expect(
+      describeCaptureMedia({
+        // audio/sticker etc. are not image/video/document
+      }),
+    ).toBeNull();
+  });
+
+  it('treats an invalid fileLength as unknown size', () => {
+    const info = describeCaptureMedia({
+      imageMessage: { mimetype: 'image/png', fileLength: { toString: () => 'not-a-number' } },
+    });
+    expect(info?.sizeBytes).toBeNull();
+  });
+});
+
+describe('formatMediaRef', () => {
+  const base: CaptureMediaInfo = {
+    kind: 'image',
+    fileName: null,
+    mimetype: null,
+    sizeBytes: null,
+    caption: null,
+  };
+
+  it('uses the filename when known', () => {
+    expect(
+      formatMediaRef({
+        ...base,
+        kind: 'document',
+        fileName: 'report.pdf',
+        mimetype: 'application/pdf',
+        sizeBytes: 1258291,
+      }),
+    ).toBe('report.pdf (application/pdf, 1.2 MB)');
+  });
+
+  it('falls back to the media kind when there is no filename', () => {
+    expect(
+      formatMediaRef({ ...base, mimetype: 'image/jpeg', sizeBytes: 251000 }),
+    ).toBe('image (image/jpeg, 245 kB)');
+  });
+
+  it('renders small sizes in bytes and omits missing details', () => {
+    expect(formatMediaRef({ ...base, sizeBytes: 512 })).toBe('image (512 B)');
+    expect(formatMediaRef(base)).toBe('image');
   });
 });
 
