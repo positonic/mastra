@@ -16,6 +16,7 @@ import makeWASocket, {
   proto,
   isLidUser,
   jidNormalizedUser,
+  downloadMediaMessage,
 } from '@whiskeysockets/baileys';
 import QRCode from 'qrcode';
 import { createLogger } from '../utils/logger.js';
@@ -702,8 +703,9 @@ export class WhatsAppGateway {
         // This happens before other filtering so we capture incoming and outgoing.
         const textForCache = extractText(msg.message);
         // Media metadata (image/video/document) for the clear-api mirror.
-        // Metadata only — the live-ingest endpoint accepts JSON refs, not
-        // bytes, so nothing is downloaded (see clear-capture.ts).
+        // The bytes themselves are downloaded lazily by ClearCaptureSync's
+        // media worker (upload to /api/ground/media, S3 key rides the
+        // ingest payload); failures degrade to these metadata refs.
         const captureMedia = isGroup && this.clearCapture ? describeCaptureMedia(msg.message) : null;
         const msgTimestamp = new Date(msg.messageTimestamp ? Number(msg.messageTimestamp) * 1000 : Date.now());
         if (textForCache && msg.key.id) {
@@ -764,6 +766,15 @@ export class WhatsAppGateway {
               // carries them, so caption-bearing documents keep their text.
               text: textForCache ?? captureMedia?.caption ?? null,
               mediaRefs: captureMedia ? [formatMediaRef(captureMedia)] : undefined,
+              // The download closure is only invoked by the sync's media
+              // worker, single-flight and off the message loop; any failure
+              // there degrades to the refs above (see clear-capture.ts).
+              media: captureMedia
+                ? {
+                    info: captureMedia,
+                    download: () => downloadMediaMessage(msg, 'buffer', {}),
+                  }
+                : undefined,
             });
           } else {
             logger.debug(`[${INSTANCE_ID}] Skipping clear-api mirror for ${msg.key.id}: no participant JID`);
