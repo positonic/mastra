@@ -595,8 +595,8 @@ export const createProjectActionTool = createTool({
       .describe("Detailed description of the action"),
     priority: looseEnum(["Quick", "Scheduled", "1st Priority", "2nd Priority", "3rd Priority", "4th Priority", "5th Priority", "Errand", "Remember", "Watch", "Someday Maybe"])
       .describe("Action priority. Use 'Quick' for small tasks, 'Scheduled' for time-bound items, '1st Priority' through '5th Priority' for ranked importance, 'Errand' for errands, 'Remember' for things to keep in mind, 'Watch' for items to monitor, 'Someday Maybe' for future ideas"),
-    dueDate: z.string().optional().describe("Deadline in ISO format — when the task is DUE. Only set when the user states a deadline ('by Friday', 'due tomorrow')."),
-    scheduledStart: z.string().optional().describe("Do-date in ISO format — the day the user plans to DO the task; this is what the /today page keys on. When the user says the task is for a specific day ('for today', 'tomorrow'), set this to that date."),
+    dueDate: z.string().optional().describe("Deadline in ISO format — when the task is DUE. Only set when the user states a deadline ('by Friday', 'due tomorrow'). Anchor day-level dates at noon UTC ('2026-08-14T12:00:00Z') so the calendar day survives timezone rendering."),
+    scheduledStart: z.string().optional().describe("Do-date in ISO format — the day the user plans to DO the task; this is what the /today page keys on. When the user says the task is for a specific day ('for today', 'tomorrow'), set this to that date, anchored at noon UTC ('2026-08-14T12:00:00Z') — midnight renders as the previous day in western timezones."),
   }),
   outputSchema: z.object({
     action: z.object({
@@ -669,11 +669,11 @@ export const quickCreateActionTool = createTool({
     scheduledStart: z
       .string()
       .optional()
-      .describe("Do-date in ISO format — the day the user plans to DO the task; this is what the /today page keys on. Set it whenever the user names a day ('for today', 'tomorrow', 'on Friday'). Wins over any date parsed from `text`."),
+      .describe("Do-date in ISO format — the day the user plans to DO the task; this is what the /today page keys on. Set it whenever the user names a day ('for today', 'tomorrow', 'on Friday'). Anchor it at noon UTC ('2026-08-14T12:00:00Z') — midnight renders as the previous day in western timezones. Wins over any date parsed from `text`."),
     dueDate: z
       .string()
       .optional()
-      .describe("Deadline in ISO format — when the task is DUE. Only set when the user states a deadline ('by Friday', 'due tomorrow'). Wins over any date parsed from `text`."),
+      .describe("Deadline in ISO format — when the task is DUE. Only set when the user states a deadline ('by Friday', 'due tomorrow'). Anchor day-level dates at noon UTC ('2026-08-14T12:00:00Z'). Wins over any date parsed from `text`."),
   }),
   outputSchema: z.object({
     success: z.boolean(),
