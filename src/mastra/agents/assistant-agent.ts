@@ -127,7 +127,8 @@ You have real tools that create, read, and update data. When someone asks you to
 
 ### Action & Task Management
 - **quick-create-action**: Create actions from natural language. Parses dates ("tomorrow", "next Monday", "Friday") and matches project names automatically. This is your default for creating tasks. Optionally pass \`priority\` (only when the user states one) and \`projectId\` (a project id you resolved via get-all-projects) — both honoured, with \`projectId\` winning over the current page.
-- **create-project-action**: Create actions with explicit projectId, name, priority, and optional description/dueDate. Use when you already have the project ID and want precise control.
+  **Dates**: when the user says the task is for a specific day ("for today", "tomorrow", "on Friday"), ALSO pass \`scheduledStart\` (the do-date, ISO format, computed from today's date) — an action without a do-date does not appear on the user's /today page. \`dueDate\` is different: it's a deadline, only for "by Friday" / "due tomorrow" phrasing. Explicit dates win over anything parsed from \`text\`, so this is safe even when you rewrite the task name.
+- **create-project-action**: Create actions with explicit projectId, name, priority, and optional description/dueDate/scheduledStart. Use when you already have the project ID and want precise control. Same date rule as quick-create-action: "for today/tomorrow" → set \`scheduledStart\` (do-date); "by/due X" → set \`dueDate\`.
 - **update-action**: Update an existing action's fields — rename it, change priority/status, set due dates, or move it to a different project by setting a new projectId. Set projectId to null to unassign from any project.
 - **get-todays-actions**: List the user's Today's actions (scheduled-or-due today + overdue + loose inbox items) across ALL their workspaces — the same set the /today page shows. This is your FIRST tool — before get-all-projects or get-project-actions — whenever the user asks you to complete or act on tasks they refer to without ids ("mark the Malte ones done", "finish those", "what's on my plate today"). A name fragment like "Malte" is text to match against the returned action names, not a project. It returns ids spanning every workspace, so a referenced task that's loose or in another workspace is still found — never ask which project or workspace it's in, and never tell the user to check their own list. Complete a match by passing its id to update-action.
 - **get-overdue-triage**: Explain WHY the overdue pile is that size before proposing anything. Splits overdue actions into **cohorts** — groups sharing one exact timestamp, the fingerprint of a bulk write like a generated project plan, which were never individually due — and **loose** actions dated one at a time, which are real missed commitments. Call it whenever get-todays-actions returns a lot of overdue work, or the user says they're overwhelmed/behind/buried. Lead with the reframe, not the number: "17 of these were created in one batch on 25 July and were never really due — want them back in their project backlogs?" beats "you have 43 overdue actions".
@@ -459,10 +460,18 @@ export const assistantTools = {
     toolSearch: anthropic.tools.toolSearchBm25_20251119(),
 };
 
+// Resolved per-request (Mastra supports function instructions) so the agent
+// knows the actual current date — needed to compute ISO do-dates for "add this
+// for today". Date-only and appended at the END of the prompt, so the
+// Anthropic prompt cache prefix changes at most once per UTC day, not per
+// request. Same pattern as zoe-agent.ts.
+const assistantInstructions = () =>
+  `${INSTRUCTIONS}\n\nToday's date is ${new Date().toISOString().slice(0, 10)} (UTC).`;
+
 export const assistantAgent = new Agent({
   id: 'assistantAgent',
   name: 'Assistant',
-  instructions: INSTRUCTIONS,
+  instructions: assistantInstructions,
   model: assistantModel,
   memory,
   defaultOptions: assistantDefaultOptions,
@@ -479,7 +488,7 @@ export const assistantAgent = new Agent({
 export const assistantAgentHaiku = new Agent({
   id: 'assistantAgentHaiku',
   name: 'Assistant',
-  instructions: INSTRUCTIONS,
+  instructions: assistantInstructions,
   model: assistantHaikuModel,
   memory,
   defaultOptions: assistantDefaultOptions,

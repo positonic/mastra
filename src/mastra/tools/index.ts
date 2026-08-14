@@ -585,7 +585,7 @@ export const getProjectActionsTool = createTool({
 export const createProjectActionTool = createTool({
   id: "create-project-action",
   description:
-    "Create a new action for a project with specified priority and due date",
+    "Create a new action for a project with specified priority, do-date, and due date",
   inputSchema: z.object({
     projectId: z.string().describe("The project ID to create action for"),
     name: z.string().describe("The action name/title"),
@@ -595,7 +595,8 @@ export const createProjectActionTool = createTool({
       .describe("Detailed description of the action"),
     priority: looseEnum(["Quick", "Scheduled", "1st Priority", "2nd Priority", "3rd Priority", "4th Priority", "5th Priority", "Errand", "Remember", "Watch", "Someday Maybe"])
       .describe("Action priority. Use 'Quick' for small tasks, 'Scheduled' for time-bound items, '1st Priority' through '5th Priority' for ranked importance, 'Errand' for errands, 'Remember' for things to keep in mind, 'Watch' for items to monitor, 'Someday Maybe' for future ideas"),
-    dueDate: z.string().optional().describe("Due date in ISO format"),
+    dueDate: z.string().optional().describe("Deadline in ISO format — when the task is DUE. Only set when the user states a deadline ('by Friday', 'due tomorrow')."),
+    scheduledStart: z.string().optional().describe("Do-date in ISO format — the day the user plans to DO the task; this is what the /today page keys on. When the user says the task is for a specific day ('for today', 'tomorrow'), set this to that date."),
   }),
   outputSchema: z.object({
     action: z.object({
@@ -605,18 +606,19 @@ export const createProjectActionTool = createTool({
       status: z.string(),
       priority: z.string(),
       dueDate: z.string().optional(),
+      scheduledStart: z.string().optional(),
       projectId: z.string(),
     }),
   }),
   async execute(inputData, ctx) {
     const requestContext = asAppContext(ctx.requestContext);
-    const { projectId, name, description, priority, dueDate } = inputData;
+    const { projectId, name, description, priority, dueDate, scheduledStart } = inputData;
     const authToken = requestContext?.get("authToken");
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
     const contextProjectId = requestContext?.get("projectId");
 
-    console.log(`🔧 [createProjectAction] INPUT: projectId=${projectId}, name="${name}", priority=${priority}, dueDate=${dueDate || "none"}`);
+    console.log(`🔧 [createProjectAction] INPUT: projectId=${projectId}, name="${name}", priority=${priority}, dueDate=${dueDate || "none"}, scheduledStart=${scheduledStart || "none"}`);
     console.log(`🔧 [createProjectAction] CONTEXT: authToken=${authToken ? "present" : "MISSING"}, userId=${userId || "none"}, contextProjectId=${contextProjectId || "none"}`);
 
     if (!authToken) {
@@ -626,7 +628,7 @@ export const createProjectActionTool = createTool({
     try {
       const { data } = await authenticatedTrpcCall(
         "mastra.createAction",
-        { projectId, name, description, priority, dueDate },
+        { projectId, name, description, priority, dueDate, scheduledStart },
         { authToken, sessionId, userId }
       );
 
@@ -642,7 +644,7 @@ export const createProjectActionTool = createTool({
 export const quickCreateActionTool = createTool({
   id: "quick-create-action",
   description:
-    "Create a new action using natural language. Pass the action description in the `text` parameter — e.g. { \"text\": \"Call John tomorrow\" }. Automatically parses dates like 'tomorrow' or 'next Monday' and matches project names from the text. Optionally pass an explicit `priority` (when the user states one) and/or a resolved `projectId` (when the user names a project — resolve it to a real id via get-all-projects first). An explicit `projectId` wins over the page context.",
+    "Create a new action using natural language. Pass the action description in the `text` parameter — e.g. { \"text\": \"Call John tomorrow\" }. Automatically parses dates like 'tomorrow' or 'next Monday' and matches project names from the text. When the user says the task is for a specific day ('for today', 'tomorrow'), ALSO pass `scheduledStart` (the do-date — what the /today page keys on) explicitly: date parsing only sees `text`, so a rewritten task name silently loses the date. Optionally pass an explicit `priority` (when the user states one) and/or a resolved `projectId` (when the user names a project — resolve it to a real id via get-all-projects first). An explicit `projectId` wins over the page context.",
   inputSchema: z.object({
     text: z
       .string()
@@ -664,6 +666,14 @@ export const quickCreateActionTool = createTool({
       .string()
       .optional()
       .describe("Explicit project id to file the action under. Resolve a user-named project to its real id via get-all-projects and pass it here — it takes precedence over the current page context. Omit to fall back to the page context / text-matched project."),
+    scheduledStart: z
+      .string()
+      .optional()
+      .describe("Do-date in ISO format — the day the user plans to DO the task; this is what the /today page keys on. Set it whenever the user names a day ('for today', 'tomorrow', 'on Friday'). Wins over any date parsed from `text`."),
+    dueDate: z
+      .string()
+      .optional()
+      .describe("Deadline in ISO format — when the task is DUE. Only set when the user states a deadline ('by Friday', 'due tomorrow'). Wins over any date parsed from `text`."),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -672,6 +682,7 @@ export const quickCreateActionTool = createTool({
       name: z.string(),
       priority: z.string(),
       dueDate: z.string().optional().nullable(),
+      scheduledStart: z.string().optional().nullable(),
       project: z
         .object({
           id: z.string(),
@@ -711,10 +722,11 @@ export const quickCreateActionTool = createTool({
     // An explicitly-resolved projectId from the model wins over the page context.
     const projectId = inputData.projectId ?? contextProjectId;
     const priority = inputData.priority;
+    const { scheduledStart, dueDate } = inputData;
 
-    console.log(`🎯 [quickCreateAction] INPUT: text="${text}", priority=${priority || "none"}, inputProjectId=${inputData.projectId || "none"}`);
+    console.log(`🎯 [quickCreateAction] INPUT: text="${text}", priority=${priority || "none"}, inputProjectId=${inputData.projectId || "none"}, scheduledStart=${scheduledStart || "none"}, dueDate=${dueDate || "none"}`);
     console.log(`🎯 [quickCreateAction] CONTEXT: authToken=${authToken ? "present" : "MISSING"}, userId=${userId || "none"}, contextProjectId=${contextProjectId || "none"}, resolvedProjectId=${projectId || "none"}`);
-    console.log(`🎯 [quickCreateAction] SENDING TO TRPC: { text: "${text}", projectId: ${projectId ? `"${projectId}"` : "undefined"}, priority: ${priority ? `"${priority}"` : "undefined"} }`);
+    console.log(`🎯 [quickCreateAction] SENDING TO TRPC: { text: "${text}", projectId: ${projectId ? `"${projectId}"` : "undefined"}, priority: ${priority ? `"${priority}"` : "undefined"}, scheduledStart: ${scheduledStart ? `"${scheduledStart}"` : "undefined"}, dueDate: ${dueDate ? `"${dueDate}"` : "undefined"} }`);
 
     if (!authToken) {
       throw new Error("No authentication token available");
@@ -723,7 +735,13 @@ export const quickCreateActionTool = createTool({
     try {
       const { data: result } = await authenticatedTrpcCall(
         "mastra.quickCreateAction",
-        { text, projectId: projectId || undefined, priority: priority || undefined },
+        {
+          text,
+          projectId: projectId || undefined,
+          priority: priority || undefined,
+          scheduledStart: scheduledStart || undefined,
+          dueDate: dueDate || undefined,
+        },
         { authToken, sessionId, userId }
       );
 
