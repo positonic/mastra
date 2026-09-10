@@ -71,6 +71,21 @@ describe('log-decision', () => {
     });
   });
 
+  it('drops evidence when there is no meeting to resolve the turns against', async () => {
+    authenticatedTrpcCall.mockResolvedValue({ data: { id: 'dec-1', number: 1, status: 'ACCEPTED' } });
+    await logDecisionTool.execute!(
+      {
+        statement: 'Ship it',
+        evidence: [{ turnIndex: 3, speaker: 'Pat', text: "Let's ship it." }],
+      } as never,
+      { requestContext: makeRequestContext() } as never,
+    );
+    // A turn index with no transcript behind it cannot be checked by anyone,
+    // so it must not reach the log looking like a verbatim quote.
+    const payload = authenticatedTrpcCall.mock.calls[0]![1] as { evidence?: unknown[] };
+    expect(payload.evidence).toBeUndefined();
+  });
+
   it('refuses without a workspace scope and never calls the server', async () => {
     await expect(
       logDecisionTool.execute!(
@@ -129,6 +144,39 @@ describe('update-decision', () => {
     expect(result).toMatchObject({ status: 'ACCEPTED' });
   });
 
+  it('refuses a D-label where an id belongs, before calling the server', async () => {
+    for (const input of [
+      { decisionId: 'D-0003', statement: 'x' },
+      { decisionId: 'dec-1', status: 'SUPERSEDED', supersededById: 'D-0005' },
+    ]) {
+      await expect(
+        updateDecisionTool.execute!(input as never, { requestContext: makeRequestContext() } as never),
+      ).rejects.toThrow(/looks like a label/);
+    }
+    // The error names list-decisions so the model can recover on its own,
+    // rather than retrying into the server's bare NOT_FOUND.
+    await expect(
+      updateDecisionTool.execute!(
+        { decisionId: 'D-0003', statement: 'x' } as never,
+        { requestContext: makeRequestContext() } as never,
+      ),
+    ).rejects.toThrow(/list-decisions/);
+    expect(authenticatedTrpcCall).not.toHaveBeenCalled();
+  });
+
+  it('reports what already landed when the status call fails after the content edit', async () => {
+    authenticatedTrpcCall
+      .mockResolvedValueOnce({ data: { id: 'dec-1', number: 1, status: 'PROPOSED' } })
+      .mockRejectedValueOnce(new Error('CONFLICT'));
+
+    await expect(
+      updateDecisionTool.execute!(
+        { decisionId: 'dec-1', statement: 'Clearer wording', status: 'ACCEPTED' },
+        { requestContext: makeRequestContext() } as never,
+      ),
+    ).rejects.toThrow(/edited statement applied, but the status change to ACCEPTED failed.*partially updated/s);
+  });
+
   it('refuses an empty update', async () => {
     await expect(
       updateDecisionTool.execute!(
@@ -156,6 +204,9 @@ describe('list-decisions', () => {
     const endpoint = authenticatedTrpcQuery.mock.calls[0]![0] as string;
     const decoded = JSON.parse(decodeURIComponent(endpoint.slice('decision.list?input='.length)));
     expect(decoded.json.search).toBeUndefined();
+    // Asked for by number, so the server returns the one row rather than the
+    // whole log (with its evidence blobs) for the client to sift.
+    expect(decoded.json.number).toBe(3);
     expect(result).toMatchObject({ total: 1, decisions: [expect.objectContaining({ id: 'dec-3', label: 'D-0003' })] });
   });
 
@@ -182,7 +233,7 @@ describe('list-decisions', () => {
     const endpoint = authenticatedTrpcQuery.mock.calls[0]![0] as string;
     expect(endpoint.startsWith('decision.list?input=')).toBe(true);
     const decoded = JSON.parse(decodeURIComponent(endpoint.slice('decision.list?input='.length)));
-    expect(decoded).toEqual({ json: { workspaceId: 'ws-1', search: 'park', statuses: ['ACCEPTED'] } });
+    expect(decoded).toEqual({ json: { workspaceId: 'ws-1', search: 'park', statuses: ['ACCEPTED'], limit: 25 } });
     expect(result).toMatchObject({
       total: 1,
       decisions: [

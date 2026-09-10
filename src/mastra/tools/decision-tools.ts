@@ -192,12 +192,19 @@ export const logDecisionTool = createTool({
         projectId: inputData.projectId ?? null,
         productId: inputData.productId ?? null,
         deciders: inputData.deciders,
-        evidence: inputData.evidence?.map((turn) => ({
-          turnIndex: turn.turnIndex,
-          speaker: turn.speaker ?? null,
-          startTime: null,
-          text: turn.text,
-        })),
+        // Evidence only rides along with a meeting. A turn index with no
+        // transcript to resolve it against cannot be checked by the server
+        // or by a reader, so it would be an unverifiable quote presented as
+        // a verbatim one. The server validates the rest against the real
+        // transcript and drops what does not match.
+        evidence: inputData.transcriptionSessionId
+          ? inputData.evidence?.map((turn) => ({
+              turnIndex: turn.turnIndex,
+              speaker: turn.speaker ?? null,
+              startTime: null,
+              text: turn.text,
+            }))
+          : undefined,
       },
       { authToken, sessionId, userId },
     );
@@ -254,6 +261,21 @@ export const updateDecisionTool = createTool({
     if (!workspaceId) {
       throw new Error("No workspaceId available in request context");
     }
+    // The model thinks in labels: the first replay run had it calling
+    // list-decisions with `search: "D-0003"`. Passing a label where an id
+    // belongs gets a bare NOT_FOUND from the server, which tells the model
+    // nothing and invites it to retry the same call. Say what to do instead.
+    for (const [field, value] of [
+      ["decisionId", inputData.decisionId],
+      ["supersededById", inputData.supersededById],
+    ] as const) {
+      if (value && parseDecisionLabel(value) !== null) {
+        throw new Error(
+          `${field} looks like a label ("${value}"), not an id. Call list-decisions with search: "${value}" first, then pass the row's \`id\`.`,
+        );
+      }
+    }
+
     const status = inputData.status ? canonicalStatus(inputData.status) : undefined;
     if (status === "SUPERSEDED" && !inputData.supersededById) {
       throw new Error(
@@ -284,16 +306,29 @@ export const updateDecisionTool = createTool({
     }
 
     if (status) {
-      const { data } = await authenticatedTrpcCall<DecisionShape>(
-        "decision.setStatus",
-        {
-          workspaceId,
-          decisionId: inputData.decisionId,
-          status,
-          supersededById: inputData.supersededById ?? null,
-        },
-        { authToken, sessionId, userId },
-      );
+      // The content patch above has already landed. If the status call fails,
+      // throwing a bare error would tell the model nothing happened, when in
+      // fact the decision is half-updated — so name what did land.
+      let data: DecisionShape | undefined;
+      try {
+        ({ data } = await authenticatedTrpcCall<DecisionShape>(
+          "decision.setStatus",
+          {
+            workspaceId,
+            decisionId: inputData.decisionId,
+            status,
+            supersededById: inputData.supersededById ?? null,
+          },
+          { authToken, sessionId, userId },
+        ));
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          changes.length > 0
+            ? `${changes.join("; ")} applied, but the status change to ${status} failed: ${reason}. The decision is partially updated — tell the user, and do not repeat the edit.`
+            : `The status change to ${status} failed: ${reason}. Nothing was changed.`,
+        );
+      }
       latest = data ?? latest;
       changes.push(
         status === "SUPERSEDED" && data?.supersededBy
@@ -355,13 +390,20 @@ export const listDecisionsTool = createTool({
     // A label is not stored (it is rendered from the workspace sequence), so
     // "D-0003" is resolved here by number rather than sent as a text search.
     const labelNumber = inputData.search ? parseDecisionLabel(inputData.search) : null;
+    // A label resolves to one row server-side via `number`. Fetching the
+    // whole log and filtering here worked, but this is the documented way to
+    // turn a label into an id before update-decision, so it ran on every
+    // supersede and deprecate — pulling every decision (with its evidence
+    // JSON) across the wire to find one number.
     // tRPC GET queries take their input as {"json": ...}.
     const input = JSON.stringify({
       json: {
         workspaceId,
         search: labelNumber === null ? inputData.search : undefined,
+        number: labelNumber ?? undefined,
         statuses: inputData.status ? [canonicalStatus(inputData.status)] : undefined,
         projectId: inputData.projectId,
+        limit: inputData.limit,
       },
     });
     const { data } = await authenticatedTrpcQuery<DecisionListRow[]>(
@@ -369,6 +411,8 @@ export const listDecisionsTool = createTool({
       { authToken, sessionId, userId },
     );
     const all = Array.isArray(data) ? data : [];
+    // Belt and braces: a server that does not yet know the `number` filter
+    // ignores it and returns everything, so the label match still happens here.
     const rows =
       labelNumber === null
         ? all
