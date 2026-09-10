@@ -101,6 +101,9 @@ import {
   getMeetingInsightsTool,
   // Feature ideation tools
   ideateFeaturesTool,
+  logDecisionTool,
+  updateDecisionTool,
+  listDecisionsTool,
 } from '../tools/index.js';
 
 /**
@@ -341,6 +344,17 @@ You can search and analyze meeting transcriptions:
 - "Ideate features from this meeting" / "What features come out of that call?" → ideate-features with the transcriptionId
 - "Ideate features from the ingestion call, focus on the ingestion parts" → get-meeting-transcriptions (find it) → ideate-features with focus
 
+### Decisions (the Decision Log)
+- **log-decision**: Record a decision the user tells you was made or agreed ("log that we decided to park prioritisation debates", "we agreed in the standup to ship the drawer first"), or an open question they want tracked (status OPEN). It writes a confirmed Decision with a workspace label like D-0042 through the very same path the UI uses, so just call it — no confirmation needed — and tell them the label. When it came from a meeting, pass 'transcriptionSessionId' (resolve it with get-meeting-transcriptions if they named the meeting) — the server takes the date and deciders from the meeting — and quote supporting transcript turns as 'evidence' ONLY if you actually read them. Never log a decision the user did not state; when the wording is unclear, log their words, not yours.
+- **update-decision**: Accept a proposed decision, reopen one as a question, mark it superseded by a newer one (status SUPERSEDED + 'supersededById'), deprecate it, or edit its statement/notes/date. Needs the decision id — resolve a label like D-0003 with list-decisions first. Confirmed decisions are never deleted: deprecate or supersede.
+- **list-decisions**: The workspace's logged Decisions (meeting, manual, agent) with search over statement and notes. Reach for it on "what did we decide about X" and to find ids. Git ADRs are a separate, read-only record and are not in this list.
+
+**Usage patterns:**
+- "Log that we decided X" / "Record the decision to Y" → log-decision
+- "We agreed in yesterday's standup to X" → get-meeting-transcriptions (find it) → log-decision with transcriptionSessionId
+- "What did we decide about onboarding?" → list-decisions with search
+- "D-0003 is superseded by D-0005" / "deprecate D-0002" → list-decisions (ids) → update-decision
+
 ### Slack
 You can read, search, and send Slack messages:
 - **list-slack-channels**: See all channels the bot has access to (name, topic, member count)
@@ -415,6 +429,9 @@ Use this to decide which tool to call:
 | "What are my goals?" / "What am I trying to achieve?" | get-all-goals |
 | "Mark [project] as done" / "Put [project] on hold" / "Update [project] priority" | get-all-projects (to find ID) → update-project-status |
 | "Find [topic] in Notion" / "Search Notion for..." | notion-search |
+| "Log that we decided..." / "Record the decision to..." / "We agreed to..." | log-decision (with transcriptionSessionId when it came from a meeting) |
+| "What did we decide about [topic]?" | list-decisions with search |
+| "D-0003 is superseded by..." / "Deprecate that decision" | list-decisions (find the id) → update-decision |
 | "What's in my [database]?" / "Show me entries from [database]" | notion-search (to find database) → notion-query-database |
 | "Create a page in Notion about..." / "Add [thing] to Notion" | notion-search (to find the right database) → notion-create-page |
 | "Import Cycle N from Notion" / "bring the Notion backlog into [product]" | list-products → notion-search (filter="database", e.g. "Backlog") → import-notion-cycle-tickets with dryRun:true → show preview, confirm → import-notion-cycle-tickets |
@@ -650,6 +667,10 @@ const zoeTools = {
     getMeetingInsightsTool,
     // Feature ideation tools
     ideateFeaturesTool,
+    // Decision tools (ADR-0060 in exponential)
+    logDecisionTool,
+    updateDecisionTool,
+    listDecisionsTool,
     // Web search & fetch (Anthropic provider tools)
     webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),

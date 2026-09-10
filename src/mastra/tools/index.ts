@@ -2536,6 +2536,7 @@ export { sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, lis
 
 // Feature ideation tools (meeting → draft product features, human-reviewed)
 export { ideateFeaturesTool } from "./feature-ideation-tools.js";
+export { logDecisionTool, updateDecisionTool, listDecisionsTool } from "./decision-tools.js";
 
 // Tradescape trading tools
 export { tradescapeTools, listSetupsTool, createSetupTool, listAlertsTool, createAlertTool, deleteAlertTool, listPositionsTool, syncTradesTool, dailySummaryTool } from "./tradescape-tools.js";
