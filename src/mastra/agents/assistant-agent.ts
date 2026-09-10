@@ -91,6 +91,9 @@ import {
   getMeetingInsightsTool,
   // Feature ideation tools
   ideateFeaturesTool,
+  logDecisionTool,
+  updateDecisionTool,
+  listDecisionsTool,
 } from '../tools/index.js';
 
 /**
@@ -170,6 +173,11 @@ You have real tools that create, read, and update data. When someone asks you to
 - **ideate-features**: Turn a MEETING into DRAFT product features for the user to review. Use it when they ask to ideate/brainstorm/extract product features or ideas from a meeting or call. Pass the meeting's \`transcriptionId\` — resolve it with get-meeting-transcriptions if they named the meeting instead. Pass \`focus\` ONLY when they actually steered it ("focus on the ingestion parts"); otherwise omit it.
 - Everything it produces is a DRAFT awaiting human acceptance in a review card — it writes nothing to the product backlog — so call it directly, no confirmation needed. Report the returned draftCount honestly, say the drafts are waiting for their review, and never claim features were created.
 - This is NOT the way to create actions/tasks (quick-create-action) or tickets (create-ticket), and you must never create features yourself from a transcript — this tool is the only path.
+
+### Decisions (the Decision Log)
+- **log-decision**: Record a decision the user states was made or agreed ("log that we decided to park prioritisation debates", "we agreed in the standup to ship the drawer first") or an open question they want tracked (status OPEN). It writes a confirmed Decision with a workspace label like D-0042 through the same path the UI uses, so call it directly — no confirmation needed — and report the label back. When it came from a meeting, pass \`transcriptionSessionId\` (resolve it with get-meeting-transcriptions if they named the meeting) — the server then takes the date and deciders from the meeting — and quote supporting transcript turns as \`evidence\` ONLY if you actually read them. Never log a decision the user did not state; if the wording is unclear, log their words, not yours.
+- **update-decision**: Accept a proposed decision, reopen one as a question, mark it superseded by a newer one (status SUPERSEDED + \`supersededById\`), deprecate it, or edit its statement/notes/date. Needs the decision id — resolve a label like D-0003 with list-decisions first. Confirmed decisions are never deleted: deprecate or supersede.
+- **list-decisions**: The workspace's logged Decisions (meeting, manual, agent) with search over statement and notes. Use it for "what did we decide about X" and to find ids. Git ADRs are a separate, read-only record and are not in this list.
 
 ### Calendar & Scheduling
 - **check-calendar-connection**: Check if calendar is connected before fetching events.
@@ -284,6 +292,9 @@ Same for OKRs: when someone mentions an objective or key result by name, call ge
 | "What are my goals?" | get-all-goals |
 | "Mark [project] as done" / "Put [project] on hold" | get-all-projects (find ID) → update-project-status |
 | "Find [topic] in Notion" | notion-search |
+| "Log that we decided..." / "Record the decision to..." / "We agreed to..." | log-decision (with transcriptionSessionId when it came from a meeting) |
+| "What did we decide about [topic]?" | list-decisions with search |
+| "D-0003 is superseded by..." / "Deprecate that decision" | list-decisions (find the id) → update-decision |
 | "What's on my calendar today?" | check-calendar-connection → get-today-calendar-events |
 | "When am I free on Monday?" | get-calendar-events-in-range → find-available-time-slots |
 | "Who do I know at [company]?" | search-crm-contacts |
@@ -448,6 +459,10 @@ export const assistantTools = {
     getMeetingInsightsTool,
     // Feature ideation tools
     ideateFeaturesTool,
+    // Decision tools (ADR-0060 in exponential)
+    logDecisionTool,
+    updateDecisionTool,
+    listDecisionsTool,
     // Web search & fetch (Anthropic provider tools)
     webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),
