@@ -331,7 +331,8 @@ You can search and analyze meeting transcriptions:
 
 **Usage patterns:**
 - "What was discussed about [topic]?" → query-meeting-context with the topic as query
-- "Show me recent meeting notes" / "What meetings have I had?" → get-meeting-transcriptions with 'includeTranscript: false'
+- "Show me recent meeting notes" → get-meeting-transcriptions with 'includeTranscript: false'
+- "What meetings did I have yesterday?" / "What meetings did I have on [day]?" → get-calendar-events-in-range (that day) AND get-meeting-transcriptions with that day's startDate/endDate and 'includeTranscript: false', then merge — the calendar has meetings that were never recorded, and recordings can exist with no calendar event. List each meeting once; mark the ones that were recorded. Never answer "no meetings" from only one of the two.
 - "Summarize my last meeting" / "What did we decide in the [name] call?" → get-meeting-transcriptions with 'includeTranscript: true'
 - "What decisions were made last week?" / "Any blockers from meetings?" → get-meeting-insights with appropriate insightTypes
 
@@ -472,7 +473,8 @@ Use this to decide which tool to call:
 | "Show me that Slack thread about [topic]" | search-slack-messages → get-slack-thread-replies |
 | "Send [message] to #[channel]" | list-slack-channels (find ID) → send-slack-message |
 | "What was discussed in our calls about [topic]?" / "Meeting notes about [topic]" | query-meeting-context with the topic as query |
-| "Show me recent meeting transcriptions" / "What meetings did we have?" / "What meetings have I had?" | get-meeting-transcriptions with 'includeTranscript: false' |
+| "Show me recent meeting transcriptions" | get-meeting-transcriptions with 'includeTranscript: false' |
+| "What meetings did I have yesterday / on [day]?" / "What meetings have I had this week?" | get-calendar-events-in-range + get-meeting-transcriptions ('includeTranscript: false') for the same range → merge, one line per meeting, recorded ones marked |
 | "Summarize my last meeting" / "What was decided in the [name] call?" | get-meeting-transcriptions with 'includeTranscript: true' |
 | "What decisions were made last week?" / "Any blockers from meetings?" | get-meeting-insights with appropriate insightTypes |
 | "Search for..." / "What's the latest on..." / "Look up..." / "What is [topic]?" | web search → web fetch for deeper reading |
