@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -8,9 +8,11 @@ import {
   TOOL_GROUPS,
   TOOLSET_IDS,
   TOOLSETS_CONTEXT_KEY,
+  agentTools,
   createToolsResolver,
   groupTools,
   parseToolsetSelection,
+  resetUnknownToolsetWarnings,
   selectTools,
 } from '../toolsets.js';
 
@@ -94,6 +96,34 @@ describe('parseToolsetSelection', () => {
   });
 });
 
+describe('parseToolsetSelection — unknown-id warnings', () => {
+  beforeEach(() => {
+    resetUnknownToolsetWarnings();
+    vi.restoreAllMocks();
+  });
+
+  it('warns once per unknown id across calls, and still returns the known subset', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(parseToolsetSelection('crm,contacts')).toEqual(['crm']);
+    expect(parseToolsetSelection('contacts,slack')).toEqual(['slack']);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('"contacts"');
+  });
+
+  it('warns separately for each distinct unknown id', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    parseToolsetSelection(['banana', 'kiwi', 'banana']);
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not warn for blanks or known ids', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    parseToolsetSelection(' , slack,, crm ');
+    parseToolsetSelection('');
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
 describe('selectTools — anthropic profile', () => {
   it('returns the full map unchanged, whatever the selection', () => {
     const all = fake(zoeKeys);
@@ -159,6 +189,35 @@ describe('createToolsResolver', () => {
   it('generic resolver works with no RequestContext (agent listing, playground)', () => {
     const resolve = createToolsResolver(all, 'generic');
     expect(Object.keys(resolve({})).length).toBeGreaterThan(0);
+  });
+});
+
+describe('agentTools', () => {
+  const all = fake(zoeKeys);
+
+  it('returns the static map itself for the anthropic profile', () => {
+    // @mastra/core only registers tools on the Mastra instance (and voice)
+    // when the Agent's `tools` option is a plain object.
+    const tools = agentTools(all, 'anthropic');
+    expect(typeof tools).toBe('object');
+    expect(tools).toBe(all);
+  });
+
+  it('returns a per-request resolver for the generic profile', () => {
+    const tools = agentTools(all, 'generic');
+    expect(typeof tools).toBe('function');
+    const resolved = (tools as (a: { requestContext?: { get(k: string): unknown } }) => Record<string, unknown>)({
+      requestContext: { get: (k) => (k === TOOLSETS_CONTEXT_KEY ? 'crm' : undefined) },
+    });
+    expect(Object.keys(resolved)).toContain('searchCrmContactsTool');
+  });
+});
+
+describe('agent definitions', () => {
+  it.each(['zoe-agent.ts', 'assistant-agent.ts'])('%s passes tools through agentTools, not a raw resolver', (file) => {
+    const src = readFileSync(join(here, '..', file), 'utf8');
+    expect(src).not.toMatch(/tools:\s*createToolsResolver\(/);
+    expect(src.match(/tools:\s*agentTools\(\w+, 'anthropic'\)/g)?.length).toBe(2);
   });
 });
 

@@ -196,10 +196,33 @@ export function parseToolsetSelection(value: unknown): ToolsetId[] | undefined {
       ? value.split(',')
       : undefined;
   if (!raw) return undefined;
-  const ids = raw
-    .map((s) => s.trim())
-    .filter((s): s is ToolsetId => TOOLSET_ID_SET.has(s));
+  const trimmed = raw.map((s) => s.trim()).filter((s) => s !== '');
+  for (const s of trimmed) {
+    if (!TOOLSET_ID_SET.has(s)) warnUnknownToolsetId(s);
+  }
+  const ids = trimmed.filter((s): s is ToolsetId => TOOLSET_ID_SET.has(s));
   return [...new Set(ids)];
+}
+
+/**
+ * Unknown ids are ignored so the two repos can roll out independently, but a
+ * rename on one side (e.g. `crm` → `contacts`) would otherwise silently stop
+ * a generic-profile agent loading that toolset. Warn once per id per process
+ * so the drift shows up in the logs without flooding them.
+ */
+const warnedUnknownToolsetIds = new Set<string>();
+
+function warnUnknownToolsetId(id: string): void {
+  if (warnedUnknownToolsetIds.has(id)) return;
+  warnedUnknownToolsetIds.add(id);
+  console.warn(
+    `⚠️ [toolsets] Ignoring unknown toolset id "${id}" — TOOLSET_IDS may have drifted from exponential's jevDecision.ts`,
+  );
+}
+
+/** Test hook: forget which unknown ids have already been warned about. */
+export function resetUnknownToolsetWarnings(): void {
+  warnedUnknownToolsetIds.clear();
 }
 
 /** Group a flat tool map by TOOL_GROUPS. Unassigned keys are returned separately. */
@@ -268,4 +291,23 @@ export function createToolsResolver<T>(
     const selection = parseToolsetSelection(requestContext?.get(TOOLSETS_CONTEXT_KEY));
     return selectTools(allTools, profile, selection);
   };
+}
+
+/**
+ * The value to pass as an Agent's `tools` option. Use this, not
+ * `createToolsResolver`, at agent definitions.
+ *
+ * `anthropic` returns the static map itself. That is not just an
+ * optimisation: `@mastra/core` (1.28) only registers an agent's tools on the
+ * Mastra instance (`mastra.addTool`, which backs `GET /api/tools`,
+ * `/api/tools/:id/execute` and the Studio tools tab) and wires them into
+ * voice when `tools` is a plain object. A function would silently drop them
+ * from both, and the anthropic profile returns the same map every time
+ * anyway. `generic` returns the per-request resolver.
+ */
+export function agentTools<T>(
+  allTools: Record<string, T>,
+  profile: ToolProfile,
+): Record<string, T> | ((args: { requestContext?: RequestContextLike }) => Record<string, T>) {
+  return profile === 'anthropic' ? allTools : createToolsResolver(allTools, profile);
 }
