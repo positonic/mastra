@@ -286,7 +286,7 @@ Same for OKRs: when someone mentions an objective or key result by name, call ge
 | "Create an action to..." / "Add a task for..." / "Remind me to..." | quick-create-action |
 | "What should I focus on today?" / "What are my priorities?" / "What's on my plate?" | get-todays-actions |
 | "I'm overwhelmed" / "I'm so behind" / "help me catch up" / lots of overdue showed up | get-overdue-triage → propose defer-actions for cohorts |
-| "Move these to tomorrow" / "push this week to Monday" | reschedule-actions (one action → update-action) |
+| "Move these to tomorrow" / "push this week to Monday" | reschedule-actions (one action → update-action) — except numbered replies to a Shutdown recap, which follow the recap rules (update-action per action) |
 | "How's [project] going?" | get-all-projects (find ID) → get-project-context |
 | "What projects am I working on?" | get-all-projects → format as table |
 | "What are my goals?" | get-all-goals |
