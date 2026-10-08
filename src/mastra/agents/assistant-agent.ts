@@ -1,4 +1,5 @@
 import { anthropic } from '@ai-sdk/anthropic';
+import { createToolsResolver } from './toolsets.js';
 import { Agent } from '@mastra/core/agent';
 import { memory } from '../memory/index.js';
 import { neutralizeServerToolErrorsProcessor } from '../processors/neutralize-server-tool-errors.js';
@@ -490,7 +491,9 @@ export const assistantAgent = new Agent({
   model: assistantModel,
   memory,
   defaultOptions: assistantDefaultOptions,
-  tools: assistantTools,
+  // Resolved per request (ticket 674). The 'anthropic' profile returns the
+  // full map unchanged, so cost and behaviour match the static map it replaced.
+  tools: createToolsResolver(assistantTools, 'anthropic'),
   // Flatten Anthropic server-tool *_tool_result_error blocks to a text note
   // before request conversion, so one failed web_fetch/web_search can't poison
   // the whole thread on replay (ADR-0002).
@@ -507,6 +510,8 @@ export const assistantAgentHaiku = new Agent({
   model: assistantHaikuModel,
   memory,
   defaultOptions: assistantDefaultOptions,
-  tools: assistantTools,
+  // Resolved per request (ticket 674). The 'anthropic' profile returns the
+  // full map unchanged, so cost and behaviour match the static map it replaced.
+  tools: createToolsResolver(assistantTools, 'anthropic'),
   inputProcessors: [neutralizeServerToolErrorsProcessor],
 });
