@@ -62,7 +62,14 @@ const NON_TEXT_REPLY_COOLDOWN_MS = 60 * 1000; // one polite reply per attachment
 // agent may use full standard markdown — links, lists, code blocks, tables.
 const MATRIX_SYSTEM_CONTEXT = `You are responding via Matrix (rendered as rich HTML in clients like Element). Format your responses in standard markdown:
 - Links, lists, **bold**, _italic_, \`code\`, fenced code blocks and tables all render properly
-- Keep responses conversational and reasonably concise — this is a chat, not a document`;
+- Keep responses conversational and reasonably concise — this is a chat, not a document
+
+Shutdown recap replies: an earlier message of yours in this chat may be a "Shutdown recap" followed by a reference list mapping its numbers to action ids ("1 = action <id> …"). When the user answers with those numbers — "1, 3 tomorrow", "drop 2", "4 done", "5 to Monday", "6 back to backlog" — act on the ids from the MOST RECENT recap's list:
+- tomorrow / a day or date → update-action on each one with scheduledStart (the do-date) set to that day at noon UTC, e.g. 2026-08-14T12:00:00Z. Leave dueDate alone: it is the deadline, and reschedule-actions overwrites it.
+- done → update-action with status COMPLETED
+- drop / cancel → update-action with status CANCELLED
+- backlog / no date / later → defer-actions
+Then reply with one short line per action saying what changed. If a number is not in the list, or the instruction is unclear, ask instead of guessing. Never show the user the action ids.`;
 
 // ─── Minimal matrix-js-sdk surface ──────────────────────────────────────────
 // The gateway depends on this narrow interface (not the full MatrixClient) so
@@ -157,6 +164,40 @@ export interface AgentLike {
 
 export type AgentResolver = (agentId: AgentIdentifier) => Promise<AgentLike>;
 
+/**
+ * Records a delivered notification in the DM's agent memory thread, so a
+ * later reply to it has context (Shutdown recap: its numbers → action ids).
+ * Injectable for tests; the default writes to the shared Mastra memory.
+ */
+export type NotifyMemoryWriter = (input: { userId: string; roomId: string; text: string }) => Promise<void>;
+
+/** The memory thread every agent shares for one user's Matrix DM. */
+export function matrixThreadId(userId: string, roomId: string): string {
+  return `matrix-${userId}-${roomId}`;
+}
+
+/** Default writer — lazy import so unit tests never open the Postgres store. */
+const defaultNotifyMemoryWriter: NotifyMemoryWriter = async ({ userId, roomId, text }) => {
+  const { memory } = await import('../memory/index.js');
+  const threadId = matrixThreadId(userId, roomId);
+  const now = new Date();
+  if (!(await memory.getThreadById({ threadId }))) {
+    await memory.saveThread({ thread: { id: threadId, resourceId: userId, title: 'Matrix DM', createdAt: now, updatedAt: now } });
+  }
+  await memory.saveMessages({
+    messages: [
+      {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        createdAt: now,
+        threadId,
+        resourceId: userId,
+        content: { format: 2, parts: [{ type: 'text', text }], content: text },
+      },
+    ],
+  });
+};
+
 /** Default resolver — lazy import so unit tests never load the real agents. */
 const defaultAgentResolver: AgentResolver = async (agentId) => {
   const agents = await import('../agents/index.js');
@@ -223,6 +264,7 @@ export class MatrixGateway {
   constructor(
     private readonly injectedClient: MatrixClientLike | null = null,
     private readonly agentResolver: AgentResolver = defaultAgentResolver,
+    private readonly notifyMemoryWriter: NotifyMemoryWriter = defaultNotifyMemoryWriter,
   ) {
     logger.info(`🚀 [${INSTANCE_ID}] Matrix Gateway initializing...`);
     // Tests inject a fake client and drive the class without initialize()
@@ -716,7 +758,7 @@ export class MatrixGateway {
 
       const memoryScope = {
         resource: mapping.userId,
-        thread: `matrix-${mapping.userId}-${roomId}`,
+        thread: matrixThreadId(mapping.userId, roomId),
       };
 
       let response;
@@ -1196,7 +1238,7 @@ export class MatrixGateway {
       return;
     }
 
-    let body: { userId?: string; title?: string; message?: string };
+    let body: { userId?: string; title?: string; message?: string; agentContext?: string };
     try {
       const raw = await readBody(req);
       body = raw ? JSON.parse(raw) : {};
@@ -1205,7 +1247,7 @@ export class MatrixGateway {
       return;
     }
 
-    const { userId, title, message } = body;
+    const { userId, title, message, agentContext } = body;
     if (!userId || !message) {
       sendJsonResponse(res, 400, { error: 'userId and message are required' });
       return;
@@ -1228,6 +1270,22 @@ export class MatrixGateway {
     try {
       const rendered = title ? `**${title}**\n\n${message}` : message;
       await this.sendMarkdownMessage(mapping.roomId, rendered);
+      // The bot ignores its own messages, so a notification never reaches the
+      // agent on its own. One that expects a reply (Shutdown recap) carries
+      // agentContext; it is kept in the DM's memory thread with the message.
+      // Delivery already happened, so a failed write is reported, not fatal.
+      if (typeof agentContext === 'string' && agentContext.length > 0) {
+        try {
+          await this.notifyMemoryWriter({
+            userId,
+            roomId: mapping.roomId,
+            text: `${rendered}\n\n---\nReference for replies (kept for you, not shown to the user):\n${agentContext}`,
+          });
+        } catch (error) {
+          logger.error(`❌ [${INSTANCE_ID}] Could not record notification in memory for ${userId}:`, error);
+          captureException(error, { userId, operation: 'matrixGateway.notifyMemory' });
+        }
+      }
       sendJsonResponse(res, 200, { delivered: true, roomId: mapping.roomId });
       logger.info(`📤 [${INSTANCE_ID}] Notification delivered to user ${userId}`);
     } catch (error) {

@@ -9,6 +9,7 @@ import {
   type MatrixClientLike,
   type MatrixEventLike,
   type MatrixRoomLike,
+  type NotifyMemoryWriter,
 } from '../matrix-gateway.js';
 import { markdownToMatrixHtml } from '../../utils/matrix-format.js';
 
@@ -719,6 +720,70 @@ describe('POST /notify (outbound delivery)', () => {
     expect(htmlEvent![0]).toBe(DM_ROOM);
     expect(String(htmlEvent![2].formatted_body)).toContain('<strong>Due soon</strong>');
     expect(String(htmlEvent![2].body)).toContain('Pay Malte');
+  });
+});
+
+describe('POST /notify with agentContext (Shutdown recap)', () => {
+  const recapBody = {
+    userId: 'u1',
+    title: '🌙 Shutdown recap',
+    message: '**📋 Left undone**\n1. Write the brief',
+    agentContext: '1 = action a1 "Write the brief" (left undone today)',
+  };
+
+  it('keeps the delivered message and its reply reference in the DM memory thread', async () => {
+    const writer = vi.fn<NotifyMemoryWriter>(async () => {});
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client, undefined, writer);
+    await pairUser(gateway);
+
+    const res = fakeRes();
+    await gateway._handleNotifyForTest(
+      fakeReq(recapBody, { 'x-gateway-secret': 'test-gateway-secret' }) as never,
+      res as never,
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(writer).toHaveBeenCalledTimes(1);
+    const { userId, roomId, text } = writer.mock.calls[0][0];
+    expect(userId).toBe('u1');
+    expect(roomId).toBe(DM_ROOM);
+    expect(text).toContain('**🌙 Shutdown recap**');
+    expect(text).toContain('1. Write the brief');
+    expect(text).toContain('1 = action a1 "Write the brief"');
+
+    // The reference list is for the agent; the room only gets the message.
+    const sent = (client.sendEvent as ReturnType<typeof vi.fn>).mock.calls.find((c) => c[1] === 'm.room.message');
+    expect(String(sent![2].body)).not.toContain('action a1');
+  });
+
+  it('writes nothing to memory for an ordinary notification', async () => {
+    const writer = vi.fn<NotifyMemoryWriter>(async () => {});
+    const gateway = new MatrixGateway(makeFakeClient(), undefined, writer);
+    await pairUser(gateway);
+
+    await gateway._handleNotifyForTest(
+      fakeReq({ userId: 'u1', message: 'Due today' }, { 'x-gateway-secret': 'test-gateway-secret' }) as never,
+      fakeRes() as never,
+    );
+
+    expect(writer).not.toHaveBeenCalled();
+  });
+
+  it('still reports delivery when the memory write fails', async () => {
+    const writer = vi.fn<NotifyMemoryWriter>(async () => {
+      throw new Error('db down');
+    });
+    const gateway = new MatrixGateway(makeFakeClient(), undefined, writer);
+    await pairUser(gateway);
+
+    const res = fakeRes();
+    await gateway._handleNotifyForTest(
+      fakeReq(recapBody, { 'x-gateway-secret': 'test-gateway-secret' }) as never,
+      res as never,
+    );
+
+    expect(res.statusCode).toBe(200);
   });
 });
 
