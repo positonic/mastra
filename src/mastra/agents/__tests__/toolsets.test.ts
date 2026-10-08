@@ -13,6 +13,7 @@ import {
   groupTools,
   parseToolsetSelection,
   resetUnknownToolsetWarnings,
+  sanitizeToolsetIdForLog,
   selectTools,
 } from '../toolsets.js';
 
@@ -114,6 +115,27 @@ describe('parseToolsetSelection — unknown-id warnings', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     parseToolsetSelection(['banana', 'kiwi', 'banana']);
     expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops remembering (and warning) after 50 distinct unknown ids', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    parseToolsetSelection(Array.from({ length: 200 }, (_, i) => `junk${i}`));
+    expect(warn).toHaveBeenCalledTimes(50);
+  });
+
+  it('truncates long ids and strips control characters before logging', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    parseToolsetSelection(`x${'a'.repeat(500)}`);
+    parseToolsetSelection('evil\n[ERROR] forged line');
+    const logged = warn.mock.calls.map((c) => String(c[0]));
+    expect(logged[0]).toContain(`x${'a'.repeat(63)}…`);
+    expect(logged[0]).not.toContain('a'.repeat(100));
+    expect(logged[1]).not.toContain('\n');
+    expect(logged[1]).toContain('evil?[ERROR] forged line');
+  });
+
+  it('sanitizeToolsetIdForLog leaves ordinary ids alone', () => {
+    expect(sanitizeToolsetIdForLog('contacts')).toBe('contacts');
   });
 
   it('does not warn for blanks or known ids', () => {

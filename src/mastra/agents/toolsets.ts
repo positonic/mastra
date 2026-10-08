@@ -209,14 +209,32 @@ export function parseToolsetSelection(value: unknown): ToolsetId[] | undefined {
  * rename on one side (e.g. `crm` → `contacts`) would otherwise silently stop
  * a generic-profile agent loading that toolset. Warn once per id per process
  * so the drift shows up in the logs without flooding them.
+ *
+ * The value comes from the RequestContext, which Mastra's HTTP API accepts
+ * from any authenticated caller, so treat it as untrusted: the remembered set
+ * is capped (a real drift is a handful of ids, not thousands), and ids are
+ * truncated and stripped of control characters before they reach the logs.
  */
+const MAX_WARNED_UNKNOWN_IDS = 50;
+const MAX_LOGGED_ID_CHARS = 64;
 const warnedUnknownToolsetIds = new Set<string>();
 
+/** Printable, bounded rendering of a caller-supplied id for logs. */
+export function sanitizeToolsetIdForLog(id: string): string {
+  // eslint-disable-next-line no-control-regex
+  const printable = id.replace(/[\u0000-\u001f\u007f]/g, '?');
+  return printable.length > MAX_LOGGED_ID_CHARS
+    ? `${printable.slice(0, MAX_LOGGED_ID_CHARS)}…`
+    : printable;
+}
+
 function warnUnknownToolsetId(id: string): void {
-  if (warnedUnknownToolsetIds.has(id)) return;
-  warnedUnknownToolsetIds.add(id);
+  const key = sanitizeToolsetIdForLog(id);
+  if (warnedUnknownToolsetIds.has(key)) return;
+  if (warnedUnknownToolsetIds.size >= MAX_WARNED_UNKNOWN_IDS) return;
+  warnedUnknownToolsetIds.add(key);
   console.warn(
-    `⚠️ [toolsets] Ignoring unknown toolset id "${id}" — TOOLSET_IDS may have drifted from exponential's jevDecision.ts`,
+    `⚠️ [toolsets] Ignoring unknown toolset id "${key}" — TOOLSET_IDS may have drifted from exponential's jevDecision.ts`,
   );
 }
 
