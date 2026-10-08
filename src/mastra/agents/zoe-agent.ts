@@ -1,4 +1,5 @@
 import { anthropic } from '@ai-sdk/anthropic';
+import { agentTools } from './toolsets.js';
 import { Agent } from '@mastra/core/agent';
 import { memory } from '../memory/index.js';
 import { neutralizeServerToolErrorsProcessor } from '../processors/neutralize-server-tool-errors.js';
@@ -573,7 +574,7 @@ You're the friend who remembers what they said they wanted and gently asks "hey,
 const zoeModel = withAnthropicPromptCache(anthropic('claude-sonnet-4-5-20250929'));
 const zoeHaikuModel = withAnthropicPromptCache(anthropic('claude-haiku-4-5-20251001'));
 
-const zoeTools = {
+export const zoeTools = {
     // Exponential tools
     getProjectContextTool,
     getProjectActionsTool,
@@ -715,7 +716,9 @@ export const zoeAgent = new Agent({
   model: zoeModel,
   memory,
   defaultOptions: zoeDefaultOptions,
-  tools: zoeTools,
+  // Ticket 674: the 'anthropic' profile is the full static map, so cost,
+  // behaviour and Mastra's tool registry are exactly as before.
+  tools: agentTools(zoeTools, 'anthropic'),
   // Flatten Anthropic server-tool *_tool_result_error blocks to a text note
   // before request conversion, so one failed web_fetch/web_search can't poison
   // the whole thread on replay (ADR-0002).
@@ -736,7 +739,9 @@ export const zoeAgentHaiku = new Agent({
   model: zoeHaikuModel,
   memory,
   defaultOptions: zoeDefaultOptions,
-  tools: zoeTools,
+  // Ticket 674: the 'anthropic' profile is the full static map, so cost,
+  // behaviour and Mastra's tool registry are exactly as before.
+  tools: agentTools(zoeTools, 'anthropic'),
   inputProcessors: [neutralizeServerToolErrorsProcessor],
 });
 
