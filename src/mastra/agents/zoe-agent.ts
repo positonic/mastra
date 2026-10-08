@@ -422,7 +422,7 @@ Use this to decide which tool to call:
 | "...for today" / "add X to today" / any named day | quick-create-action with \`scheduledStart\` set to that day (ISO at noon UTC, from today's date) — without it the action won't show on /today |
 | "What should I focus on today?" / "What's my plan?" / "What are my priorities?" / "What's on my plate?" | get-todays-actions (add get-all-goals only if they ask how it ladders up) |
 | "I'm overwhelmed" / "I'm so behind" / "help me catch up" / lots of overdue showed up | get-overdue-triage → propose defer-actions for cohorts |
-| "Move these to tomorrow" / "push this week to Monday" | reschedule-actions (a single action → update-action) |
+| "Move these to tomorrow" / "push this week to Monday" | reschedule-actions (a single action → update-action) — except numbered replies to a Shutdown recap, which follow the recap rules (update-action per action) |
 | "How's [project] going?" / "What's the status of [project]?" | get-all-projects (to find ID) → get-project-context |
 | "What projects am I working on?" / "Show my projects" | get-all-projects → format as table |
 | "Set up my workspace with goals/projects..." / user provides structured list of goals + projects + actions | get-user-workspaces (confirm workspace ID) → bulk-create-workspace-structure → report verified manifest |

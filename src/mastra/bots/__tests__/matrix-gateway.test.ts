@@ -770,6 +770,69 @@ describe('POST /notify with agentContext (Shutdown recap)', () => {
     expect(writer).not.toHaveBeenCalled();
   });
 
+  it('answers 200 without waiting for a slow memory write', async () => {
+    let release: () => void = () => {};
+    const writer = vi.fn<NotifyMemoryWriter>(() => new Promise<void>((resolve) => { release = resolve; }));
+    const gateway = new MatrixGateway(makeFakeClient(), undefined, writer);
+    await pairUser(gateway);
+
+    const res = fakeRes();
+    await gateway._handleNotifyForTest(
+      fakeReq(recapBody, { 'x-gateway-secret': 'test-gateway-secret' }) as never,
+      res as never,
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(writer).toHaveBeenCalledTimes(1);
+    release();
+  });
+
+  it('ignores an agentContext that is not a string', async () => {
+    const writer = vi.fn<NotifyMemoryWriter>(async () => {});
+    const gateway = new MatrixGateway(makeFakeClient(), undefined, writer);
+    await pairUser(gateway);
+
+    await gateway._handleNotifyForTest(
+      fakeReq({ ...recapBody, agentContext: { 1: 'a1' } }, { 'x-gateway-secret': 'test-gateway-secret' }) as never,
+      fakeRes() as never,
+    );
+
+    expect(writer).not.toHaveBeenCalled();
+  });
+
+  it('writes nothing to memory when the Matrix send fails', async () => {
+    const writer = vi.fn<NotifyMemoryWriter>(async () => {});
+    const client = makeFakeClient();
+    const gateway = new MatrixGateway(client, undefined, writer);
+    await pairUser(gateway);
+    // The homeserver goes away after pairing.
+    client.sendEvent = vi.fn(async () => { throw new Error('homeserver down'); });
+    client.sendTextMessage = vi.fn(async () => { throw new Error('homeserver down'); });
+
+    const res = fakeRes();
+    await gateway._handleNotifyForTest(
+      fakeReq(recapBody, { 'x-gateway-secret': 'test-gateway-secret' }) as never,
+      res as never,
+    );
+
+    expect(res.statusCode).toBe(502);
+    expect(writer).not.toHaveBeenCalled();
+  });
+
+  it('truncates an oversized reference list', async () => {
+    const writer = vi.fn<NotifyMemoryWriter>(async () => {});
+    const gateway = new MatrixGateway(makeFakeClient(), undefined, writer);
+    await pairUser(gateway);
+
+    await gateway._handleNotifyForTest(
+      fakeReq({ ...recapBody, agentContext: 'x'.repeat(50_000) }, { 'x-gateway-secret': 'test-gateway-secret' }) as never,
+      fakeRes() as never,
+    );
+
+    const { text } = writer.mock.calls[0][0];
+    expect(text.length).toBeLessThan(20_000);
+  });
+
   it('still reports delivery when the memory write fails', async () => {
     const writer = vi.fn<NotifyMemoryWriter>(async () => {
       throw new Error('db down');
