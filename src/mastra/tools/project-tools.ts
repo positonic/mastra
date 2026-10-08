@@ -409,9 +409,13 @@ export const rescheduleActionsTool = createTool({
     );
 
     try {
+      // `date`, not `dueDate`: it sets the do-date. The app only pushes the
+      // deadline forward where it would fall before it (exponential#838), and
+      // keeps `dueDate` solely as a deprecated alias. The ISO string is
+      // coerced server-side — this raw call carries no superjson Date meta.
       const { data } = await authenticatedTrpcCall(
         "action.bulkReschedule",
-        { actionIds: inputData.actionIds, dueDate: when.toISOString() },
+        { actionIds: inputData.actionIds, date: when.toISOString() },
         { authToken, sessionId, userId },
       );
       console.log(`✅ [rescheduleActions] SUCCESS:`, JSON.stringify(data));
