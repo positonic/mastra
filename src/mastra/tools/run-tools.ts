@@ -1,6 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall, authenticatedTrpcQuery } from "../utils/authenticated-fetch.js";
+import { looseBoolean } from "./zod-loose.js";
 
 // ==================== Agent run tools ====================
 // Tools only the `assistantRunAgent` carries (Exponential ADR-0067, Agent PRD
@@ -152,8 +153,7 @@ export const finishRunTool = createTool({
       .string()
       .min(1)
       .describe("What you did, found, or delegated, in a few sentences. Public — write it knowing teammates will read it."),
-    readyToClose: z
-      .boolean()
+    readyToClose: looseBoolean()
       .describe("true when the action's work is done and the owner only needs to confirm; false when follow-up is still needed."),
   }),
   outputSchema: z.object({
