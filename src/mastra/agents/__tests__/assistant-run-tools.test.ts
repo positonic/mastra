@@ -71,3 +71,15 @@ describe('assistantRunAgent tool map (restricted by construction)', () => {
     expect(assistantRunAgent.id).toBe('assistantRunAgent');
   });
 });
+
+describe('assistantRunAgent run contract (prompt)', () => {
+  it('tells the model ask-owner ends the run and finish-run is otherwise the last call', async () => {
+    const { assistantRunInstructions } = await import('../assistant-run-agent.js');
+    const text = assistantRunInstructions();
+    expect(text).toMatch(/ask-owner[\s\S]*LAST call/);
+    expect(text).toMatch(/do not call finish-run/i);
+    expect(text).toMatch(/Exactly one ending/);
+    expect(text).toMatch(/Never complete the action/);
+    expect(text).toMatch(/no tool that sends email/);
+  });
+});

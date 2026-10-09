@@ -115,6 +115,34 @@ export const reassignActionTool = createTool({
   },
 });
 
+export const askOwnerTool = createTool({
+  id: "ask-owner",
+  description:
+    "Ask your owner a question you cannot answer yourself and PAUSE the run. Posts a comment on the action that mentions your owner and moves the run to waiting-on-owner. When they reply, a new run resumes with the thread so far. Because the run ends here, this must be your LAST call: do not call finish-run after it, and do not keep working — stop immediately and end your turn.",
+  inputSchema: z.object({
+    question: z
+      .string()
+      .min(1)
+      .describe("The question, with enough context that the owner can answer from their inbox without opening anything else."),
+  }),
+  outputSchema: z.object({
+    stop: z.literal(true),
+    status: z.literal("WAITING_ON_OWNER"),
+    message: z.string(),
+  }),
+  async execute(inputData, { requestContext }) {
+    const auth = runAuth(requestContext);
+    console.log(`🙋 [askOwner] ${inputData.question.length} chars`);
+    await authenticatedTrpcCall("mastra.askOwner", { question: inputData.question }, auth);
+    return {
+      stop: true as const,
+      status: "WAITING_ON_OWNER" as const,
+      message:
+        "Your question was posted and the run is now waiting on your owner. Stop here: make no further tool calls and end your turn. A new run will resume when they reply.",
+    };
+  },
+});
+
 export const finishRunTool = createTool({
   id: "finish-run",
   description:
@@ -149,5 +177,6 @@ export const runTools = {
   reportProgressTool,
   commentOnActionTool,
   reassignActionTool,
+  askOwnerTool,
   finishRunTool,
 };

@@ -12,6 +12,7 @@ const {
   reportProgressTool,
   commentOnActionTool,
   reassignActionTool,
+  askOwnerTool,
   finishRunTool,
   runTools,
 } = await import('./run-tools.js');
@@ -64,9 +65,7 @@ describe('run tools — endpoint contract (Agent PRD D5)', () => {
 
   it('exposes exactly the D5 tool ids', () => {
     expect(Object.values(runTools).map((t) => t.id).sort()).toEqual(
-      ['ask-owner', 'comment-on-action', 'finish-run', 'get-run-context', 'reassign-action', 'report-progress']
-        .filter((id) => id !== 'ask-owner' || 'askOwnerTool' in runTools)
-        .sort(),
+      ['ask-owner', 'comment-on-action', 'finish-run', 'get-run-context', 'reassign-action', 'report-progress'].sort(),
     );
   });
 
@@ -141,9 +140,36 @@ describe('run tools — endpoint contract (Agent PRD D5)', () => {
     await reportProgressTool.execute!({ text: 'x' }, ctx);
     await commentOnActionTool.execute!({ markdown: 'x' }, ctx);
     await reassignActionTool.execute!({ userId: 'u' }, ctx);
+    await askOwnerTool.execute!({ question: 'q' }, ctx);
     await finishRunTool.execute!({ summary: 'x', readyToClose: true }, ctx);
     for (const call of [...authenticatedTrpcCall.mock.calls, ...authenticatedTrpcQuery.mock.calls]) {
       for (const arg of call) if (arg && typeof arg === 'object') expect(arg).not.toHaveProperty('runId');
     }
+  });
+});
+
+describe('askOwnerTool — stop semantics', () => {
+  beforeEach(() => authenticatedTrpcCall.mockReset());
+
+  it('posts mastra.askOwner with the question and returns a stop instruction', async () => {
+    authenticatedTrpcCall.mockResolvedValue({ data: {} });
+
+    const result = await askOwnerTool.execute!(
+      { question: 'Which date works for the offsite: 12 or 19 Nov?' },
+      { requestContext: makeRequestContext() } as never,
+    );
+
+    expect(authenticatedTrpcCall).toHaveBeenCalledWith(
+      'mastra.askOwner',
+      { question: 'Which date works for the offsite: 12 or 19 Nov?' },
+      expect.objectContaining({ authToken: 'run-jwt' }),
+    );
+    expect(result).toMatchObject({ stop: true, status: 'WAITING_ON_OWNER' });
+    expect(result.message).toMatch(/stop here|end your turn/i);
+  });
+
+  it('is described to the model as the last call, with no finish-run after it', () => {
+    expect(askOwnerTool.description).toMatch(/LAST call/);
+    expect(askOwnerTool.description).toMatch(/do not call finish-run/i);
   });
 });
