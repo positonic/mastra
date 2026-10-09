@@ -1,6 +1,6 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
-import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
+import { authenticatedTrpcCall, authenticatedTrpcQuery } from "../utils/authenticated-fetch.js";
 
 // ==================== Agent run tools ====================
 // Tools only the `assistantRunAgent` carries (Exponential ADR-0067, Agent PRD
@@ -16,6 +16,104 @@ function runAuth(requestContext: { get(key: string): unknown } | undefined) {
   if (!authToken) throw new Error("No authentication token available");
   return { authToken, userId };
 }
+
+export const getRunContextTool = createTool({
+  id: "get-run-context",
+  description:
+    "Load everything about the action you were assigned: the brief (title, description, project, status, dates), who else is assigned, the project's members (so you can delegate to a person or another Assistant), recent comments on the action, and — when you are resuming after asking your owner — the previous run's summary and the owner's reply. Call this first.",
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    action: z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string().nullable(),
+      status: z.string(),
+      priority: z.string().nullable(),
+      dueDate: z.string().nullable(),
+      project: z.object({ id: z.string(), name: z.string() }).nullable(),
+      workspaceId: z.string().nullable(),
+    }),
+    assignees: z.array(z.object({ id: z.string(), name: z.string().nullable(), isAgent: z.boolean() })),
+    members: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string().nullable(),
+        isAgent: z.boolean(),
+        assistantOwner: z.object({ id: z.string(), name: z.string().nullable() }).nullable(),
+      }),
+    ),
+    comments: z.array(
+      z.object({ id: z.string(), authorName: z.string().nullable(), markdown: z.string(), createdAt: z.string() }),
+    ),
+    owner: z.object({ id: z.string(), name: z.string().nullable() }),
+    predecessor: z
+      .object({ summary: z.string().nullable(), wakeComment: z.string().nullable() })
+      .nullable(),
+  }),
+  async execute(_inputData, { requestContext }) {
+    const auth = runAuth(requestContext);
+    console.log(`📋 [getRunContext] loading`);
+    const { data } = await authenticatedTrpcQuery("mastra.getRunContext", auth);
+    return data;
+  },
+});
+
+export const reportProgressTool = createTool({
+  id: "report-progress",
+  description:
+    "Post a one-line progress note to the run's transcript (visible to your owner only). Use it when you move to a new phase of the work — e.g. 'Searching the CRM for venue contacts'. Not a comment: nobody is notified.",
+  inputSchema: z.object({
+    text: z.string().min(1).max(500).describe("One line, present tense, what you are doing now."),
+  }),
+  outputSchema: z.object({ ok: z.literal(true) }),
+  async execute(inputData, { requestContext }) {
+    const auth = runAuth(requestContext);
+    await authenticatedTrpcCall("mastra.reportProgress", { text: inputData.text }, auth);
+    return { ok: true as const };
+  },
+});
+
+export const commentOnActionTool = createTool({
+  id: "comment-on-action",
+  description:
+    "Post a comment on the action you are working on, as yourself. Everyone with access to the action sees it and mentioned people are notified — use `@[Name](userId)` markup to mention someone (ids come from get-run-context). Use it for findings worth a permanent record or to hand something to a person. To ask your owner a question that pauses the run, use ask-owner instead.",
+  inputSchema: z.object({
+    markdown: z.string().min(1).describe("The comment body, Markdown."),
+  }),
+  outputSchema: z.object({ commentId: z.string() }),
+  async execute(inputData, { requestContext }) {
+    const auth = runAuth(requestContext);
+    console.log(`💬 [commentOnAction] ${inputData.markdown.length} chars`);
+    const { data } = await authenticatedTrpcCall(
+      "mastra.commentOnAction",
+      { markdown: inputData.markdown },
+      auth,
+    );
+    return data;
+  },
+});
+
+export const reassignActionTool = createTool({
+  id: "reassign-action",
+  description:
+    "Add a person or another Assistant as an assignee of this action (ids come from get-run-context's members). Assigning another Assistant starts its own run. Say why in a comment first so the new assignee has context. You stay assigned; finish your run afterwards.",
+  inputSchema: z.object({
+    userId: z.string().describe("The member's user id from get-run-context."),
+  }),
+  outputSchema: z.object({
+    assigned: z.object({ id: z.string(), name: z.string().nullable(), isAgent: z.boolean() }),
+  }),
+  async execute(inputData, { requestContext }) {
+    const auth = runAuth(requestContext);
+    console.log(`👉 [reassignAction] userId=${inputData.userId}`);
+    const { data } = await authenticatedTrpcCall(
+      "mastra.reassignAction",
+      { userId: inputData.userId },
+      auth,
+    );
+    return data;
+  },
+});
 
 export const finishRunTool = createTool({
   id: "finish-run",
@@ -47,5 +145,9 @@ export const finishRunTool = createTool({
 
 /** The run tools, keyed as they appear on `assistantRunTools`. */
 export const runTools = {
+  getRunContextTool,
+  reportProgressTool,
+  commentOnActionTool,
+  reassignActionTool,
   finishRunTool,
 };
