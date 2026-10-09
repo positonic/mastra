@@ -1,15 +1,41 @@
 name: PR Agent
-
+#
+# ⏸️  DEACTIVATED 2026-10-08 — this reviewer does not run on PRs.
+#
+# It has never reviewed anything here. The PR_AGENT_ANTHROPIC_KEY secret was
+# never set on this repo, so every run since it was added (#39, 2026-06-29)
+# hit "litellm.AuthenticationError: Missing Anthropic API Key" and posted
+# "Failed to generate code suggestions for PR". The check still went green
+# because qodo-ai/pr-agent swallowed the error — until upstream 5641819
+# (2026-09-29) made the action fail on a swallowed tool error, which turned
+# the check red on every PR from 2026-10-08. Parked the same way as
+# positonic/exponential's pr_agent.yml (#801). This check is not required on
+# main, so parking it blocks no merge.
+#
+# TO REACTIVATE: set a funded key —
+#
+#   gh secret set PR_AGENT_ANTHROPIC_KEY --repo positonic/mastra
+#
+# then restore the trigger below to
+#
+#   on:
+#     pull_request:
+#       types: [opened, reopened, ready_for_review, synchronize]
+#     issue_comment:
+#       types: [created]
+#
+# and drop the `github.event_name != 'workflow_dispatch'` clause from the job's
+# `if:`. The steps are untouched.
 on:
-  pull_request:
-    types: [opened, reopened, ready_for_review, synchronize]
-  issue_comment:
-    types: [created]
+  # Placeholder trigger: keeps the file valid and visible in the Actions tab
+  # while parked. A dispatch has no PR to review, so the job guard skips it.
+  workflow_dispatch:
 
 jobs:
   pr_agent:
-    # Loop guard: never let the action react to its own (or any bot's) events.
-    if: ${{ github.event.sender.type != 'Bot' }}
+    # First clause is the parking brake (see above). Second is the loop guard:
+    # never let the action react to its own (or any bot's) events.
+    if: ${{ github.event_name != 'workflow_dispatch' && github.event.sender.type != 'Bot' }}
     runs-on: ubuntu-latest
     permissions:
       issues: write
