@@ -644,7 +644,7 @@ export const createProjectActionTool = createTool({
 export const quickCreateActionTool = createTool({
   id: "quick-create-action",
   description:
-    "Create a new action using natural language. Pass the action description in the `text` parameter — e.g. { \"text\": \"Call John tomorrow\" }. Automatically parses dates like 'tomorrow' or 'next Monday' and matches project names from the text. When the user says the task is for a specific day ('for today', 'tomorrow'), ALSO pass `scheduledStart` (the do-date — what the /today page keys on) explicitly: date parsing only sees `text`, so a rewritten task name silently loses the date. Optionally pass an explicit `priority` (when the user states one) and/or a resolved `projectId` (when the user names a project — resolve it to a real id via get-all-projects first). An explicit `projectId` wins over the page context.",
+    "Create a new action using natural language. Pass the action description in the `text` parameter — e.g. { \"text\": \"Call John tomorrow\" }. Automatically parses dates like 'tomorrow' or 'next Monday' and matches project names from the text. When the user says the task is for a specific day ('for today', 'tomorrow'), ALSO pass `scheduledStart` (the do-date — what the /today page keys on) explicitly: date parsing only sees `text`, so a rewritten task name silently loses the date. Optionally pass an explicit `priority` (when the user states one) and/or a resolved `projectId` (when the user names a project — resolve it to a real id via get-all-projects first). An explicit `projectId` wins over the page context. The action is created in the current workspace (a project's own workspace wins), so it can then be routed with assign-action.",
   inputSchema: z.object({
     text: z
       .string()
@@ -711,6 +711,13 @@ export const quickCreateActionTool = createTool({
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
     const contextProjectId = requestContext?.get("projectId");
+    // The chat route (and the run dispatcher) set the workspace. Forwarding it
+    // lands a project-less action in that workspace instead of nowhere, which
+    // is what lets assign-action reach workspace colleagues (Exponential
+    // ADR-0068, Agent PRD D8.3). A project's own workspace still wins
+    // server-side. A blank value is treated as absent.
+    const contextWorkspaceId = requestContext?.get("workspaceId");
+    const workspaceId = contextWorkspaceId?.trim() ? contextWorkspaceId : undefined;
 
     const text = inputData.text ?? inputData.input;
     if (!text) {
@@ -725,7 +732,7 @@ export const quickCreateActionTool = createTool({
     const { scheduledStart, dueDate } = inputData;
 
     console.log(`🎯 [quickCreateAction] INPUT: text="${text}", priority=${priority || "none"}, inputProjectId=${inputData.projectId || "none"}, scheduledStart=${scheduledStart || "none"}, dueDate=${dueDate || "none"}`);
-    console.log(`🎯 [quickCreateAction] CONTEXT: authToken=${authToken ? "present" : "MISSING"}, userId=${userId || "none"}, contextProjectId=${contextProjectId || "none"}, resolvedProjectId=${projectId || "none"}`);
+    console.log(`🎯 [quickCreateAction] CONTEXT: authToken=${authToken ? "present" : "MISSING"}, userId=${userId || "none"}, contextProjectId=${contextProjectId || "none"}, resolvedProjectId=${projectId || "none"}, workspaceId=${workspaceId ?? "none"}`);
     console.log(`🎯 [quickCreateAction] SENDING TO TRPC: { text: "${text}", projectId: ${projectId ? `"${projectId}"` : "undefined"}, priority: ${priority ? `"${priority}"` : "undefined"}, scheduledStart: ${scheduledStart ? `"${scheduledStart}"` : "undefined"}, dueDate: ${dueDate ? `"${dueDate}"` : "undefined"} }`);
 
     if (!authToken) {
@@ -741,6 +748,7 @@ export const quickCreateActionTool = createTool({
           priority: priority || undefined,
           scheduledStart: scheduledStart || undefined,
           dueDate: dueDate || undefined,
+          workspaceId,
         },
         { authToken, sessionId, userId }
       );

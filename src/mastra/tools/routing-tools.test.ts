@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const authenticatedTrpcCall = vi.fn();
 vi.mock('../utils/authenticated-fetch.js', () => ({
   authenticatedTrpcCall: (...args: unknown[]) => authenticatedTrpcCall(...args),
+  authenticatedTrpcQuery: vi.fn(),
 }));
 
 const {
@@ -13,6 +14,7 @@ const {
   assignActionInputSchema,
   routingTools,
 } = await import('./routing-tools.js');
+const { quickCreateActionTool } = await import('./index.js');
 type Roster = import('./routing-tools.js').Roster;
 type AssignActionResult = import('./routing-tools.js').AssignActionResult;
 
@@ -248,5 +250,41 @@ describe('assignActionTool', () => {
       const keys = Object.keys((tool.inputSchema as unknown as { shape: Record<string, unknown> }).shape);
       expect(keys.filter((k) => /token|auth|workspace|userId$/i.test(k))).toEqual([]);
     }
+  });
+});
+
+describe('quickCreateActionTool — workspace forwarding (Agent PRD D8.3)', () => {
+  beforeEach(() => authenticatedTrpcCall.mockReset());
+
+  const created = { data: { success: true, action: { id: 'a1', name: 'Shortlist Madrid hotels', priority: 'Quick' } } };
+
+  it('forwards workspaceId from context so a project-less action lands in the workspace', async () => {
+    authenticatedTrpcCall.mockResolvedValue(created);
+    await quickCreateActionTool.execute!({ text: 'Shortlist Madrid hotels near the venue' }, ctx());
+    expect(authenticatedTrpcCall).toHaveBeenCalledWith(
+      'mastra.quickCreateAction',
+      expect.objectContaining({ text: 'Shortlist Madrid hotels near the venue', workspaceId: 'ws-clear' }),
+      expect.objectContaining({ authToken: 'token-123' }),
+    );
+  });
+
+  it('sends no workspaceId when the context has none (or a blank one)', async () => {
+    authenticatedTrpcCall.mockResolvedValue(created);
+    await quickCreateActionTool.execute!(
+      { text: 'Call John' },
+      { requestContext: new Map([['authToken', 't']]) } as never,
+    );
+    await quickCreateActionTool.execute!(
+      { text: 'Call John' },
+      { requestContext: new Map([['authToken', 't'], ['workspaceId', ' ']]) } as never,
+    );
+    for (const [, payload] of authenticatedTrpcCall.mock.calls) {
+      expect((payload as Record<string, unknown>).workspaceId).toBeUndefined();
+    }
+  });
+
+  it('does not take a workspace from tool input', () => {
+    const keys = Object.keys((quickCreateActionTool.inputSchema as unknown as { shape: Record<string, unknown> }).shape);
+    expect(keys).not.toContain('workspaceId');
   });
 });
