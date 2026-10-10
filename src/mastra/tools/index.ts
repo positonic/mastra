@@ -9,6 +9,7 @@ import {
 } from "../utils/authenticated-fetch.js";
 import { prepareUntrustedContent, auditWriteAction } from "../utils/content-safety.js";
 import { asAppContext } from "../types/request-context.js";
+import { isForbidden } from "./routing-tools.js";
 import { looseBoolean, looseNumber, looseEnum, looseStringArray, looseEnumArray, looseAttendees, normalizeDateTime, resolveDateRange } from "./zod-loose.js";
 
 interface GeocodingResponse {
@@ -640,12 +641,6 @@ export const createProjectActionTool = createTool({
     }
   },
 });
-
-/** A tRPC FORBIDDEN, as `authenticatedFetch` surfaces it (`Request failed: 403 …`). */
-function isForbidden(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /^Request failed: 403\b/.test(message) || message.includes("FORBIDDEN");
-}
 
 export const quickCreateActionTool = createTool({
   id: "quick-create-action",

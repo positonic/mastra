@@ -26,10 +26,18 @@ function routingAuth(ctx: { requestContext?: Parameters<typeof asAppContext>[0] 
   const authToken = requestContext?.get("authToken");
   const sessionId = requestContext?.get("whatsappSession");
   const userId = requestContext?.get("userId");
-  const workspaceId = requestContext?.get("workspaceId");
+  // A blank workspace is treated as absent, as quick-create-action does.
+  const contextWorkspaceId = requestContext?.get("workspaceId");
+  const workspaceId = contextWorkspaceId?.trim() ? contextWorkspaceId : undefined;
   const contextProjectId = requestContext?.get("projectId");
   if (!authToken) throw new Error("No authentication token available");
   return { auth: { authToken, sessionId, userId }, userId, workspaceId, contextProjectId };
+}
+
+/** A tRPC FORBIDDEN, as `authenticatedFetch` surfaces it (`Request failed: 403 …`). */
+export function isForbidden(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /^Request failed: 403\b/.test(message) || message.includes("FORBIDDEN");
 }
 
 // ---- Wire shapes from the app (validated loosely: older app builds omit the
@@ -153,17 +161,29 @@ export const listAssignableMembersTool = createTool({
       `🧭 [listAssignableMembers] actionId=${inputData.actionId ?? "none"}, projectId=${projectId ?? "none"}, workspaceId=${workspaceId ?? "none"}`,
     );
 
-    const { data } = inputData.actionId
-      ? await authenticatedTrpcCall<RosterWire>(
-          "action.getAssignableUsers",
-          { actionId: inputData.actionId },
-          auth,
-        )
-      : await authenticatedTrpcCall<RosterWire>(
-          "action.getAssignableUsersForContext",
-          { projectId, workspaceId },
-          auth,
-        );
+    const forContext = async (ws: string | undefined) =>
+      authenticatedTrpcCall<RosterWire>("action.getAssignableUsersForContext", { projectId, workspaceId: ws }, auth);
+
+    let data: RosterWire | undefined;
+    if (inputData.actionId) {
+      ({ data } = await authenticatedTrpcCall<RosterWire>(
+        "action.getAssignableUsers",
+        { actionId: inputData.actionId },
+        auth,
+      ));
+    } else {
+      try {
+        ({ data } = await forContext(workspaceId));
+      } catch (error) {
+        // Same fallback as quick-create-action: the workspace came from
+        // context, not the user (a viewer, a stale gateway pairing), and the
+        // action quick-create files after that FORBIDDEN lands unscoped — so
+        // read the roster unscoped too.
+        if (!workspaceId || !isForbidden(error)) throw error;
+        console.warn(`⚠️ [listAssignableMembers] FORBIDDEN in workspace ${workspaceId}; retrying without a workspace`);
+        ({ data } = await forContext(undefined));
+      }
+    }
 
     return toRoster(data?.assignableUsers ?? [], userId, inputData.actionId ? null : (projectId ?? null));
   },

@@ -208,6 +208,48 @@ describe('listAssignableMembersTool', () => {
     });
   });
 
+  it('retries the roster without the workspace when the context workspace is FORBIDDEN, as quick-create does', async () => {
+    authenticatedTrpcCall
+      .mockRejectedValueOnce(new Error('Request failed: 403 Forbidden - {"code":"FORBIDDEN"}'))
+      .mockResolvedValueOnce({ data: ROSTER });
+
+    const roster = await listMembers({ projectId: 'p1' });
+
+    expect(authenticatedTrpcCall.mock.calls.map((c) => [c[0], c[1]])).toEqual([
+      ['action.getAssignableUsersForContext', { projectId: 'p1', workspaceId: 'ws-clear' }],
+      ['action.getAssignableUsersForContext', { projectId: 'p1', workspaceId: undefined }],
+    ]);
+    expect(roster.members).toHaveLength(4);
+  });
+
+  it('does not retry a FORBIDDEN with no workspace, by actionId, or any other failure', async () => {
+    const forbidden = () => new Error('Request failed: 403 Forbidden - {"code":"FORBIDDEN"}');
+    authenticatedTrpcCall.mockRejectedValueOnce(forbidden());
+    await expect(
+      listAssignableMembersTool.execute!({}, { requestContext: new Map([['authToken', 't']]) } as never),
+    ).rejects.toThrow(/FORBIDDEN/);
+    authenticatedTrpcCall.mockRejectedValueOnce(forbidden());
+    await expect(listMembers({ actionId: 'a1' })).rejects.toThrow(/FORBIDDEN/);
+    authenticatedTrpcCall.mockRejectedValueOnce(new Error('Request failed: 500 Internal Server Error - boom'));
+    await expect(listMembers({})).rejects.toThrow(/boom/);
+    expect(authenticatedTrpcCall).toHaveBeenCalledTimes(3);
+  });
+
+  it('treats a blank or whitespace workspace id as absent', async () => {
+    authenticatedTrpcCall.mockResolvedValue({ data: ROSTER });
+    for (const blank of ['', '   ']) {
+      await listAssignableMembersTool.execute!(
+        {},
+        { requestContext: new Map([['authToken', 't'], ['workspaceId', blank]]) } as never,
+      );
+      expect(authenticatedTrpcCall).toHaveBeenLastCalledWith(
+        'action.getAssignableUsersForContext',
+        { projectId: undefined, workspaceId: undefined },
+        expect.anything(),
+      );
+    }
+  });
+
   it('refuses without a token', async () => {
     await expect(
       listAssignableMembersTool.execute!({}, { requestContext: new Map() } as never),
