@@ -120,6 +120,10 @@ export const RUN_EXCLUDED_TOOL_KEYS = [
   // `reassign-action` instead, whose containment runs as the owner.
   'listAssignableMembersTool',
   'assignActionTool',
+  // Import roles & responsibilities (Agent PRD D10): writes Positions as the
+  // user after their yes. `position.importMany` is human-only and refuses a
+  // run's token anyway; the run never carries the tool.
+  'importPositionsTool',
 ] as const;
 
 function pickAllowed<T extends Record<string, unknown>>(all: T) {
