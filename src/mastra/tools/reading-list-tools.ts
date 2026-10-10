@@ -1,7 +1,7 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
-import { looseNumber } from "./zod-loose.js";
+import { looseEnum, looseNumber } from "./zod-loose.js";
 
 // ==================== Reading list tools (ticket pink.grape) ====================
 // The Reading list is a filtered view over the user's Resources by read state
@@ -16,7 +16,7 @@ import { looseNumber } from "./zod-loose.js";
 // DRAFT-AND-CONFIRM gate (ADR-0016) is satisfied by the request itself — do
 // not save a link the user merely mentioned, only one they asked to save.
 
-const readStatusSchema = z.enum(["to_read", "reading", "read"]);
+const readStatusSchema = looseEnum(["to_read", "reading", "read"]);
 
 const resourceRowSchema = z.object({
   id: z.string(),
@@ -97,8 +97,7 @@ export const listReadingListTool = createTool({
     "List what the user has saved to read (their Reading list: unread saved links and notes, newest first), or, with status 'read', what they have finished. " +
     "Use when the user asks what's on their reading list, what they saved, or what to read next. Read-only.",
   inputSchema: z.object({
-    status: z
-      .enum(["unread", "to_read", "reading", "read"])
+    status: looseEnum(["unread", "to_read", "reading", "read"])
       .optional()
       .describe("Which slice to list. Defaults to 'unread' (to_read + reading)."),
     limit: looseNumber(z.number().min(1).max(100))
