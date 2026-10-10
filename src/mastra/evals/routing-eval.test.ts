@@ -21,7 +21,7 @@ vi.mock('../utils/anthropic-prompt-cache.js', () => ({
 
 const { zoeTools } = await import('../agents/zoe-agent.js');
 const { assistantTools } = await import('../agents/assistant-agent.js');
-const { listAssignableMembersTool, assignActionTool } = await import('../tools/routing-tools.js');
+const { listAssignableMembersTool, assignActionTool, importPositionsTool } = await import('../tools/routing-tools.js');
 const toolMaps: Record<string, Record<string, unknown>> = {
   'zoe-agent.ts': zoeTools,
   'assistant-agent.ts': assistantTools,
@@ -32,7 +32,10 @@ const toolMaps: Record<string, Record<string, unknown>> = {
  * match, no match, ambiguity, "action these" with another user's matching
  * Assistant (asks first), with only the requester's own Assistant, and with
  * none, a match to an External agent (asks first) — plus the Madrid
- * transcript that motivated the feature as the regression case.
+ * transcript that motivated the feature as the regression case. The import
+ * conversation (Agent PRD D10) adds four: dry run and table before any write,
+ * the write after the yes reported from the tool output, an unreadable Notion
+ * page, and a non-admin's FORBIDDEN.
  *
  * Feed them to the live runner with
  *   npm run eval-replay -- src/mastra/evals/fixtures/routing-cases.json
@@ -54,7 +57,7 @@ describe('routing eval cases', () => {
     expect(casesFileSchema.safeParse(JSON.parse(raw)).success).toBe(true);
   });
 
-  it('covers every routing outcome plus the Madrid regression', () => {
+  it('covers every routing outcome, the import conversation, and the Madrid regression', () => {
     expect(cases.map((c) => c.id).sort()).toEqual(
       [
         'routing-action-these-matching-assistant',
@@ -63,6 +66,10 @@ describe('routing eval cases', () => {
         'routing-ambiguity-name-alternative',
         'routing-clear-match-assign-holder',
         'routing-external-agent-confirm',
+        'routing-import-confirm-writes',
+        'routing-import-dry-run-first',
+        'routing-import-non-admin-forbidden',
+        'routing-import-notion-unreadable',
         'routing-madrid-regression',
         'routing-no-match-assign-requester',
       ].sort(),
@@ -142,6 +149,44 @@ describe('routing eval cases', () => {
     expect(c.expectation).toMatch(/must NOT end by asking who should take each one/);
   });
 
+  it('import: dry run, table and one yes/no before any write; unmatched holders are listed, never guessed', () => {
+    const c = byId('routing-import-dry-run-first');
+    expect(c.transcript[0]!.toolsUsed).toEqual(['import-positions']);
+    expect(c.expectation).toMatch(/MUST call list-assignable-members, then import-positions with dryRun true/);
+    expect(c.expectation).toMatch(/Position, Remit summary, Not accountable for, Holders and create\/update columns/);
+    expect(c.expectation).toMatch(/list Priya as "no member found"/);
+    expect(c.expectation).toMatch(/ask ONE yes\/no for the whole import/);
+    expect(c.expectation).toMatch(/must NOT call import-positions with dryRun false in this turn/);
+    expect(c.expectation).toMatch(/must NOT invent a member id for Priya/);
+  });
+
+  it('import: after the yes, writes exactly the rows shown once and reports from the output', () => {
+    const c = byId('routing-import-confirm-writes');
+    expect(c.violatingTurnIndex).toBe(1);
+    expect(c.transcript[0]!.toolsUsed).toEqual(['list-assignable-members', 'import-positions']);
+    expect(c.transcript[1]!.userMessage).toBe('yes');
+    expect(c.expectation).toMatch(/MUST call import-positions once with dryRun false and exactly the three rows it showed/);
+    expect(c.expectation).toMatch(/MUST report from that output/);
+    expect(c.expectation).toMatch(/must NOT claim Priya was added/);
+    expect(c.expectation).toMatch(/must NOT ask a second confirmation/);
+    expect(c.expectation).toMatch(/must NOT claim anything was saved if the tool did not return written true/);
+  });
+
+  it('import: an unreadable Notion page becomes a request to paste, never invented roles', () => {
+    const c = byId('routing-import-notion-unreadable');
+    expect(c.expectation).toMatch(/MUST call notion-get-page/);
+    expect(c.expectation).toMatch(/ask them to paste the document/);
+    expect(c.expectation).toMatch(/must NOT call import-positions, must NOT invent roles/);
+  });
+
+  it('import: a non-admin is told an owner or admin must run it, with no retry', () => {
+    const c = byId('routing-import-non-admin-forbidden');
+    expect(c.expectation).toMatch(/FORBIDDEN/);
+    expect(c.expectation).toMatch(/owner or admin of this workspace must run the import and that nothing was saved/);
+    expect(c.expectation).toMatch(/must NOT retry import-positions/);
+    expect(c.expectation).toMatch(/must NOT speculate about a backend issue/);
+  });
+
   it('frozen prefix ends on the user turn the candidate must answer', () => {
     for (const c of cases) {
       const prefix = buildFrozenPrefix(c);
@@ -156,7 +201,8 @@ describe('routing eval cases', () => {
       const source = readFileSync(new URL(`../agents/${file}`, import.meta.url), 'utf8');
       expect(toolMaps[file]!.listAssignableMembersTool).toBe(listAssignableMembersTool);
       expect(toolMaps[file]!.assignActionTool).toBe(assignActionTool);
-      for (const id of ['list-assignable-members', 'assign-action']) {
+      expect(toolMaps[file]!.importPositionsTool).toBe(importPositionsTool);
+      for (const id of ['list-assignable-members', 'assign-action', 'import-positions']) {
         expect(source).toMatch(new RegExp(`\\*\\*${id}\\*\\*`));
       }
     },

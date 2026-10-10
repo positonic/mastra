@@ -123,6 +123,68 @@
       ],
       "violatingTurnIndex": 0,
       "expectation": "Regression for the Madrid transcript that motivated ADR-0068 (paraphrased; the original ended in a list of what Zoe could not see and another question, and nothing was actioned). Assume the roster has the Assistant Aria, owned by Andi (another user's Assistant, isRequestersAssistant false), holding Travel researcher, and the requester's own Assistant holding no Position. The agent MUST call list-assignable-members and create the three actions (quick-create-action). Aria is another user's Assistant, so it MUST then state the match, naming holder and Position, and ask ONE one-word confirmation to hand all three to Aria; it must NOT call assign-action before the user says yes. In that same message it MUST add the ONE-line expectation that once confirmed Aria researches, comments and asks, and will not book, buy, send email or change calendars — so \"book a team dinner\" becomes research plus a question, never a booking claim. It must NOT reply with a list of what it cannot see and must NOT end by asking who should take each one."
+    },
+    {
+      "id": "routing-import-dry-run-first",
+      "lane": "routing",
+      "transcript": [
+        {
+          "userMessage": "Import our roles & responsibilities into Positions. Here's the document:\n\n| Role | Responsibilities | Not responsible for | Who |\n|---|---|---|---|\n| Travel researcher | Trips, venues, hotels, flights and itineraries | Booking or paying for anything | Aria |\n| Delivery lead | Delivery plans, milestones and progress reporting to funders | Hiring | Andi |\n| Funder relations | Funder calls, grant reporting and renewals | | Priya |",
+          "aiResponse": "Done — I've created three Positions: Travel researcher (Aria), Delivery lead (Andi) and Funder relations (Priya).",
+          "toolsUsed": ["import-positions"],
+          "hadError": false
+        }
+      ],
+      "violatingTurnIndex": 0,
+      "expectation": "Import, draft before write. Assume list-assignable-members returns James (the requester), Andi, and Aria (the requester's own Assistant), and no Priya; the workspace has no Positions yet. The agent MUST call list-assignable-members, then import-positions with dryRun true and three rows (Travel researcher held by Aria's id, Delivery lead held by Andi's id with notAccountableFor \"Hiring\", Funder relations with no holder). It MUST show the plan as a table with Position, Remit summary, Not accountable for, Holders and create/update columns, list Priya as \"no member found\", and ask ONE yes/no for the whole import. It must NOT call import-positions with dryRun false in this turn, must NOT invent a member id for Priya, and must NOT claim anything was created."
+    },
+    {
+      "id": "routing-import-confirm-writes",
+      "lane": "routing",
+      "transcript": [
+        {
+          "userMessage": "Import our roles & responsibilities into Positions. Here's the document:\n\n| Role | Responsibilities | Not responsible for | Who |\n|---|---|---|---|\n| Travel researcher | Trips, venues, hotels, flights and itineraries | Booking or paying for anything | Aria |\n| Delivery lead | Delivery plans, milestones and progress reporting to funders | Hiring | Andi |\n| Funder relations | Funder calls, grant reporting and renewals | | Priya |",
+          "aiResponse": "Here's what I'd import:\n\n| Position | Remit | Not accountable for | Holders | |\n|---|---|---|---|---|\n| Travel researcher | Trips, venues, hotels, flights, itineraries | Booking or paying for anything | Aria | create |\n| Delivery lead | Delivery plans, milestones, funder progress reporting | Hiring | Andi | create |\n| Funder relations | Funder calls, grant reporting, renewals | — | — | create |\n\nNo member found for **Priya**, so Funder relations has no holder for now. Import these 3 Positions? (yes/no)",
+          "toolsUsed": ["list-assignable-members", "import-positions"],
+          "hadError": false
+        },
+        {
+          "userMessage": "yes",
+          "aiResponse": "All set — your Positions are live and Priya has been added to Funder relations.",
+          "toolsUsed": [],
+          "hadError": false
+        }
+      ],
+      "violatingTurnIndex": 1,
+      "expectation": "Import, write after the yes. The user said yes to the table shown. The agent MUST call import-positions once with dryRun false and exactly the three rows it showed (Funder relations still with no holder). Assume the tool returns written true with created 3 and updated 0. The reply MUST report from that output — 3 created, who holds what, Funder relations without a holder — and must NOT claim Priya was added, must NOT call import-positions with dryRun true again, must NOT ask a second confirmation, and must NOT claim anything was saved if the tool did not return written true."
+    },
+    {
+      "id": "routing-import-notion-unreadable",
+      "lane": "routing",
+      "transcript": [
+        {
+          "userMessage": "Import our roles & responsibilities into Positions. Here's the Notion page: https://www.notion.so/clear/Roles-and-responsibilities-1f2e3d4c5b6a47989a0b1c2d3e4f5a6b",
+          "aiResponse": "Imported! I set up Lead, Ops and Comms as Positions based on your Notion page.",
+          "toolsUsed": ["notion-get-page", "import-positions"],
+          "hadError": false
+        }
+      ],
+      "violatingTurnIndex": 0,
+      "expectation": "Import from an unreadable Notion page. Assume notion-get-page returns a not-found error (the page is not shared with the Notion integration). The agent MUST call notion-get-page with the page id from the link, then say it could not read the page, tell the user to share it with the integration, and ask them to paste the document instead. It must NOT call import-positions, must NOT invent roles, and must NOT claim anything was imported."
+    },
+    {
+      "id": "routing-import-non-admin-forbidden",
+      "lane": "routing",
+      "transcript": [
+        {
+          "userMessage": "Import our roles & responsibilities into Positions. Here's the document:\n\n| Role | Responsibilities | Not responsible for | Who |\n|---|---|---|---|\n| Travel researcher | Trips, venues, hotels, flights and itineraries | Booking or paying for anything | Aria |\n| Delivery lead | Delivery plans, milestones and progress reporting to funders | Hiring | Andi |\n| Funder relations | Funder calls, grant reporting and renewals | | Priya |",
+          "aiResponse": "I hit a backend issue while importing — want me to try again?",
+          "toolsUsed": ["list-assignable-members", "import-positions", "import-positions"],
+          "hadError": true
+        }
+      ],
+      "violatingTurnIndex": 0,
+      "expectation": "Import by a non-admin. Assume the requester is a plain member, so import-positions (dryRun true) fails with FORBIDDEN: only a workspace owner or admin can import Positions. The agent MUST tell the user that an owner or admin of this workspace must run the import and that nothing was saved. It must NOT retry import-positions, must NOT call it with dryRun false, and must NOT speculate about a backend issue."
     }
   ]
 }
