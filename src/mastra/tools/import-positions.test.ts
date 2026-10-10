@@ -128,6 +128,32 @@ describe('importPositionsTool', () => {
     expect(importPositionsInputSchema.parse({ dryRun: 'false', positions: ROWS }).dryRun).toBe(false);
   });
 
+  it('accepts only an unambiguous dryRun: a blank, "no" or "0" is a validation error, never a write', () => {
+    for (const dryRun of ['', '  ', 'no', 'n', '0', 0, 'maybe', null]) {
+      expect(importPositionsInputSchema.safeParse({ dryRun, positions: ROWS }).success, String(dryRun)).toBe(false);
+    }
+    expect(importPositionsInputSchema.parse({ dryRun: ' TRUE ', positions: ROWS }).dryRun).toBe(true);
+    expect(importPositionsInputSchema.parse({ dryRun: false, positions: ROWS }).dryRun).toBe(false);
+  });
+
+  it('refuses an app outcome that is neither create nor update rather than guessing', async () => {
+    authenticatedTrpcCall.mockResolvedValue({ data: { written: true, results: [{ title: 'Travel researcher', outcome: 'merged', holderUserIds: [] }] } });
+    await expect(runImport({ dryRun: false, positions: ROWS })).rejects.toThrow(
+      /unexpected outcome \(merged\) for row 1[\s\S]*could not be confirmed[\s\S]*do not claim anything was saved/,
+    );
+  });
+
+  it('falls back to the sent title, in input order, when the app omits one', async () => {
+    authenticatedTrpcCall.mockResolvedValue({
+      data: { written: false, results: [{ outcome: 'create' }, { title: null, outcome: 'update', notAccountableFor: null, holderUserIds: null }] },
+    });
+    const result = await runImport({ dryRun: true, positions: ROWS });
+    expect(result.results).toEqual([
+      { title: 'Travel researcher', outcome: 'create', notAccountableFor: null, holderUserIds: [] },
+      { title: 'Delivery lead', outcome: 'update', notAccountableFor: null, holderUserIds: [] },
+    ]);
+  });
+
   it('leaves a holder-less row with no holders, and de-duplicates repeated ids', () => {
     const input = importPositionsInputSchema.parse({
       dryRun: true,
@@ -170,6 +196,15 @@ describe('importPositionsTool', () => {
     expect(
       importPositionsInputSchema.safeParse({ dryRun: true, positions: [{ ...row, holderUserIds: Array.from({ length: 51 }, (_, i) => `u${i}`) }] }).success,
     ).toBe(false);
+    // The app's cap on distinct holders across one import.
+    const ids = (from: number) => Array.from({ length: 50 }, (_, i) => `u${from + i}`);
+    const wide = (n: number) => Array.from({ length: n }, (_, i) => ({ ...row, title: `T${i}`, holderUserIds: ids(i * 50) }));
+    expect(importPositionsInputSchema.safeParse({ dryRun: true, positions: wide(4) }).success).toBe(true);
+    expect(importPositionsInputSchema.safeParse({ dryRun: true, positions: [...wide(4), { ...row, title: 'X', holderUserIds: ['one-more'] }] }).success).toBe(false);
+    // The same holder on every row counts once.
+    expect(
+      importPositionsInputSchema.safeParse({ dryRun: true, positions: Array.from({ length: 50 }, (_, i) => ({ ...row, title: `T${i}`, holderUserIds: ids(0) })) }).success,
+    ).toBe(true);
     // dryRun is required: there is no default that could write by accident.
     expect(importPositionsInputSchema.safeParse({ positions: [row] }).success).toBe(false);
   });
@@ -196,6 +231,13 @@ describe('importPositionsTool', () => {
     expect(String(error)).toMatch(/appears more than once in this import/);
     expect(String(error)).toMatch(/Nothing was written/);
     expect(String(error)).toMatch(/ask the user/);
+  });
+
+  it('classifies on the HTTP status, not on code words the body quotes from the user\'s titles', async () => {
+    authenticatedTrpcCall.mockRejectedValueOnce(
+      new Error('Request failed: 400 Bad Request - {"error":{"json":{"message":"\\"FORBIDDEN zone CONFLICT NOT_FOUND\\" appears more than once in this import","data":{"code":"BAD_REQUEST"}}}}'),
+    );
+    await expect(runImport({ dryRun: true, positions: ROWS })).rejects.toThrow(/^BAD_REQUEST: the app refused this import/);
   });
 
   it('tells the model only an owner or admin can import on FORBIDDEN', async () => {

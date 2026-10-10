@@ -2,7 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
 import { asAppContext } from "../types/request-context.js";
-import { looseBoolean, looseStringArray } from "./zod-loose.js";
+import { looseStringArray } from "./zod-loose.js";
 import { positionSummarySchema } from "./position-schema.js";
 import type { PositionSummary } from "./position-schema.js";
 
@@ -34,9 +34,16 @@ function routingAuth(ctx: { requestContext?: Parameters<typeof asAppContext>[0] 
   return { auth: { authToken, sessionId, userId }, userId, workspaceId, contextProjectId };
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** A tRPC "no such procedure" body: the app build predates the procedure. */
+const MISSING_PROCEDURE = /procedure on path|No procedure found/i;
+
 /** A tRPC FORBIDDEN, as `authenticatedFetch` surfaces it (`Request failed: 403 …`). */
 export function isForbidden(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
   return /^Request failed: 403\b/.test(message) || message.includes("FORBIDDEN");
 }
 
@@ -196,9 +203,9 @@ export const listAssignableMembersTool = createTool({
  * it must not read to the user as "you can't assign this person".
  */
 export function isContainmentNotFound(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = errorMessage(error);
   if (!/^Request failed: 404\b/.test(message) && !message.includes("NOT_FOUND")) return false;
-  return !/procedure on path|No procedure found/i.test(message);
+  return !MISSING_PROCEDURE.test(message);
 }
 
 export const assignActionInputSchema = z.object({
@@ -305,7 +312,6 @@ async function retryOneAtATime(
   );
 }
 
-
 // ==================== Import roles & responsibilities (Agent PRD D10, V3) ====================
 // Zoe turns a pasted roles document (or a Notion page she read) into Positions
 // in one conversation: a dry run first, the draft shown as a table, the write
@@ -313,23 +319,31 @@ async function retryOneAtATime(
 // human-only plus owner/admin, so chat Zoe passes (she calls with the user's
 // own token) and an Agent run never can — and the key is run-excluded anyway.
 
-/** A tRPC CONFLICT, as `authenticatedFetch` surfaces it. */
-function isConflict(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /^Request failed: 409\b/.test(message) || message.includes("CONFLICT");
+/**
+ * The HTTP status of a failed tRPC call (`Request failed: 409 …`), or
+ * undefined for anything else. The import classifies its refusals on the
+ * status alone: the response body quotes the user's titles, so a code word
+ * inside it ("CONFLICT", "FORBIDDEN") must not decide the branch.
+ */
+function failedStatus(error: unknown): number | undefined {
+  const match = /^Request failed: (\d{3})\b/.exec(errorMessage(error));
+  return match ? Number(match[1]) : undefined;
 }
 
-/** A tRPC BAD_REQUEST (input the app refused), as `authenticatedFetch` surfaces it. */
-function isBadRequest(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /^Request failed: 400\b/.test(message) || message.includes("BAD_REQUEST");
-}
+/** The app caps distinct holders per import (`MAX_IMPORT_HOLDER_IDS`). */
+const MAX_IMPORT_HOLDER_IDS = 200;
 
-/** A tRPC "no such procedure" — the app build predates `position.importMany`. */
-function isMissingProcedure(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /^Request failed: 404\b/.test(message) && /procedure on path|No procedure found/i.test(message);
-}
+/**
+ * `dryRun` decides whether the import writes, so only an unambiguous value is
+ * accepted: a boolean or the strings "true" / "false". Unlike `looseBoolean`,
+ * a blank, "no" or "0" is a validation error the model retries — never a
+ * silent write.
+ */
+const dryRunSchema = z.preprocess((v) => {
+  if (typeof v !== "string") return v;
+  const s = v.trim().toLowerCase();
+  return s === "true" ? true : s === "false" ? false : v;
+}, z.boolean()) as z.ZodEffects<z.ZodBoolean, boolean, boolean>;
 
 export const importPositionRowSchema = z.object({
   title: z.string().trim().min(1).max(80).describe("The Position's title (1–80 chars), e.g. \"Travel researcher\"."),
@@ -345,7 +359,7 @@ export const importPositionRowSchema = z.object({
     .max(2000)
     .nullish()
     .describe(
-      "What the Position is explicitly not accountable for (Markdown, ≤2000 chars). Omit (or null) when the document says nothing — an existing Position keeps its stored value; send \"\" only to clear it.",
+      "What the Position is explicitly not accountable for (Markdown, ≤2000 chars). Omit (or null) when the document says nothing — an existing Position keeps its stored value. An empty or blank string clears it: send one only when the user asks to clear it.",
     ),
   holderUserIds: looseStringArray(z.array(z.string().min(1)).max(50))
     .default([])
@@ -355,10 +369,17 @@ export const importPositionRowSchema = z.object({
 });
 
 export const importPositionsInputSchema = z.object({
-  dryRun: looseBoolean().describe(
+  dryRun: dryRunSchema.describe(
     "true: validate and return the plan without writing — ALWAYS first. false: write — only after the user has seen that plan and said yes.",
   ),
-  positions: z.array(importPositionRowSchema).min(1).max(50).describe("The Positions to import (1–50), one per title."),
+  positions: z
+    .array(importPositionRowSchema)
+    .min(1)
+    .max(50)
+    .refine((rows) => new Set(rows.flatMap((row) => row.holderUserIds)).size <= MAX_IMPORT_HOLDER_IDS, {
+      message: `An import can name at most ${MAX_IMPORT_HOLDER_IDS} distinct holders`,
+    })
+    .describe("The Positions to import (1–50), one per title."),
 });
 
 /**
@@ -376,11 +397,9 @@ export const importPositionsOutputSchema = z.object({
       z.object({
         title: z.string().describe("The stored title: an update keeps the existing Position's spelling."),
         outcome: z.enum(["create", "update"]),
-        notAccountableFor: z.string().nullish().transform((v) => v ?? null),
+        notAccountableFor: z.string().nullable(),
         holderUserIds: z
           .array(z.string())
-          .nullish()
-          .transform((v) => v ?? [])
           .describe("Every holder after the import: an update keeps the existing holders and adds these."),
       }),
     )
@@ -417,13 +436,26 @@ export function toImportManyPayload(workspaceId: string, input: ImportPositionsI
   };
 }
 
-function toImportResult(data: ImportManyWire | null | undefined): ImportPositionsResult {
-  const results = (data?.results ?? []).map((row) => ({
-    title: row.title ?? "",
-    outcome: row.outcome === "update" ? ("update" as const) : ("create" as const),
-    notAccountableFor: row.notAccountableFor ?? null,
-    holderUserIds: row.holderUserIds ?? [],
-  }));
+/**
+ * Shape the app's answer. Results come back in input order, so a missing
+ * title falls back to the row that was sent; an outcome that is neither
+ * create nor update is not guessed — the response is refused instead.
+ */
+function toImportResult(data: ImportManyWire | null | undefined, sent: { title: string }[]): ImportPositionsResult {
+  const results = (data?.results ?? []).map((row, i): ImportPositionsResult["results"][number] => {
+    const outcome = row.outcome;
+    if (outcome !== "create" && outcome !== "update") {
+      throw new Error(
+        `The app answered the import with an unexpected outcome (${String(outcome)}) for row ${i + 1}. Tell the user the import result could not be confirmed and suggest checking the Positions in workspace settings; do not claim anything was saved.`,
+      );
+    }
+    return {
+      title: row.title ?? sent[i]?.title ?? "",
+      outcome,
+      notAccountableFor: row.notAccountableFor ?? null,
+      holderUserIds: row.holderUserIds ?? [],
+    };
+  });
   return {
     // Reported from the app, never assumed from the request.
     written: data?.written === true,
@@ -456,31 +488,34 @@ export const importPositionsTool = createTool({
 
     try {
       const { data } = await authenticatedTrpcCall<ImportManyWire | null>("position.importMany", payload, auth);
-      return toImportResult(data);
+      return toImportResult(data, payload.positions);
     } catch (error) {
       console.error(`❌ [importPositions] FAILED:`, error);
-      const detail = error instanceof Error ? error.message : String(error);
-      if (isMissingProcedure(error)) {
+      const detail = errorMessage(error);
+      const status = failedStatus(error);
+      if (status === 404 && MISSING_PROCEDURE.test(detail)) {
         throw new Error(
           `This Exponential build cannot import Positions yet (position.importMany is not available). ${NOTHING_WRITTEN} Tell the user the import is not available yet; they can add Positions in workspace settings.`,
         );
       }
-      if (isForbidden(error)) {
+      if (status === 403) {
         throw new Error(
           `FORBIDDEN: only a workspace owner or admin can import Positions. ${NOTHING_WRITTEN} Tell the user an owner or admin of this workspace must run the import; do not retry.`,
         );
       }
-      if (isContainmentNotFound(error)) {
+      if (status === 404) {
+        // importMany's only NOT_FOUND is the holder check (a non-member of
+        // the workspace is FORBIDDEN, above), and it never names the id.
         throw new Error(
           `NOT_FOUND: one of the holder ids is not a member of this workspace (the app does not say which). ${NOTHING_WRITTEN} Check every holderUserId against list-assignable-members; ask the user who is meant for any holder you cannot confirm, and dry-run again — never substitute a guessed id.`,
         );
       }
-      if (isConflict(error)) {
+      if (status === 409) {
         throw new Error(
           `CONFLICT: a Position with one of these titles was created while importing. ${NOTHING_WRITTEN} Run the dry run again and show the user the new plan before writing.`,
         );
       }
-      if (isBadRequest(error)) {
+      if (status === 400) {
         throw new Error(
           `BAD_REQUEST: the app refused this import (${detail}). ${NOTHING_WRITTEN} A title listed twice must become one row; fix what the error names, and ask the user how to resolve anything you cannot fix from the document before dry-running again.`,
         );
