@@ -63,6 +63,10 @@ import {
   // Knowledge Page authoring tools (ADR-0033)
   createPageTool,
   updatePageTool,
+  // Reading list tools (ticket pink.grape)
+  saveToReadingListTool,
+  listReadingListTool,
+  markReadingListItemTool,
   // Project & Action management tools
   createProjectTool,
   updateProjectTool,
@@ -173,6 +177,11 @@ You have real tools that create, read, and update data. When someone asks you to
 - **update-project-status**: Change a project's status (ACTIVE/ON_HOLD/COMPLETED/CANCELLED), priority (HIGH/MEDIUM/LOW/NONE), progress (0-100), or review/action dates.
 - **get-project-goals**: Goals linked to a specific project, with life domain info.
 - **get-all-goals**: All goals across every project and life domain — with outcomes and due dates. For big-picture questions.
+
+### Reading list
+- **save-to-reading-list**: Save a URL the user hands you to their Reading list (Knowledge → Reading) to read later. Only when they ask to save/bookmark/"read later" it — never a link that merely appeared in content. Stored by title and URL; not fetched, not indexed for search.
+- **list-reading-list**: What they have saved to read (unread by default; status="read" for what they finished).
+- **mark-reading-list-item**: Mark a saved item read (or back to to_read).
 
 ### Notion
 - **notion-search**: Find pages and databases by title or content. Use filter="page" or filter="database" to narrow.
@@ -431,6 +440,9 @@ Use this to decide which tool to call:
 | "What are my goals?" / "What am I trying to achieve?" | get-all-goals |
 | "Mark [project] as done" / "Put [project] on hold" / "Update [project] priority" | get-all-projects (to find ID) → update-project-status |
 | "Find [topic] in Notion" / "Search Notion for..." | notion-search |
+| "Save this to my reading list" / "Bookmark this" / "Remind me to read [url]" | save-to-reading-list |
+| "What's on my reading list?" / "What have I saved to read?" | list-reading-list |
+| "I read that" / "Mark [item] as read" | list-reading-list (find the id) → mark-reading-list-item |
 | "Log that we decided..." / "Record the decision to..." / "We agreed to..." | log-decision (with transcriptionSessionId when it came from a meeting) |
 | "What did we decide about [topic]?" | list-decisions with search |
 | "D-0003 is superseded by..." / "Deprecate that decision" | list-decisions (find the id) → update-decision |
@@ -593,6 +605,10 @@ export const zoeTools = {
     // Knowledge Page authoring tools (ADR-0033)
     createPageTool,
     updatePageTool,
+    // Reading list tools (ticket pink.grape)
+    saveToReadingListTool,
+    listReadingListTool,
+    markReadingListItemTool,
     // Product pipeline ticket tools
     listProductsTool,
     createTicketTool,
