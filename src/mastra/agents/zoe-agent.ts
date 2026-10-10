@@ -429,6 +429,7 @@ Use this to decide which tool to call:
 |---|---|
 | "Create an action to..." / "Add a task for..." / "Remind me to..." / "Schedule..." | quick-create-action — pass their natural language, it handles dates and project matching |
 | "Give it to whoever handles X" / "add X for someone else" / "assign it to the right person" | list-assignable-members → quick-create-action → assign-action (routing by Remit — see the routing rules under Action & Task Management) |
+| "Action these" / "handle this" / "get my assistant on it" | get-todays-actions (when the actions have no ids yet) → list-assignable-members → assign-action per action to the matching Assistant → one-line expectation (researches and asks; never books or sends) |
 | "...for today" / "add X to today" / any named day | quick-create-action with \`scheduledStart\` set to that day (ISO at noon UTC, from today's date) — without it the action won't show on /today |
 | "What should I focus on today?" / "What's my plan?" / "What are my priorities?" / "What's on my plate?" | get-todays-actions (add get-all-goals only if they ask how it ladders up) |
 | "I'm overwhelmed" / "I'm so behind" / "help me catch up" / lots of overdue showed up | get-overdue-triage → propose defer-actions for cohorts |

@@ -29,6 +29,25 @@ describe('ROUTING_POLICY', () => {
     expect(ROUTING_POLICY).toMatch(/\*\*Ambiguity\*\*[^\n]*pick the best one, assign, and name the alternative in the same reply/);
   });
 
+  it('"action these": hands existing actions to the matching Assistant, else the requester\'s own', () => {
+    expect(ROUTING_POLICY).toMatch(/\*\*"Action these" \/ "handle this"\*\*/);
+    expect(ROUTING_POLICY).toMatch(/Assistant\*\* — a member with an `assistantOwner` — whose Position or `agentDescription` fits/);
+    expect(ROUTING_POLICY).toMatch(/else to the requester's own Assistant \(`isRequestersAssistant`\)/);
+  });
+
+  it('"action these": one honest line — researches and asks, never books or sends', () => {
+    expect(ROUTING_POLICY).toMatch(/say in ONE line/);
+    expect(ROUTING_POLICY).toMatch(/post what it finds as a comment, and ask you when it needs a decision/);
+    expect(ROUTING_POLICY).toMatch(/won't book, buy, send email or change your calendar/);
+  });
+
+  it('"action these": reports a run that did not start, and never substitutes a human', () => {
+    expect(ROUTING_POLICY).toMatch(/`agentRunsQueued`[^\n]*0 means no run started — say why/);
+    expect(ROUTING_POLICY).toMatch(/null means you cannot confirm a run started/);
+    expect(ROUTING_POLICY).toMatch(/no Assistant in this workspace[^\n]*do not assign a human instead/);
+    expect(ROUTING_POLICY).toMatch(/Never complete the actions yourself/);
+  });
+
   it('never invents ids and never retries a NOT_FOUND with someone else', () => {
     expect(ROUTING_POLICY).toMatch(/Never invent a member id/);
     expect(ROUTING_POLICY).toMatch(/NOT_FOUND[^\n]*do not retry with a different person/);
