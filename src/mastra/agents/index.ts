@@ -11,6 +11,8 @@ export { expoAgent } from './expo-agent.js';
 // Export Assistant agent (blank canvas for user-customized personalities) +
 // its Haiku 4.5 tier variant
 export { assistantAgent, assistantAgentHaiku } from './assistant-agent.js';
+// Export Assistant run agent (unattended Agent runs — restricted tool map, ADR-0067 in Exponential)
+export { assistantRunAgent } from './assistant-run-agent.js';
 // Export Platform agent (FtC platform navigation assistant)
 export { platformAgent } from './platform-agent.js';
 // Export One2b agent (CRM onboarding via voice and text)
