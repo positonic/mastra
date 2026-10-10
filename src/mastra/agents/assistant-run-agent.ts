@@ -115,6 +115,11 @@ export const RUN_EXCLUDED_TOOL_KEYS = [
   'listWhatsAppChatsTool',
   'getWhatsAppChatHistoryTool',
   'searchWhatsAppChatsTool',
+  // Chat routing tools (ADR-0068 in exponential, Agent PRD D9). They call the
+  // human roster and `action.assign` as the caller; a run delegates through
+  // `reassign-action` instead, whose containment runs as the owner.
+  'listAssignableMembersTool',
+  'assignActionTool',
 ] as const;
 
 function pickAllowed<T extends Record<string, unknown>>(all: T) {

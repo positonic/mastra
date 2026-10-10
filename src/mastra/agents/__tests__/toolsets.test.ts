@@ -71,7 +71,9 @@ describe('tool map coverage', () => {
 
   it('keeps CORE small — the whole point of the split', () => {
     const core = Object.values(TOOL_GROUPS).filter((g) => g === 'core');
-    expect(core.length).toBeLessThanOrEqual(12);
+    // 11 + the two routing tools (ADR-0068 in exponential): routing a new
+    // action happens in the same short turn as creating it.
+    expect(core.length).toBeLessThanOrEqual(13);
   });
 
   it('only uses declared toolset ids', () => {

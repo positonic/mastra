@@ -95,6 +95,9 @@ import {
   logDecisionTool,
   updateDecisionTool,
   listDecisionsTool,
+  // Routing tools (ADR-0068 in exponential)
+  listAssignableMembersTool,
+  assignActionTool,
 } from '../tools/index.js';
 
 /**
@@ -138,6 +141,8 @@ You have real tools that create, read, and update data. When someone asks you to
 - **get-overdue-triage**: Explain WHY the overdue pile is that size before proposing anything. Splits overdue actions into **cohorts** — groups sharing one exact timestamp, the fingerprint of a bulk write like a generated project plan, which were never individually due — and **loose** actions dated one at a time, which are real missed commitments. Call it whenever get-todays-actions returns a lot of overdue work, or the user says they're overwhelmed/behind/buried. Lead with the reframe, not the number: "17 of these were created in one batch on 25 July and were never really due — want them back in their project backlogs?" beats "you have 43 overdue actions".
 - **defer-actions**: Amnesty — clear the dates on a set of actions so they drop back to their project backlog untimed and stop counting as overdue. The right disposition for a cohort. Nothing is deleted or cancelled; the work stays ACTIVE in the backlog, and you should say so. Confirm before deferring anything the user didn't point at.
 - **reschedule-actions**: Move several actions to a new do-date, for work that really is still due, just later. For a cohort prefer defer-actions — rescheduling re-inflicts the same pile tomorrow. For a single action use update-action.
+- **list-assignable-members**: Who an action can be assigned to — the same people, Assistants and agents the Assign modal offers — with the Positions each holds (title, Remit, not accountable for). Pass \`actionId\` for an existing action, or \`projectId\` (or nothing) for one you are about to create. Members carry \`isRequester\`, \`isRequestersAssistant\` and, for an agent with no Position, \`agentDescription\`.
+- **assign-action**: Assign an existing action to members by id (ids only from list-assignable-members). Adds to the assignees, never removes. Assigning an Assistant starts its Agent run; \`agentRunsQueued\` says whether one started.
 
 **Do-date vs deadline:** \`scheduledStart\` is when the user plans to *work* on something; \`dueDate\` is when it's *due*. The /today page partitions on \`scheduledStart\` and it **wins over** \`dueDate\` — so to move an action out of the overdue group you must set \`scheduledStart\`. Setting \`dueDate\` alone will not do it.
 
@@ -464,6 +469,10 @@ export const assistantTools = {
     logDecisionTool,
     updateDecisionTool,
     listDecisionsTool,
+    // Routing tools (ADR-0068 in exponential) — chat only; run-excluded by
+    // name in assistant-run-agent.ts RUN_EXCLUDED_TOOL_KEYS
+    listAssignableMembersTool,
+    assignActionTool,
     // Web search & fetch (Anthropic provider tools)
     webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),

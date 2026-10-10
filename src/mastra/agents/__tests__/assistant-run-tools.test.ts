@@ -84,6 +84,20 @@ describe('assistantRunAgent tool map (restricted by construction)', () => {
     expect(runKeys).toContain('finishRunTool');
   });
 
+  it('keeps the chat routing tools off the run map (ADR-0068, Agent PRD D9)', () => {
+    // The chat agents carry them, so the exclusion is a real one, not a key
+    // that happens to be absent everywhere.
+    for (const key of ['listAssignableMembersTool', 'assignActionTool']) {
+      expect(assistantTools).toHaveProperty(key);
+      expect(RUN_EXCLUDED_TOOL_KEYS).toContain(key);
+      expect(RUN_ALLOWED_ASSISTANT_TOOL_KEYS).not.toContain(key);
+      expect(runKeys).not.toContain(key);
+    }
+    const runToolIds = Object.values(assistantRunTools).map((t) => (t as { id?: string }).id);
+    expect(runToolIds).not.toContain('list-assignable-members');
+    expect(runToolIds).not.toContain('assign-action');
+  });
+
   it('allow-list and exclusion list never overlap', () => {
     const allowed = new Set<string>(RUN_ALLOWED_ASSISTANT_TOOL_KEYS);
     expect(RUN_EXCLUDED_TOOL_KEYS.filter((k) => allowed.has(k))).toEqual([]);

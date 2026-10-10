@@ -2538,5 +2538,8 @@ export { sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, lis
 export { ideateFeaturesTool } from "./feature-ideation-tools.js";
 export { logDecisionTool, updateDecisionTool, listDecisionsTool } from "./decision-tools.js";
 
+// Routing tools (Exponential ADR-0068): roster with Positions + assign, chat agents only
+export { routingTools, listAssignableMembersTool, assignActionTool } from "./routing-tools.js";
+
 // Tradescape trading tools
 export { tradescapeTools, listSetupsTool, createSetupTool, listAlertsTool, createAlertTool, deleteAlertTool, listPositionsTool, syncTradesTool, dailySummaryTool } from "./tradescape-tools.js";
