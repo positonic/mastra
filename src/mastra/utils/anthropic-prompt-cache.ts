@@ -1,18 +1,25 @@
 import { wrapLanguageModel } from 'ai';
+import { createLogger, type AppLogger } from './logger.js';
 
 /**
  * Applies Anthropic prompt-cache breakpoints AND defers loading of custom
  * tool schemas on every request.
  *
- * Two independent optimisations:
+ * Three independent optimisations:
  *
- * 1. **`cacheControl: ephemeral` on every system message.** Mastra's memory
- *    layer injects additional system messages (observational memory,
- *    working memory) after the initial agent instructions, so we tag all of
- *    them rather than only the first. Anthropic supports up to 4 cache
- *    breakpoints per request — system messages are typically far fewer.
+ * 1. **`cacheControl: ephemeral` on the first system message** (the static
+ *    agent instructions). See the comment in `transformParams` for why the
+ *    memory-injected system messages are left untagged.
  *
- * 2. **`deferLoading: true` on every custom (function) tool.** Anthropic's
+ * 2. **`cacheControl: ephemeral` on the last non-system message** — a
+ *    rolling breakpoint over the conversation. Without it only the system
+ *    prompt is cached, and every step of a tool loop (tool search → tool
+ *    call → answer) re-sends the memory system messages, up to 40 history
+ *    messages and the loaded tool definitions at full price. With it, each
+ *    step reads everything up to the previous step from cache. Uses 2 of
+ *    Anthropic's 4 breakpoints.
+ *
+ * 3. **`deferLoading: true` on every custom (function) tool.** Anthropic's
  *    deferred-loading feature keeps tool definitions out of the prompt
  *    until the model retrieves them via the `tool_search_tool_bm25` (or
  *    `_regex`) provider tool. With ~63 tools (~25K tokens of schemas) on
@@ -73,6 +80,20 @@ export const anthropicPromptCacheMiddleware = {
       firstSystemTagged = true;
       return withAnthropicProviderOption(msg, 'cacheControl', { type: 'ephemeral' as const });
     });
+
+    // Rolling breakpoint on the last non-system message. The provider puts a
+    // message-level cacheControl on that message's last content part (user
+    // text, tool result, or assistant text), so the whole prefix through the
+    // newest turn is written and the next step in the loop reads it back.
+    let lastIndex = prompt.length - 1;
+    while (lastIndex >= 0 && (prompt[lastIndex] as { role?: string }).role === 'system') {
+      lastIndex--;
+    }
+    if (lastIndex >= 0) {
+      prompt[lastIndex] = withAnthropicProviderOption(prompt[lastIndex], 'cacheControl', {
+        type: 'ephemeral' as const,
+      });
+    }
 
     let tools = params.tools;
     let providerOptions = (params as { providerOptions?: Record<string, unknown> })
@@ -143,10 +164,79 @@ export const stripTopPWhenTemperatureSetMiddleware = {
   },
 };
 
+type InputUsage = {
+  total?: number;
+  noCache?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+};
+
+const cacheLogger = createLogger({ name: 'PromptCache', level: 'info' });
+
+/**
+ * Logs one line per model call with the cache split of its input tokens, so
+ * the hit rate can be measured from Railway logs (`grep "prompt-cache usage"`).
+ * `hitRate` = cacheRead / total input.
+ */
+export function logPromptCacheUsage(
+  modelId: string,
+  inputTokens: InputUsage | undefined,
+  log: Pick<AppLogger, 'info'> = cacheLogger,
+): void {
+  if (!inputTokens) return;
+  const total = inputTokens.total ?? 0;
+  const cacheRead = inputTokens.cacheRead ?? 0;
+  log.info('prompt-cache usage', {
+    modelId,
+    inputTotal: total,
+    noCache: inputTokens.noCache ?? 0,
+    cacheRead,
+    cacheWrite: inputTokens.cacheWrite ?? 0,
+    hitRate: total > 0 ? Number((cacheRead / total).toFixed(3)) : 0,
+  });
+}
+
+/** Middleware that reports per-call cache usage via `logPromptCacheUsage`. */
+export const promptCacheUsageLoggingMiddleware = {
+  specificationVersion: 'v3' as const,
+  wrapGenerate: async ({
+    doGenerate,
+    model,
+  }: {
+    doGenerate: () => PromiseLike<{ usage?: { inputTokens?: InputUsage } }>;
+    model: { modelId: string };
+  }) => {
+    const result = await doGenerate();
+    logPromptCacheUsage(model.modelId, result.usage?.inputTokens);
+    return result;
+  },
+  wrapStream: async ({
+    doStream,
+    model,
+  }: {
+    doStream: () => PromiseLike<{ stream: ReadableStream<{ type: string }> }>;
+    model: { modelId: string };
+  }) => {
+    const result = await doStream();
+    const stream = result.stream.pipeThrough(
+      new TransformStream<{ type: string }, { type: string }>({
+        transform(chunk, controller) {
+          if (chunk.type === 'finish') {
+            const usage = (chunk as { usage?: { inputTokens?: InputUsage } }).usage;
+            logPromptCacheUsage(model.modelId, usage?.inputTokens);
+          }
+          controller.enqueue(chunk);
+        },
+      }),
+    );
+    return { ...result, stream };
+  },
+};
+
 /**
  * Wraps an Anthropic language model with the project-standard middleware
- * stack: strip topP conflicts, then apply prompt caching on the system
- * message. Use for every Anthropic-backed agent with a long static prompt.
+ * stack: strip topP conflicts, apply prompt caching (system prompt + rolling
+ * conversation breakpoint), and log per-call cache usage. Use for every Anthropic-backed agent with a long static prompt.
  *
  * Return type is intentionally inferred — the `ai` SDK's V3 types and
  * Mastra's V2 types are structurally compatible but nominally distinct;
@@ -158,6 +248,7 @@ export function withAnthropicPromptCache<M>(model: M): M {
     middleware: [
       stripTopPWhenTemperatureSetMiddleware as never,
       anthropicPromptCacheMiddleware as never,
+      promptCacheUsageLoggingMiddleware as never,
     ],
   }) as unknown as M;
 }
