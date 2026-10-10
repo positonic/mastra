@@ -3,6 +3,8 @@ import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
 import { asAppContext } from "../types/request-context.js";
 import { looseStringArray } from "./zod-loose.js";
+import { positionSummarySchema } from "./position-schema.js";
+import type { PositionSummary } from "./position-schema.js";
 
 // ==================== Routing tools (Exponential ADR-0068, Agent PRD D9) ====================
 // Chat Zoe and the Assistant route work by Remit: they read the roster the
@@ -26,7 +28,7 @@ function routingAuth(ctx: { requestContext?: Parameters<typeof asAppContext>[0] 
   const userId = requestContext?.get("userId");
   const workspaceId = requestContext?.get("workspaceId");
   if (!authToken) throw new Error("No authentication token available");
-  return { authToken, sessionId, userId, workspaceId };
+  return { auth: { authToken, sessionId, userId }, userId, workspaceId };
 }
 
 // ---- Wire shapes from the app (validated loosely: older app builds omit the
@@ -59,15 +61,6 @@ interface AssignWire {
   agentRunsQueued?: number | null;
 }
 
-const positionSummarySchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  remit: z.string(),
-  notAccountableFor: z.string().nullable(),
-});
-
-export type PositionSummary = z.infer<typeof positionSummarySchema>;
-
 const rosterMemberSchema = z.object({
   id: z.string(),
   name: z.string().nullable(),
@@ -80,7 +73,7 @@ const rosterMemberSchema = z.object({
   agentDescription: z.string().nullable(),
 });
 
-export type RosterMember = z.infer<typeof rosterMemberSchema>;
+type RosterMember = z.infer<typeof rosterMemberSchema>;
 
 export const listAssignableMembersOutputSchema = z.object({
   positions: z.array(positionSummarySchema),
@@ -143,8 +136,7 @@ export const listAssignableMembersTool = createTool({
   }),
   outputSchema: listAssignableMembersOutputSchema,
   async execute(inputData, ctx): Promise<Roster> {
-    const { authToken, sessionId, userId, workspaceId } = routingAuth(ctx);
-    const auth = { authToken, sessionId, userId };
+    const { auth, userId, workspaceId } = routingAuth(ctx);
 
     console.log(
       `🧭 [listAssignableMembers] actionId=${inputData.actionId ?? "none"}, projectId=${inputData.projectId ?? "none"}, workspaceId=${workspaceId ?? "none"}`,
@@ -166,10 +158,16 @@ export const listAssignableMembersTool = createTool({
   },
 });
 
-/** tRPC NOT_FOUND surfaces from `authenticatedFetch` as a 404 with the code in the body. */
-function isNotFound(error: unknown): boolean {
+/**
+ * A containment refusal from `action.assign`: tRPC NOT_FOUND, which
+ * `authenticatedFetch` surfaces as `Request failed: 404 …` with the code in the
+ * body. A missing procedure is also a tRPC NOT_FOUND, so that one is excluded —
+ * it must not read to the user as "you can't assign this person".
+ */
+export function isContainmentNotFound(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /\b404\b|NOT_FOUND/.test(message);
+  if (!/^Request failed: 404\b/.test(message) && !message.includes("NOT_FOUND")) return false;
+  return !/procedure on path|No procedure found/i.test(message);
 }
 
 export const assignActionInputSchema = z.object({
@@ -193,7 +191,7 @@ export const assignActionTool = createTool({
   inputSchema: assignActionInputSchema,
   outputSchema: assignActionOutputSchema,
   async execute(inputData, ctx): Promise<AssignActionResult> {
-    const { authToken, sessionId, userId } = routingAuth(ctx);
+    const { auth } = routingAuth(ctx);
 
     console.log(
       `👥 [assignAction] actionId=${inputData.actionId}, userIds=${inputData.userIds.join(",")}`,
@@ -203,7 +201,7 @@ export const assignActionTool = createTool({
       const { data } = await authenticatedTrpcCall<AssignWire | null>(
         "action.assign",
         { actionId: inputData.actionId, userIds: inputData.userIds },
-        { authToken, sessionId, userId },
+        auth,
       );
       const assignees = (data?.assignees ?? []).flatMap((a) =>
         a.user ? [{ id: a.user.id, name: a.user.name ?? null }] : [],
@@ -215,7 +213,7 @@ export const assignActionTool = createTool({
       };
     } catch (error) {
       console.error(`❌ [assignAction] FAILED:`, error);
-      if (isNotFound(error)) {
+      if (isContainmentNotFound(error)) {
         throw new Error(
           "NOT_FOUND: at least one of these members is outside what the user could assign by hand on this action. Tell the user who could not be assigned; do not retry with a different id.",
         );

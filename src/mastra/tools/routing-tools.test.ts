@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Roster, AssignActionResult } from './routing-tools.js';
 
 // Mock the authenticated tRPC transport so no network call is made.
 const authenticatedTrpcCall = vi.fn();
@@ -12,11 +13,10 @@ const {
   listAssignableMembersOutputSchema,
   assignActionTool,
   assignActionInputSchema,
+  isContainmentNotFound,
   routingTools,
 } = await import('./routing-tools.js');
 const { quickCreateActionTool } = await import('./index.js');
-type Roster = import('./routing-tools.js').Roster;
-type AssignActionResult = import('./routing-tools.js').AssignActionResult;
 
 const ctx = (overrides: Record<string, string> = {}) => ({ requestContext: makeRequestContext(overrides) }) as never;
 
@@ -138,6 +138,14 @@ describe('listAssignableMembersTool', () => {
     expect(listAssignableMembersOutputSchema.safeParse(result).success).toBe(true);
   });
 
+  it('tolerates a Position with a null title or remit', async () => {
+    authenticatedTrpcCall.mockResolvedValue({
+      data: { assignableUsers: [{ id: 'andi', name: 'Andi', positions: [{ id: 'p1', title: null, remit: null }] }] },
+    });
+    const result = await listMembers({});
+    expect(result.positions).toEqual([{ id: 'p1', title: '', remit: '', notAccountableFor: null }]);
+  });
+
   it('tolerates an app build that does not send positions yet', async () => {
     authenticatedTrpcCall.mockResolvedValue({
       data: { assignableUsers: [{ id: 'andi', name: 'Andi', email: null, image: null, isAgent: false, assistantOwner: null }] },
@@ -230,6 +238,14 @@ describe('assignActionTool', () => {
     await expect(
       assignActionTool.execute!({ actionId: 'a1', userIds: ['stranger'] }, { requestContext: makeRequestContext() } as never),
     ).rejects.toThrow(/outside what the user could assign by hand[\s\S]*do not retry/);
+  });
+
+  it('does not read a missing procedure as a containment refusal', () => {
+    expect(isContainmentNotFound(new Error('Request failed: 404 Not Found - {"code":"NOT_FOUND"}'))).toBe(true);
+    expect(
+      isContainmentNotFound(new Error('Request failed: 404 Not Found - No "mutation"-procedure on path "action.assign"')),
+    ).toBe(false);
+    expect(isContainmentNotFound(new Error('Request failed: 500 Internal Server Error - Action not found'))).toBe(false);
   });
 
   it('passes other failures through unchanged', async () => {

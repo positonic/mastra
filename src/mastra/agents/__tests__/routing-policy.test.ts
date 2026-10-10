@@ -11,7 +11,8 @@ const source = (file: string) => readFileSync(new URL(`../${file}`, import.meta.
 
 describe('ROUTING_POLICY', () => {
   it('looks up the roster once before routing', () => {
-    expect(ROUTING_POLICY).toMatch(/list-assignable-members\*\* once this turn/);
+    expect(ROUTING_POLICY).toMatch(/list-assignable-members\*\*[^\n]*once per turn for each project/);
+    expect(ROUTING_POLICY).toMatch(/never reuse one project's roster for another/);
   });
 
   it('clear match: assigns a holder in the same turn and names holder and Position', () => {

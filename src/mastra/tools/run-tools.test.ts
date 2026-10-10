@@ -141,6 +141,18 @@ describe('run tools — endpoint contract (Agent PRD D5)', () => {
     expect(parsed.members[0]).toMatchObject({ positions: [], agentDescription: null });
   });
 
+  it('get-run-context output tolerates a Position with a null title or remit', () => {
+    const parsed = (getRunContextTool.outputSchema as unknown as z.ZodTypeAny).parse({
+      action: { id: 'a', name: 'n', description: null, status: 'ACTIVE', priority: null, dueDate: null, project: null, workspaceId: null },
+      assignees: [],
+      members: [{ id: 'u2', name: 'Andi', isAgent: false, assistantOwner: null, positions: [{ id: 'p1', title: null, remit: null }], agentDescription: null }],
+      comments: [],
+      owner: { id: 'o', name: null },
+      predecessor: null,
+    }) as { members: { positions: unknown[] }[] };
+    expect(parsed.members[0]!.positions).toEqual([{ id: 'p1', title: '', remit: '', notAccountableFor: null }]);
+  });
+
   it('get-run-context tells the model to delegate by Remit', () => {
     expect(getRunContextTool.description).toMatch(/Positions and Remits[\s\S]*delegate by Remit/);
   });

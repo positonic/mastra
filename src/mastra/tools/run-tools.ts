@@ -2,6 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall, authenticatedTrpcQuery } from "../utils/authenticated-fetch.js";
 import { looseBoolean } from "./zod-loose.js";
+import { positionSummarySchema } from "./position-schema.js";
 import { updateActionTool, updateActionInputSchema, updateActionOutputSchema } from "./project-tools.js";
 
 // ==================== Agent run tools ====================
@@ -45,16 +46,7 @@ export const getRunContextTool = createTool({
         // Positions held in the action's workspace (Exponential ADR-0068,
         // Agent PRD D8.4). Declared here or Mastra's output validation strips
         // them; defaulted so an app build without them still validates.
-        positions: z
-          .array(
-            z.object({
-              id: z.string(),
-              title: z.string(),
-              remit: z.string(),
-              notAccountableFor: z.string().nullable().default(null),
-            }),
-          )
-          .default([]),
+        positions: z.array(positionSummarySchema).default([]),
         /** An agent's fallback Remit when it holds no Position; null otherwise. */
         agentDescription: z.string().nullable().default(null),
       }),
