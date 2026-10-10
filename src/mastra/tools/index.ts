@@ -2521,6 +2521,8 @@ export { getOkrObjectivesTool, createOkrObjectiveTool, updateOkrObjectiveTool, d
 export { createProjectTool, updateProjectTool, updateActionTool, getTodaysActionsTool, getOverdueTriageTool, deferActionsTool, rescheduleActionsTool, deleteProjectTool, getUserWorkspacesTool, bulkCreateWorkspaceStructureTool } from "./project-tools.js";
 // Knowledge Page authoring tools (ADR-0033)
 export { knowledgeTools, createPageTool, updatePageTool } from "./knowledge-tools.js";
+// Reading list tools (ticket pink.grape): save / list / mark-read over Resources
+export { readingListTools, saveToReadingListTool, listReadingListTool, markReadingListItemTool } from "./reading-list-tools.js";
 
 // Product pipeline ticket tools
 export { listProductsTool, createTicketTool, bulkCreateTicketsTool, importNotionCycleTicketsTool, listCyclesTool, listTicketsTool, addTicketDependenciesTool } from "./ticket-tools.js";

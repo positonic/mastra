@@ -100,6 +100,11 @@ export const TOOL_GROUPS: Record<string, ToolGroupId> = {
   // pages: Knowledge Page authoring (ADR-0033)
   createPageTool: 'pages',
   updatePageTool: 'pages',
+  // Reading list (ticket pink.grape) rides with Knowledge: a saved link is a
+  // Resource, the consumption side of what Pages author.
+  saveToReadingListTool: 'pages',
+  listReadingListTool: 'pages',
+  markReadingListItemTool: 'pages',
 
   notionSearchTool: 'notion',
   notionGetPageTool: 'notion',
