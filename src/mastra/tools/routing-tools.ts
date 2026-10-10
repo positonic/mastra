@@ -203,7 +203,7 @@ export type AssignActionResult = z.infer<typeof assignActionOutputSchema>;
 export const assignActionTool = createTool({
   id: "assign-action",
   description:
-    "Assign an existing action to one or more members, exactly as the user would in the Assign modal. Member ids MUST come from list-assignable-members — never guess one. Assigning adds to the current assignees; nobody is removed. Assigning an Assistant starts its Agent run on the action: `agentRunsQueued` says how many runs actually started — 0 when the action was already assigned to that Assistant (re-assigning does not restart it), is parked, is completed, or already has a live run; null when the app did not report it. If you cannot tell which, tell the user plainly that no run started rather than invent a cause. A NOT_FOUND error means a member is outside what the user could assign by hand on this action: tell the user so, and do not retry silently with a different id.",
+    "Assign an existing action to one or more members, exactly as the user would in the Assign modal. Member ids MUST come from list-assignable-members — never guess one. Assigning adds to the current assignees; nobody is removed. Assigning an Assistant starts its Agent run on the action: `agentRunsQueued` says how many runs actually started — 0 when the action was already assigned to that Assistant (re-assigning does not restart it), is parked, is completed, or already has a live run; null when the app did not report it. If you cannot tell which, tell the user plainly that no run started rather than invent a cause. A NOT_FOUND error means a member is outside what the user could assign by hand on this action; the error names who was not assigned (and who was, when several ids were sent): tell the user so, and do not retry silently with a different id.",
   inputSchema: assignActionInputSchema,
   outputSchema: assignActionOutputSchema,
   async execute(inputData, ctx): Promise<AssignActionResult> {
@@ -213,31 +213,77 @@ export const assignActionTool = createTool({
       `👥 [assignAction] actionId=${inputData.actionId}, userIds=${inputData.userIds.join(",")}`,
     );
 
+    const { actionId, userIds } = inputData;
     try {
-      const { data } = await authenticatedTrpcCall<AssignWire | null>(
-        "action.assign",
-        { actionId: inputData.actionId, userIds: inputData.userIds },
-        auth,
-      );
-      const assignees = (data?.assignees ?? []).flatMap((a) =>
-        a.user ? [{ id: a.user.id, name: a.user.name ?? null }] : [],
-      );
-      return {
-        actionId: data?.id ?? inputData.actionId,
-        assignees,
-        agentRunsQueued: typeof data?.agentRunsQueued === "number" ? data.agentRunsQueued : null,
-      };
+      return toAssignResult(await callAssign(actionId, userIds, auth), actionId);
     } catch (error) {
       console.error(`❌ [assignAction] FAILED:`, error);
-      if (isContainmentNotFound(error)) {
+      if (!isContainmentNotFound(error)) throw error;
+      // The app's containment check rejects the whole request, writes nothing,
+      // and never names the member it refused.
+      const none = `NOT_FOUND: none of the ${userIds.length} member${userIds.length === 1 ? " was" : "s were"} assigned`;
+      if (userIds.length === 1) {
         throw new Error(
-          "NOT_FOUND: at least one of these members is outside what the user could assign by hand on this action. Tell the user who could not be assigned; do not retry with a different id.",
+          `${none}: ${userIds[0]} is outside what the user could assign by hand on this action. Tell the user that member could not be assigned; do not retry with a different id.`,
         );
       }
-      throw error;
+      return retryOneAtATime(actionId, userIds, auth, none);
     }
   },
 });
+
+type RoutingAuth = ReturnType<typeof routingAuth>["auth"];
+
+async function callAssign(actionId: string, userIds: string[], auth: RoutingAuth) {
+  const { data } = await authenticatedTrpcCall<AssignWire | null>("action.assign", { actionId, userIds }, auth);
+  return data;
+}
+
+function toAssignResult(data: AssignWire | null | undefined, actionId: string): AssignActionResult {
+  const assignees = (data?.assignees ?? []).flatMap((a) =>
+    a.user ? [{ id: a.user.id, name: a.user.name ?? null }] : [],
+  );
+  return {
+    actionId: data?.id ?? actionId,
+    assignees,
+    agentRunsQueued: typeof data?.agentRunsQueued === "number" ? data.agentRunsQueued : null,
+  };
+}
+
+/**
+ * Find which member a multi-id NOT_FOUND refused by retrying the SAME ids one
+ * at a time — never a different one. The ones the app accepts are assigned by
+ * the retry, so the error names both lists.
+ */
+async function retryOneAtATime(
+  actionId: string,
+  userIds: string[],
+  auth: RoutingAuth,
+  none: string,
+): Promise<AssignActionResult> {
+  const assigned: string[] = [];
+  const rejected: string[] = [];
+  let last: AssignActionResult | null = null;
+  let runs: number | null = 0;
+  for (const userId of userIds) {
+    try {
+      last = toAssignResult(await callAssign(actionId, [userId], auth), actionId);
+      assigned.push(userId);
+      runs = runs === null || last.agentRunsQueued === null ? null : runs + last.agentRunsQueued;
+    } catch (error) {
+      if (!isContainmentNotFound(error)) throw error;
+      rejected.push(userId);
+    }
+  }
+  console.warn(`⚠️ [assignAction] one-at-a-time retry: assigned=${assigned.join(",") || "none"}, rejected=${rejected.join(",") || "none"}`);
+  if (rejected.length === 0 && last) return { ...last, agentRunsQueued: runs };
+  const outcome = assigned.length
+    ? `Retried the same ids one at a time: assigned ${assigned.join(", ")} (agentRunsQueued: ${runs ?? "not reported"}); not assigned ${rejected.join(", ")}`
+    : `Retried the same ids one at a time: none could be assigned (${rejected.join(", ")})`;
+  throw new Error(
+    `${none} by the combined request. ${outcome} — outside what the user could assign by hand on this action. Tell the user who could not be assigned and who was; do not retry with a different id.`,
+  );
+}
 
 /** The routing tools, keyed as they appear on `zoeTools` / `assistantTools`. */
 export const routingTools = {

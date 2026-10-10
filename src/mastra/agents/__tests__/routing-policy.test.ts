@@ -83,6 +83,7 @@ describe('ROUTING_POLICY', () => {
   it('never invents ids and never retries a NOT_FOUND with someone else', () => {
     expect(ROUTING_POLICY).toMatch(/Never invent a member id/);
     expect(ROUTING_POLICY).toMatch(/NOT_FOUND[^\n]*do not retry with a different person/);
+    expect(ROUTING_POLICY).toMatch(/tell the user who could not be assigned \(and who was, when the error says so\)/);
   });
 
   it.each(['zoe-agent.ts', 'assistant-agent.ts'])(

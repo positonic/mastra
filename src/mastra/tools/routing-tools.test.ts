@@ -279,6 +279,70 @@ describe('assignActionTool', () => {
     ).rejects.toThrow(/outside what the user could assign by hand[\s\S]*do not retry/);
   });
 
+  const CONTAINMENT_404 = () =>
+    new Error('Request failed: 404 Not Found - {"error":{"json":{"data":{"code":"NOT_FOUND"}}}}');
+
+  it('says none was assigned and names the one id it sent', async () => {
+    authenticatedTrpcCall.mockRejectedValueOnce(CONTAINMENT_404());
+    await expect(assign({ actionId: 'a1', userIds: ['stranger'] })).rejects.toThrow(
+      /^NOT_FOUND: none of the 1 member was assigned: stranger is outside/,
+    );
+    expect(authenticatedTrpcCall).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries the same ids one at a time to find the rejected one, and names both lists', async () => {
+    authenticatedTrpcCall
+      .mockRejectedValueOnce(CONTAINMENT_404())
+      .mockResolvedValueOnce({ data: { id: 'a1', assignees: [{ user: { id: 'andi', name: 'Andi' } }], agentRunsQueued: 0 } })
+      .mockRejectedValueOnce(CONTAINMENT_404());
+
+    const error = await assign({ actionId: 'a1', userIds: ['andi', 'stranger'] }).catch((e: Error) => e);
+
+    expect(authenticatedTrpcCall.mock.calls.map((c) => (c[1] as { userIds: string[] }).userIds)).toEqual([
+      ['andi', 'stranger'],
+      ['andi'],
+      ['stranger'],
+    ]);
+    expect(String(error)).toMatch(/none of the 2 members were assigned by the combined request/);
+    expect(String(error)).toMatch(/assigned andi \(agentRunsQueued: 0\); not assigned stranger/);
+    expect(String(error)).toMatch(/do not retry with a different id/);
+  });
+
+  it('reports every id when each one is rejected on its own', async () => {
+    authenticatedTrpcCall
+      .mockRejectedValueOnce(CONTAINMENT_404())
+      .mockRejectedValueOnce(CONTAINMENT_404())
+      .mockRejectedValueOnce(CONTAINMENT_404());
+    const error = await assign({ actionId: 'a1', userIds: ['x', 'y'] }).catch((e: Error) => e);
+    expect(String(error)).toMatch(/none of the 2 members were assigned[\s\S]*none could be assigned \(x, y\)/);
+    expect(authenticatedTrpcCall).toHaveBeenCalledTimes(3);
+  });
+
+  it('returns a normal result when every id succeeds on its own', async () => {
+    authenticatedTrpcCall
+      .mockRejectedValueOnce(CONTAINMENT_404())
+      .mockResolvedValueOnce({ data: { id: 'a1', assignees: [{ user: { id: 'andi', name: 'Andi' } }], agentRunsQueued: 0 } })
+      .mockResolvedValueOnce({
+        data: { id: 'a1', assignees: [{ user: { id: 'andi', name: 'Andi' } }, { user: { id: 'aria', name: 'Aria' } }], agentRunsQueued: 1 },
+      });
+    const result = await assign({ actionId: 'a1', userIds: ['andi', 'aria'] });
+    expect(result).toEqual({
+      actionId: 'a1',
+      assignees: [
+        { id: 'andi', name: 'Andi' },
+        { id: 'aria', name: 'Aria' },
+      ],
+      agentRunsQueued: 1,
+    });
+  });
+
+  it('passes a non-containment failure during the retry through unchanged', async () => {
+    authenticatedTrpcCall
+      .mockRejectedValueOnce(CONTAINMENT_404())
+      .mockRejectedValueOnce(new Error('Request failed: 500 Internal Server Error - boom'));
+    await expect(assign({ actionId: 'a1', userIds: ['andi', 'aria'] })).rejects.toThrow(/boom/);
+  });
+
   it('does not read a missing procedure as a containment refusal', () => {
     expect(isContainmentNotFound(new Error('Request failed: 404 Not Found - {"code":"NOT_FOUND"}'))).toBe(true);
     expect(
