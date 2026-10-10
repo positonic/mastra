@@ -90,6 +90,8 @@ export const TOOL_GROUPS: Record<string, ToolGroupId> = {
   getOverdueTriageTool: 'planning',
   deferActionsTool: 'planning',
   rescheduleActionsTool: 'planning',
+  // import roles & responsibilities as Positions (ADR-0068 in exponential)
+  importPositionsTool: 'planning',
 
   // tickets: product pipeline
   listProductsTool: 'tickets',

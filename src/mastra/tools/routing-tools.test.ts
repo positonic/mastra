@@ -75,8 +75,12 @@ const ROSTER = {
 };
 
 describe('routing tools', () => {
-  it('exposes exactly the two V2 tool ids', () => {
-    expect(Object.values(routingTools).map((t) => t.id).sort()).toEqual(['assign-action', 'list-assignable-members']);
+  it('exposes the two V2 tool ids and the V3 import tool', () => {
+    expect(Object.values(routingTools).map((t) => t.id).sort()).toEqual([
+      'assign-action',
+      'import-positions',
+      'list-assignable-members',
+    ]);
   });
 });
 

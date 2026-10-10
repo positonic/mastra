@@ -2,7 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
 import { asAppContext } from "../types/request-context.js";
-import { looseStringArray } from "./zod-loose.js";
+import { looseBoolean, looseStringArray } from "./zod-loose.js";
 import { positionSummarySchema } from "./position-schema.js";
 import type { PositionSummary } from "./position-schema.js";
 
@@ -13,7 +13,7 @@ import type { PositionSummary } from "./position-schema.js";
 // procedures as the user (ADR-0016), so containment is exactly what the user
 // could do by hand — there is no agent-side assign path of its own.
 //
-// Chat-only. Both keys are listed in `RUN_EXCLUDED_TOOL_KEYS`
+// Chat-only. Every key is listed in `RUN_EXCLUDED_TOOL_KEYS`
 // (assistant-run-agent.ts): an unattended run keeps delegating through
 // `reassign-action`, whose containment runs as the owner.
 //
@@ -305,8 +305,194 @@ async function retryOneAtATime(
   );
 }
 
+
+// ==================== Import roles & responsibilities (Agent PRD D10, V3) ====================
+// Zoe turns a pasted roles document (or a Notion page she read) into Positions
+// in one conversation: a dry run first, the draft shown as a table, the write
+// only after the user's explicit yes. The app's `position.importMany` is
+// human-only plus owner/admin, so chat Zoe passes (she calls with the user's
+// own token) and an Agent run never can — and the key is run-excluded anyway.
+
+/** A tRPC CONFLICT, as `authenticatedFetch` surfaces it. */
+function isConflict(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /^Request failed: 409\b/.test(message) || message.includes("CONFLICT");
+}
+
+/** A tRPC BAD_REQUEST (input the app refused), as `authenticatedFetch` surfaces it. */
+function isBadRequest(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /^Request failed: 400\b/.test(message) || message.includes("BAD_REQUEST");
+}
+
+/** A tRPC "no such procedure" — the app build predates `position.importMany`. */
+function isMissingProcedure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /^Request failed: 404\b/.test(message) && /procedure on path|No procedure found/i.test(message);
+}
+
+export const importPositionRowSchema = z.object({
+  title: z.string().trim().min(1).max(80).describe("The Position's title (1–80 chars), e.g. \"Travel researcher\"."),
+  remit: z
+    .string()
+    .trim()
+    .min(1)
+    .max(2000)
+    .describe("The Remit: the kinds of work its holders take on (Markdown, 1–2000 chars), from the document."),
+  notAccountableFor: z
+    .string()
+    .trim()
+    .max(2000)
+    .nullish()
+    .describe(
+      "What the Position is explicitly not accountable for (Markdown, ≤2000 chars). Omit (or null) when the document says nothing — an existing Position keeps its stored value; send \"\" only to clear it.",
+    ),
+  holderUserIds: looseStringArray(z.array(z.string().min(1)).max(50))
+    .default([])
+    .describe(
+      "Member ids from list-assignable-members (≤50). Only names you matched to exactly one member; an unmatched name is never guessed — leave it out and ask the user.",
+    ),
+});
+
+export const importPositionsInputSchema = z.object({
+  dryRun: looseBoolean().describe(
+    "true: validate and return the plan without writing — ALWAYS first. false: write — only after the user has seen that plan and said yes.",
+  ),
+  positions: z.array(importPositionRowSchema).min(1).max(50).describe("The Positions to import (1–50), one per title."),
+});
+
+/**
+ * The input as `execute` receives it. Mastra types `inputData` from the
+ * schema's input side, where the defaulted `holderUserIds` is optional.
+ */
+export type ImportPositionsInput = z.input<typeof importPositionsInputSchema>;
+
+export const importPositionsOutputSchema = z.object({
+  written: z.boolean().describe("True only when the app wrote the import. A dry run is always false."),
+  created: z.number().describe("Rows whose outcome is create."),
+  updated: z.number().describe("Rows whose outcome is update."),
+  results: z
+    .array(
+      z.object({
+        title: z.string().describe("The stored title: an update keeps the existing Position's spelling."),
+        outcome: z.enum(["create", "update"]),
+        notAccountableFor: z.string().nullish().transform((v) => v ?? null),
+        holderUserIds: z
+          .array(z.string())
+          .nullish()
+          .transform((v) => v ?? [])
+          .describe("Every holder after the import: an update keeps the existing holders and adds these."),
+      }),
+    )
+    .describe("One per input row, in input order."),
+});
+
+export type ImportPositionsResult = z.infer<typeof importPositionsOutputSchema>;
+
+interface ImportManyWire {
+  written?: boolean | null;
+  results?:
+    | {
+        title?: string | null;
+        outcome?: string | null;
+        notAccountableFor?: string | null;
+        holderUserIds?: string[] | null;
+      }[]
+    | null;
+}
+
+/** The app's `importMany` payload: an omitted or null notAccountableFor is left out, so the stored value is kept. */
+export function toImportManyPayload(workspaceId: string, input: ImportPositionsInput) {
+  return {
+    workspaceId,
+    dryRun: input.dryRun,
+    positions: input.positions.map((row) => ({
+      title: row.title,
+      remit: row.remit,
+      ...(row.notAccountableFor !== undefined && row.notAccountableFor !== null
+        ? { notAccountableFor: row.notAccountableFor }
+        : {}),
+      holderUserIds: [...new Set(row.holderUserIds ?? [])],
+    })),
+  };
+}
+
+function toImportResult(data: ImportManyWire | null | undefined): ImportPositionsResult {
+  const results = (data?.results ?? []).map((row) => ({
+    title: row.title ?? "",
+    outcome: row.outcome === "update" ? ("update" as const) : ("create" as const),
+    notAccountableFor: row.notAccountableFor ?? null,
+    holderUserIds: row.holderUserIds ?? [],
+  }));
+  return {
+    // Reported from the app, never assumed from the request.
+    written: data?.written === true,
+    created: results.filter((r) => r.outcome === "create").length,
+    updated: results.filter((r) => r.outcome === "update").length,
+    results,
+  };
+}
+
+const NOTHING_WRITTEN = "Nothing was written.";
+
+export const importPositionsTool = createTool({
+  id: "import-positions",
+  description:
+    "Import a workspace's roles & responsibilities as Positions (title, Remit, not accountable for, holders) — for when the user pastes a roles document or links a Notion page and asks to import it. Draft and confirm, always: (1) call list-assignable-members and match each named holder to exactly one member by name — never guess an id; a name you cannot match is left out and listed as \"no member found\"; (2) call this tool with `dryRun: true`; (3) show the user the plan as a table — Position · Remit (summary) · Not accountable for · Holders (names) · create/update — plus any unmatched names, and ask ONE yes/no for the whole import; (4) only after an explicit yes, call again with `dryRun: false` and exactly the rows you showed. If the user changes anything, dry-run again and show the new table before writing. An existing title (matched case-insensitively) is updated: its Remit is replaced, its not-accountable-for is replaced when you send one, and holders are only ever added — an import never removes anyone. Report what happened from this tool's output: `written` true means saved (created/updated counts); false means nothing was saved. FORBIDDEN means only a workspace owner or admin can import — tell the user so. The workspace comes from the chat; never ask for it.",
+  inputSchema: importPositionsInputSchema,
+  outputSchema: importPositionsOutputSchema,
+  async execute(inputData, ctx): Promise<ImportPositionsResult> {
+    const { auth, workspaceId } = routingAuth(ctx);
+    if (!workspaceId) {
+      throw new Error(
+        `No workspace in this chat. ${NOTHING_WRITTEN} Positions belong to a workspace: ask the user to open the chat from the workspace they want to import into, then try again.`,
+      );
+    }
+
+    const payload = toImportManyPayload(workspaceId, inputData);
+    console.log(
+      `🗂️ [importPositions] workspaceId=${workspaceId}, dryRun=${payload.dryRun}, rows=${payload.positions.length}`,
+    );
+
+    try {
+      const { data } = await authenticatedTrpcCall<ImportManyWire | null>("position.importMany", payload, auth);
+      return toImportResult(data);
+    } catch (error) {
+      console.error(`❌ [importPositions] FAILED:`, error);
+      const detail = error instanceof Error ? error.message : String(error);
+      if (isMissingProcedure(error)) {
+        throw new Error(
+          `This Exponential build cannot import Positions yet (position.importMany is not available). ${NOTHING_WRITTEN} Tell the user the import is not available yet; they can add Positions in workspace settings.`,
+        );
+      }
+      if (isForbidden(error)) {
+        throw new Error(
+          `FORBIDDEN: only a workspace owner or admin can import Positions. ${NOTHING_WRITTEN} Tell the user an owner or admin of this workspace must run the import; do not retry.`,
+        );
+      }
+      if (isContainmentNotFound(error)) {
+        throw new Error(
+          `NOT_FOUND: one of the holder ids is not a member of this workspace (the app does not say which). ${NOTHING_WRITTEN} Check every holderUserId against list-assignable-members; ask the user who is meant for any holder you cannot confirm, and dry-run again — never substitute a guessed id.`,
+        );
+      }
+      if (isConflict(error)) {
+        throw new Error(
+          `CONFLICT: a Position with one of these titles was created while importing. ${NOTHING_WRITTEN} Run the dry run again and show the user the new plan before writing.`,
+        );
+      }
+      if (isBadRequest(error)) {
+        throw new Error(
+          `BAD_REQUEST: the app refused this import (${detail}). ${NOTHING_WRITTEN} A title listed twice must become one row; fix what the error names, and ask the user how to resolve anything you cannot fix from the document before dry-running again.`,
+        );
+      }
+      throw error;
+    }
+  },
+});
+
 /** The routing tools, keyed as they appear on `zoeTools` / `assistantTools`. */
 export const routingTools = {
   listAssignableMembersTool,
   assignActionTool,
+  importPositionsTool,
 };
