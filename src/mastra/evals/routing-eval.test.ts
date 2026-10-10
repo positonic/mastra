@@ -1,6 +1,31 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { casesFileSchema, buildFrozenPrefix } from './replay.js';
+
+// The agents construct Anthropic provider tools and the memory store at
+// import, so they are loaded with both stubbed (as assistant-run-tools.test.ts
+// does) to read their real tool maps.
+vi.mock('@ai-sdk/anthropic', () => {
+  const provider = (() => ({ modelId: 'stub' })) as unknown as Record<string, unknown>;
+  provider.tools = {
+    webSearch_20250305: () => ({ id: 'web-search' }),
+    webFetch_20250910: () => ({ id: 'web-fetch' }),
+    toolSearchBm25_20251119: () => ({ id: 'tool-search' }),
+  };
+  return { anthropic: provider };
+});
+vi.mock('../memory/index.js', () => ({ memory: {}, storage: {} }));
+vi.mock('../utils/anthropic-prompt-cache.js', () => ({
+  withAnthropicPromptCache: (m: unknown) => m,
+}));
+
+const { zoeTools } = await import('../agents/zoe-agent.js');
+const { assistantTools } = await import('../agents/assistant-agent.js');
+const { listAssignableMembersTool, assignActionTool } = await import('../tools/routing-tools.js');
+const toolMaps: Record<string, Record<string, unknown>> = {
+  'zoe-agent.ts': zoeTools,
+  'assistant-agent.ts': assistantTools,
+};
 
 /**
  * Eval cases for routing by Remit (Exponential ADR-0068, Agent PRD D9): clear
@@ -13,9 +38,8 @@ import { casesFileSchema, buildFrozenPrefix } from './replay.js';
  *   npm run eval-replay -- src/mastra/evals/fixtures/routing-cases.json
  * This test is the deterministic, CI-safe guard: the fixture stays
  * schema-valid, the expectations pin the ROUTING_POLICY outcomes, and the
- * routing tools are registered on BOTH chat agents (tool map and
- * instructions). Agents are read as source text: importing them boots the
- * memory store.
+ * routing tools are registered on BOTH chat agents (their real tool maps,
+ * imported with the provider and memory stubbed, and their instructions).
  */
 const raw = readFileSync(new URL('./fixtures/routing-cases.json', import.meta.url), 'utf8');
 const { cases } = casesFileSchema.parse(JSON.parse(raw));
@@ -130,10 +154,8 @@ describe('routing eval cases', () => {
     '%s registers the routing tools in its tool map and its instructions',
     (file) => {
       const source = readFileSync(new URL(`../agents/${file}`, import.meta.url), 'utf8');
-      for (const exportName of ['listAssignableMembersTool', 'assignActionTool']) {
-        // Once in the import list, once in the tool map.
-        expect(source.match(new RegExp(`\\b${exportName}\\b`, 'g'))?.length ?? 0).toBeGreaterThanOrEqual(2);
-      }
+      expect(toolMaps[file]!.listAssignableMembersTool).toBe(listAssignableMembersTool);
+      expect(toolMaps[file]!.assignActionTool).toBe(assignActionTool);
       for (const id of ['list-assignable-members', 'assign-action']) {
         expect(source).toMatch(new RegExp(`\\*\\*${id}\\*\\*`));
       }
