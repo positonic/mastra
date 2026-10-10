@@ -45,6 +45,17 @@ See [AGENTS.md](AGENTS.md) for session completion protocol and full beads refere
 
 Run `bun run dev:log` to capture logs to `mastra.log` for troubleshooting. The log file captures both stdout and stderr.
 
+## Who merges: the PR-Agent auto-merge gate, or James
+
+`.github/workflows/pr-agent-automerge.yml` squash-merges a PR into `main` once CI is green
+and PR-Agent left nothing blocking on the latest commit (currently in dry run: it posts a
+verdict comment and never merges). **Agent sessions do not merge PRs.**
+
+- Never run `gh pr merge` or pass `--merge` to `/ship-this`. Open the PR, apply PR-Agent's
+  findings, push, and stop.
+- Never add the `pr-agent-ack` label — only James applies it.
+- `no-automerge` on a PR keeps it human-only. Don't remove it.
+
 ## Architecture Overview
 
 This is a Mastra-based multi-agent application with external integrations (WhatsApp, Telegram, Slack, Binance, external APIs). The primary client is the **Exponential app** — see [docs/exponential-app.md](docs/exponential-app.md) for its route structure, data model, workflows, and how it calls Mastra agents.

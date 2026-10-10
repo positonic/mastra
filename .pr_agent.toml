@@ -2,11 +2,25 @@
 publish_output = true
 
 [pr_reviewer]
-num_max_findings = 4
+# Raised from 4: Opus 5 follows caps literally, so a tight limit discards findings
+# it would otherwise surface. Matches positonic/exponential.
+num_max_findings = 8
 require_tests_review = true
+# The auto-merge gate reads the review's 🔒 row and treats a missing one as a
+# concern, so keep this on.
 require_security_review = true
 persistent_comment = true
 final_update_message = false
+extra_instructions = """
+Severity — begin the header of every key issue with exactly one tag, then the title
+as usual (e.g. "[blocker] JWT accepted without verifying the signature"):
+[blocker] — merging this commit as-is would ship a bug, a security hole, data loss,
+a leak of one user's or workspace's data to another, or a build/CI failure.
+[minor] — everything else, including anything you are not confident is a real
+problem (a "worth confirming", "may", or "could" finding is minor).
+An automated merge gate reads these tags: a [blocker] holds the PR for a human, a
+[minor] does not. Tag honestly in both directions.
+"""
 
 [pr_code_suggestions]
 num_code_suggestions_per_chunk = 4
