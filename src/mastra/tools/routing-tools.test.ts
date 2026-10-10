@@ -297,6 +297,10 @@ describe('assignActionTool', () => {
   it('tells the model where ids come from, that an Assistant starts a run, and not to retry a NOT_FOUND', () => {
     expect(assignActionTool.description).toMatch(/list-assignable-members/);
     expect(assignActionTool.description).toMatch(/starts its Agent run/);
+    expect(assignActionTool.description).toMatch(
+      /0 when the action was already assigned to that Assistant \(re-assigning does not restart it\), is parked/,
+    );
+    expect(assignActionTool.description).toMatch(/tell the user plainly that no run started rather than invent a cause/);
     expect(assignActionTool.description).toMatch(/NOT_FOUND[\s\S]*do not retry/);
   });
 

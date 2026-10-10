@@ -190,7 +190,12 @@ export const assignActionInputSchema = z.object({
 export const assignActionOutputSchema = z.object({
   actionId: z.string(),
   assignees: z.array(z.object({ id: z.string(), name: z.string().nullable() })),
-  agentRunsQueued: z.number().nullable(),
+  agentRunsQueued: z
+    .number()
+    .nullable()
+    .describe(
+      "Agent runs that started. 0: already assigned to that Assistant (re-assigning does not restart it), parked, completed, or a run is already live. Null: not reported.",
+    ),
 });
 
 export type AssignActionResult = z.infer<typeof assignActionOutputSchema>;
@@ -198,7 +203,7 @@ export type AssignActionResult = z.infer<typeof assignActionOutputSchema>;
 export const assignActionTool = createTool({
   id: "assign-action",
   description:
-    "Assign an existing action to one or more members, exactly as the user would in the Assign modal. Member ids MUST come from list-assignable-members — never guess one. Assigning adds to the current assignees; nobody is removed. Assigning an Assistant starts its Agent run on the action: `agentRunsQueued` says how many runs actually started (0 when the action is parked, completed, or already has a live run; null when the app did not report it). A NOT_FOUND error means a member is outside what the user could assign by hand on this action: tell the user so, and do not retry silently with a different id.",
+    "Assign an existing action to one or more members, exactly as the user would in the Assign modal. Member ids MUST come from list-assignable-members — never guess one. Assigning adds to the current assignees; nobody is removed. Assigning an Assistant starts its Agent run on the action: `agentRunsQueued` says how many runs actually started — 0 when the action was already assigned to that Assistant (re-assigning does not restart it), is parked, is completed, or already has a live run; null when the app did not report it. If you cannot tell which, tell the user plainly that no run started rather than invent a cause. A NOT_FOUND error means a member is outside what the user could assign by hand on this action: tell the user so, and do not retry silently with a different id.",
   inputSchema: assignActionInputSchema,
   outputSchema: assignActionOutputSchema,
   async execute(inputData, ctx): Promise<AssignActionResult> {

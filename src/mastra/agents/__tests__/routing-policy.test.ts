@@ -51,6 +51,9 @@ describe('ROUTING_POLICY', () => {
   it('"action these": reports a run that did not start, and never substitutes a human', () => {
     expect(ROUTING_POLICY).toMatch(/`agentRunsQueued`[^\n]*0 means no run started — say why/);
     expect(ROUTING_POLICY).toMatch(/null means you cannot confirm a run started/);
+    // First cause listed: the Assistant already had the action; re-assigning does not restart it.
+    expect(ROUTING_POLICY).toMatch(/say why: the action was already assigned to that Assistant \(re-assigning does not restart it\)/);
+    expect(ROUTING_POLICY).toMatch(/tell the user plainly that no run started rather than invent a cause/);
     expect(ROUTING_POLICY).toMatch(/no Assistant in this workspace[^\n]*do not assign a human instead/);
     expect(ROUTING_POLICY).toMatch(/Never complete the actions yourself/);
   });
