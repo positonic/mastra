@@ -125,49 +125,54 @@ export const updateProjectTool = createTool({
   },
 });
 
+// Exported so the run agent can carry a status-less variant (run-tools.ts).
+export const updateActionInputSchema = z.object({
+  actionId: z.string().describe("The ID of the action to update"),
+  name: z.string().min(1).optional().describe("New name for the action"),
+  description: z.string().nullable().optional().describe("New description (set null to clear)"),
+  projectId: z.string().nullable().optional().describe("Move the action to this project ID, or null to unassign from any project"),
+  priority: looseEnum([
+      "Quick", "Scheduled",
+      "1st Priority", "2nd Priority", "3rd Priority", "4th Priority", "5th Priority",
+      "Errand", "Remember", "Watch", "Someday Maybe",
+    ])
+    .optional()
+    .describe("New priority level"),
+  status: looseEnum(["ACTIVE", "COMPLETED", "CANCELLED"])
+    .optional()
+    .describe("New status"),
+  dueDate: z.string().nullable().optional().describe("New deadline in ISO format, or null to clear"),
+  scheduledStart: z.string().nullable().optional().describe("The do-date: when the user plans to work on this, in ISO format (e.g. 2026-08-05T09:00:00Z). This is what /today partitions on and it wins over dueDate. Null to clear."),
+  scheduledEnd: z.string().nullable().optional().describe("End of the time block in ISO format, or null to clear"),
+  duration: looseNumber(z.number().int().positive()).nullable().optional().describe("Length of the time block in minutes"),
+});
+
+export const updateActionOutputSchema = z.object({
+  action: z.object({
+    id: z.string(),
+    name: z.string(),
+    description: z.string().nullable(),
+    status: z.string(),
+    priority: z.string(),
+    dueDate: z.string().nullish(),
+    scheduledStart: z.string().nullish(),
+    scheduledEnd: z.string().nullish(),
+    duration: z.number().nullish(),
+    projectId: z.string().nullable(),
+    project: z.object({
+      id: z.string(),
+      name: z.string(),
+    }).nullable().optional(),
+  }),
+});
+
 export const updateActionTool = createTool({
   id: "update-action",
   description:
     "Update an existing action's fields. Use this to rename actions, change priority/status, set due dates, reschedule an action to a specific time, or move actions between projects by changing the projectId. Set projectId to null to unassign an action from its project. " +
     "To MOVE AN ACTION TO A NEW TIME — \"move this to tomorrow morning\", \"do this at 9am\", \"push it to Friday\" — set scheduledStart, not dueDate. scheduledStart is the \"do date\" and it is what /today partitions on; it takes precedence over dueDate, so changing dueDate alone will NOT move an action out of the overdue group. To clear a schedule entirely, set scheduledStart to null (or use defer-actions for several at once).",
-  inputSchema: z.object({
-    actionId: z.string().describe("The ID of the action to update"),
-    name: z.string().min(1).optional().describe("New name for the action"),
-    description: z.string().nullable().optional().describe("New description (set null to clear)"),
-    projectId: z.string().nullable().optional().describe("Move the action to this project ID, or null to unassign from any project"),
-    priority: looseEnum([
-        "Quick", "Scheduled",
-        "1st Priority", "2nd Priority", "3rd Priority", "4th Priority", "5th Priority",
-        "Errand", "Remember", "Watch", "Someday Maybe",
-      ])
-      .optional()
-      .describe("New priority level"),
-    status: looseEnum(["ACTIVE", "COMPLETED", "CANCELLED"])
-      .optional()
-      .describe("New status"),
-    dueDate: z.string().nullable().optional().describe("New deadline in ISO format, or null to clear"),
-    scheduledStart: z.string().nullable().optional().describe("The do-date: when the user plans to work on this, in ISO format (e.g. 2026-08-05T09:00:00Z). This is what /today partitions on and it wins over dueDate. Null to clear."),
-    scheduledEnd: z.string().nullable().optional().describe("End of the time block in ISO format, or null to clear"),
-    duration: looseNumber(z.number().int().positive()).nullable().optional().describe("Length of the time block in minutes"),
-  }),
-  outputSchema: z.object({
-    action: z.object({
-      id: z.string(),
-      name: z.string(),
-      description: z.string().nullable(),
-      status: z.string(),
-      priority: z.string(),
-      dueDate: z.string().nullish(),
-      scheduledStart: z.string().nullish(),
-      scheduledEnd: z.string().nullish(),
-      duration: z.number().nullish(),
-      projectId: z.string().nullable(),
-      project: z.object({
-        id: z.string(),
-        name: z.string(),
-      }).nullable().optional(),
-    }),
-  }),
+  inputSchema: updateActionInputSchema,
+  outputSchema: updateActionOutputSchema,
   async execute(inputData, { requestContext }) {
     const authToken = requestContext?.get("authToken") as string | undefined;
     const sessionId = requestContext?.get("whatsappSession") as string | undefined;

@@ -14,6 +14,7 @@ const {
   reassignActionTool,
   askOwnerTool,
   finishRunTool,
+  runUpdateActionTool,
   runTools,
 } = await import('./run-tools.js');
 
@@ -145,6 +146,28 @@ describe('run tools — endpoint contract (Agent PRD D5)', () => {
     for (const call of [...authenticatedTrpcCall.mock.calls, ...authenticatedTrpcQuery.mock.calls]) {
       for (const arg of call) if (arg && typeof arg === 'object') expect(arg).not.toHaveProperty('runId');
     }
+  });
+});
+
+describe('runUpdateActionTool', () => {
+  beforeEach(() => authenticatedTrpcCall.mockReset());
+
+  it('posts mastra.updateAction like the chat tool, for the fields it allows', async () => {
+    authenticatedTrpcCall.mockResolvedValue({ data: { action: { id: 'a1' } } });
+    await runUpdateActionTool.execute!(
+      { actionId: 'a1', name: 'Book Hotel Marlow' },
+      { requestContext: makeRequestContext() } as never,
+    );
+    expect(authenticatedTrpcCall).toHaveBeenCalledWith(
+      'mastra.updateAction',
+      { actionId: 'a1', name: 'Book Hotel Marlow' },
+      expect.objectContaining({ authToken: 'run-jwt' }),
+    );
+  });
+
+  it('tells the model it cannot change status', () => {
+    expect(runUpdateActionTool.description).toMatch(/cannot change an action's status/);
+    expect(runUpdateActionTool.description).not.toMatch(/priority\/status/);
   });
 });
 

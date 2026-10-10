@@ -1,10 +1,11 @@
 import { Agent } from '@mastra/core/agent';
+import { hasToolCall, stepCountIs } from 'ai';
 import { memory } from '../memory/index.js';
 import { neutralizeServerToolErrorsProcessor } from '../processors/neutralize-server-tool-errors.js';
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
 import { SECURITY_POLICY } from './security-policy.js';
 import { assistantModel, assistantTools } from './assistant-agent.js';
-import { runTools } from '../tools/run-tools.js';
+import { runTools, runUpdateActionTool } from '../tools/run-tools.js';
 
 /**
  * Assistant Run Agent — the engine behind an **Agent run** (Exponential
@@ -54,10 +55,11 @@ export const RUN_ALLOWED_ASSISTANT_TOOL_KEYS = [
   'queryMeetingContextTool',
   'getMeetingInsightsTool',
   'listDecisionsTool',
-  // Exponential writes that stay inside the app
+  // Exponential writes that stay inside the app. Updating actions goes through
+  // the run tools' `runUpdateActionTool`, which cannot set status — the chat
+  // `updateActionTool` (status: COMPLETED/CANCELLED) is deliberately absent.
   'createProjectActionTool',
   'quickCreateActionTool',
-  'updateActionTool',
   // External reads (never writes)
   'notionSearchTool',
   'notionGetPageTool',
@@ -74,10 +76,12 @@ export const RUN_ALLOWED_ASSISTANT_TOOL_KEYS = [
   'getRecentEmailsTool',
   'getEmailByIdTool',
   'searchEmailsTool',
-  // Anthropic provider tools
+  // Anthropic provider tools. NOT toolSearch: with it on the map,
+  // anthropic-prompt-cache.ts defers every function tool behind BM25 search —
+  // including get-run-context, ask-owner and finish-run, the calls the run
+  // contract depends on. ~40 tools load in full affordably for a run.
   'webSearch',
   'webFetch',
-  'toolSearch',
 ] as const;
 
 /**
@@ -95,6 +99,8 @@ export const RUN_EXCLUDED_TOOL_KEYS = [
   'updateCrmContactTool',
   'addCrmInteractionTool',
   'createCrmOrganizationTool',
+  'updateActionTool',
+  'toolSearch',
   'deleteOkrObjectiveTool',
   'deleteOkrKeyResultTool',
   'sendSlackMessageTool',
@@ -114,13 +120,19 @@ export const RUN_EXCLUDED_TOOL_KEYS = [
 function pickAllowed<T extends Record<string, unknown>>(all: T) {
   const out: Record<string, unknown> = {};
   for (const key of RUN_ALLOWED_ASSISTANT_TOOL_KEYS) {
-    if (key in all) out[key] = all[key];
+    // Fail at import rather than silently dropping a tool a run was meant to
+    // carry when it is renamed on assistantTools.
+    if (!(key in all)) {
+      throw new Error(`assistantRunAgent: allow-listed tool "${key}" is not registered on assistantTools`);
+    }
+    out[key] = all[key];
   }
   return out;
 }
 
 export const assistantRunTools = {
   ...pickAllowed(assistantTools),
+  runUpdateActionTool,
   ...runTools,
 };
 
@@ -141,7 +153,7 @@ You are not in a chat. You were **assigned an action** and are working on it una
 ### Rules
 
 - **Read widely, write narrowly.** Read anything you need. Write only inside Exponential: comments, action fields, sub-actions. You have no tool that sends email, books calendar events, or writes to Notion or the CRM — do not try to work around that, and never claim you did any of those. If the task needs one of them, do everything up to that point (draft the text, pick the slot, find the contact) and either ask-owner or hand it over in your summary.
-- **Never complete the action.** Propose it: finish with \`readyToClose: true\` and the owner confirms from their inbox.
+- **Never complete the action.** You cannot set an action's status. Propose it: finish with \`readyToClose: true\` and the owner confirms from their inbox.
 - **Never guess an id.** Every userId and projectId comes from get-run-context or a read tool.
 - **Exactly one ending.** A run ends with either ask-owner or finish-run, never both, never neither.
 - **Be done quickly.** You have a bounded number of steps. Prefer one good pass over exhaustive exploration; the owner can always ask for more.
@@ -163,9 +175,21 @@ ${RUN_CONTRACT}
 Today's date is ${new Date().toISOString().slice(0, 10)} (UTC).
 `;
 
+/** Map keys of the run's two endings — the tool names the model emits. */
+export const RUN_ENDING_TOOL_KEYS = ['askOwnerTool', 'finishRunTool'] as const;
+
 export const assistantRunDefaultOptions = {
-  // Bounds a run's wall-clock inside the app's dispatch function (Agent PRD D4).
-  maxSteps: 12,
+  // The loop ends on the first step that calls ask-owner or finish-run, so
+  // "exactly one ending" is structural rather than prompt-only, and otherwise
+  // after 12 steps — which bounds a run's wall-clock inside the app's dispatch
+  // function (Agent PRD D4).
+  //
+  // No `maxSteps` on purpose: Mastra turns a numeric maxSteps into
+  // stepCountIs(maxSteps) and DISCARDS stopWhen, so the endings would stop
+  // ending the run. The same holds per call — a caller passing maxSteps to
+  // generate/stream silently re-opens the loop. hasToolCall matches the map
+  // key (askOwnerTool), not the tool id (ask-owner).
+  stopWhen: [stepCountIs(12), ...RUN_ENDING_TOOL_KEYS.map((key) => hasToolCall(key))],
   modelSettings: {
     temperature: 0.5,
   },

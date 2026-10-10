@@ -31,8 +31,10 @@ const {
   assistantRunAgent,
 } = await import('../assistant-run-agent.js');
 
+const runToolsModule = await import('../../tools/run-tools.js');
+
 const runKeys = Object.keys(assistantRunTools);
-const RUN_TOOL_KEY = /^(finishRun|reportProgress|getRunContext|commentOnAction|askOwner|reassignAction)Tool$/;
+const RUN_TOOL_KEY = /^(finishRun|reportProgress|getRunContext|commentOnAction|askOwner|reassignAction|runUpdateAction)Tool$/;
 
 describe('assistantRunAgent tool map (restricted by construction)', () => {
   it.each([...RUN_EXCLUDED_TOOL_KEYS])('does not carry %s', (key) => {
@@ -52,10 +54,30 @@ describe('assistantRunAgent tool map (restricted by construction)', () => {
     expect(foreign).toEqual([]);
   });
 
-  it('carries every allowed key that the Assistant actually registers', () => {
+  it('carries every allowed key, and every allowed key is a real Assistant tool', () => {
+    // No `if (key in assistantTools)` guard: a renamed tool must fail here,
+    // not silently vanish from runs (pickAllowed also throws at import).
     for (const key of RUN_ALLOWED_ASSISTANT_TOOL_KEYS) {
-      if (key in assistantTools) expect(runKeys).toContain(key);
+      expect(assistantTools).toHaveProperty(key);
+      expect(runKeys).toContain(key);
     }
+  });
+
+  it('cannot set an action status: the chat update tool is absent and the run variant has no status field', () => {
+    expect(runKeys).not.toContain('updateActionTool');
+    const { runUpdateActionTool, runUpdateActionInputSchema } = runToolsModule;
+    expect(assistantRunTools.runUpdateActionTool).toBe(runUpdateActionTool);
+    expect(runUpdateActionTool.id).toBe('update-action');
+    expect(runUpdateActionInputSchema.safeParse({ actionId: 'a1', name: 'Renamed' }).success).toBe(true);
+    // strict: a status the model sends anyway is a validation error it sees,
+    // not a silently stripped field.
+    expect(runUpdateActionInputSchema.safeParse({ actionId: 'a1', status: 'COMPLETED' }).success).toBe(false);
+  });
+
+  it('does not carry tool search, so no run tool is deferred behind it', () => {
+    // anthropic-prompt-cache.ts defers every function tool when a
+    // tool_search provider tool is present.
+    expect(runKeys).not.toContain('toolSearch');
   });
 
   it('carries finish-run', () => {

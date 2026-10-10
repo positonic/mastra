@@ -2,6 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall, authenticatedTrpcQuery } from "../utils/authenticated-fetch.js";
 import { looseBoolean } from "./zod-loose.js";
+import { updateActionTool, updateActionInputSchema, updateActionOutputSchema } from "./project-tools.js";
 
 // ==================== Agent run tools ====================
 // Tools only the `assistantRunAgent` carries (Exponential ADR-0067, Agent PRD
@@ -168,6 +169,26 @@ export const finishRunTool = createTool({
       auth,
     );
     return { finished: true as const };
+  },
+});
+
+// A run proposes completion (finish-run's readyToClose) and the owner confirms
+// it; it never sets an action's status itself. The chat `updateActionTool`
+// accepts `status: COMPLETED | CANCELLED`, so the run carries this variant
+// instead: same id, endpoint and fields minus `status`. `.strict()` makes a
+// `status` the model sends anyway fail validation loudly — the model sees the
+// error — rather than being stripped and reported as an update that happened.
+export const runUpdateActionInputSchema = updateActionInputSchema.omit({ status: true }).strict();
+
+export const runUpdateActionTool = createTool({
+  id: "update-action",
+  description:
+    `${updateActionTool.description.replace("priority/status", "priority")} ` +
+    "In an assigned run you cannot change an action's status — never complete or cancel it; propose completion with finish-run's readyToClose instead.",
+  inputSchema: runUpdateActionInputSchema,
+  outputSchema: updateActionOutputSchema,
+  async execute(inputData, context) {
+    return updateActionTool.execute!(inputData, context);
   },
 });
 
