@@ -641,6 +641,12 @@ export const createProjectActionTool = createTool({
   },
 });
 
+/** A tRPC FORBIDDEN, as `authenticatedFetch` surfaces it (`Request failed: 403 …`). */
+function isForbidden(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /^Request failed: 403\b/.test(message) || message.includes("FORBIDDEN");
+}
+
 export const quickCreateActionTool = createTool({
   id: "quick-create-action",
   description:
@@ -739,23 +745,39 @@ export const quickCreateActionTool = createTool({
       throw new Error("No authentication token available");
     }
 
+    const payload = {
+      text,
+      projectId: projectId || undefined,
+      priority: priority || undefined,
+      scheduledStart: scheduledStart || undefined,
+      dueDate: dueDate || undefined,
+      workspaceId,
+    };
+
     try {
       const { data: result } = await authenticatedTrpcCall(
         "mastra.quickCreateAction",
-        {
-          text,
-          projectId: projectId || undefined,
-          priority: priority || undefined,
-          scheduledStart: scheduledStart || undefined,
-          dueDate: dueDate || undefined,
-          workspaceId,
-        },
+        payload,
         { authToken, sessionId, userId }
       );
 
       console.log(`✅ [quickCreateAction] SUCCESS:`, JSON.stringify(result));
       return result;
     } catch (error) {
+      // The workspace came from context, not from the user: a viewer of the
+      // current workspace, or a gateway pairing whose workspace the user has
+      // since left, gets FORBIDDEN from the app's write gate. Before workspace
+      // forwarding that create succeeded unscoped — keep it succeeding, once.
+      if (workspaceId && isForbidden(error)) {
+        console.warn(`⚠️ [quickCreateAction] FORBIDDEN in workspace ${workspaceId}; retrying without a workspace`);
+        const { data: result } = await authenticatedTrpcCall(
+          "mastra.quickCreateAction",
+          { ...payload, workspaceId: undefined },
+          { authToken, sessionId, userId }
+        );
+        console.log(`✅ [quickCreateAction] SUCCESS (no workspace):`, JSON.stringify(result));
+        return result;
+      }
       console.error(`❌ [quickCreateAction] FAILED:`, error);
       throw error;
     }

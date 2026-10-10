@@ -299,6 +299,27 @@ describe('quickCreateActionTool — workspace forwarding (Agent PRD D8.3)', () =
     }
   });
 
+  it('retries once without the workspace when the context workspace is FORBIDDEN (viewer, stale pairing)', async () => {
+    authenticatedTrpcCall
+      .mockRejectedValueOnce(new Error('Request failed: 403 Forbidden - {"code":"FORBIDDEN"}'))
+      .mockResolvedValueOnce(created);
+    const result = await quickCreateActionTool.execute!({ text: 'Call John' }, ctx());
+    expect(authenticatedTrpcCall).toHaveBeenCalledTimes(2);
+    expect((authenticatedTrpcCall.mock.calls[0]![1] as Record<string, unknown>).workspaceId).toBe('ws-clear');
+    expect((authenticatedTrpcCall.mock.calls[1]![1] as Record<string, unknown>).workspaceId).toBeUndefined();
+    expect(result).toMatchObject({ success: true });
+  });
+
+  it('does not retry other failures, or a FORBIDDEN with no workspace forwarded', async () => {
+    authenticatedTrpcCall.mockRejectedValueOnce(new Error('Request failed: 500 Internal Server Error - boom'));
+    await expect(quickCreateActionTool.execute!({ text: 'Call John' }, ctx())).rejects.toThrow(/boom/);
+    authenticatedTrpcCall.mockRejectedValueOnce(new Error('Request failed: 403 Forbidden - {"code":"FORBIDDEN"}'));
+    await expect(
+      quickCreateActionTool.execute!({ text: 'Call John' }, { requestContext: new Map([['authToken', 't']]) } as never),
+    ).rejects.toThrow(/FORBIDDEN/);
+    expect(authenticatedTrpcCall).toHaveBeenCalledTimes(2);
+  });
+
   it('does not take a workspace from tool input', () => {
     const keys = Object.keys((quickCreateActionTool.inputSchema as unknown as { shape: Record<string, unknown> }).shape);
     expect(keys).not.toContain('workspaceId');
