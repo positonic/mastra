@@ -15,6 +15,12 @@ describe('ROUTING_POLICY', () => {
     expect(ROUTING_POLICY).toMatch(/never reuse one project's roster for another/);
   });
 
+  it('re-reads the roster when quick-create filed the action under a different project', () => {
+    expect(ROUTING_POLICY).toMatch(
+      /created action's `project\?\.id` differs from the roster's `projectId`, call list-assignable-members again with the new `actionId` before assign-action/,
+    );
+  });
+
   it('clear match: assigns a holder in the same turn and names holder and Position', () => {
     expect(ROUTING_POLICY).toMatch(/\*\*Clear match\*\*[\s\S]*assign-action\*\* a holder of that Position in the same turn/);
     expect(ROUTING_POLICY).toMatch(/"assigned to \{holder\}, who holds \{Position\}"/);

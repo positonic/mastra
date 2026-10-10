@@ -27,8 +27,9 @@ function routingAuth(ctx: { requestContext?: Parameters<typeof asAppContext>[0] 
   const sessionId = requestContext?.get("whatsappSession");
   const userId = requestContext?.get("userId");
   const workspaceId = requestContext?.get("workspaceId");
+  const contextProjectId = requestContext?.get("projectId");
   if (!authToken) throw new Error("No authentication token available");
-  return { auth: { authToken, sessionId, userId }, userId, workspaceId };
+  return { auth: { authToken, sessionId, userId }, userId, workspaceId, contextProjectId };
 }
 
 // ---- Wire shapes from the app (validated loosely: older app builds omit the
@@ -76,6 +77,12 @@ const rosterMemberSchema = z.object({
 type RosterMember = z.infer<typeof rosterMemberSchema>;
 
 export const listAssignableMembersOutputSchema = z.object({
+  projectId: z
+    .string()
+    .nullable()
+    .describe(
+      "The project this roster was fetched for (the one passed, else the page's project). Null when fetched by actionId or for no project.",
+    ),
   positions: z.array(positionSummarySchema),
   members: z.array(rosterMemberSchema),
 });
@@ -90,6 +97,7 @@ export type Roster = z.infer<typeof listAssignableMembersOutputSchema>;
 export function toRoster(
   users: AssignableUserWire[],
   requesterId: string | undefined,
+  projectId: string | null = null,
 ): Roster {
   const positions = new Map<string, PositionSummary>();
   const members: RosterMember[] = users.map((user) => {
@@ -117,13 +125,13 @@ export function toRoster(
       agentDescription: user.agentDescription ?? null,
     };
   });
-  return { positions: [...positions.values()], members };
+  return { projectId, positions: [...positions.values()], members };
 }
 
 export const listAssignableMembersTool = createTool({
   id: "list-assignable-members",
   description:
-    "List who an action can be assigned to — the exact people, Assistants and agents the user could pick in the Assign modal — with the Positions each holds (title, Remit = the kinds of work they take on, and what they are not accountable for). Use it to route work: before creating or handing off an action for someone else, for \"whoever handles this\", or before assigning anything with assign-action. Pass `actionId` for an existing action, or `projectId` (or nothing) for one you are about to create in the current workspace. Each member carries `positionIds` (look them up in `positions`), `isRequester` (the user you are talking to), `isRequestersAssistant` (the user's own Assistant), and for an agent with no Position its `agentDescription`, which stands in for a Remit. Call it once per turn; never invent a member id.",
+    "List who an action can be assigned to — the exact people, Assistants and agents the user could pick in the Assign modal — with the Positions each holds (title, Remit = the kinds of work they take on, and what they are not accountable for). Use it to route work: before creating or handing off an action for someone else, for \"whoever handles this\", or before assigning anything with assign-action. Pass `actionId` for an existing action, or `projectId` (or nothing) for one you are about to create in the current workspace — with no `projectId` it uses the page's project, exactly as quick-create-action does, and returns the project it used as `projectId`. Each member carries `positionIds` (look them up in `positions`), `isRequester` (the user you are talking to), `isRequestersAssistant` (the user's own Assistant), and for an agent with no Position its `agentDescription`, which stands in for a Remit. Call it once per turn; never invent a member id.",
   inputSchema: z.object({
     actionId: z
       .string()
@@ -132,14 +140,17 @@ export const listAssignableMembersTool = createTool({
     projectId: z
       .string()
       .optional()
-      .describe("The project an action you are about to create will live in. Omit for an action with no project."),
+      .describe("The project an action you are about to create will live in. Omit to use the page's project (as quick-create-action does), or for an action with no project."),
   }),
   outputSchema: listAssignableMembersOutputSchema,
   async execute(inputData, ctx): Promise<Roster> {
-    const { auth, userId, workspaceId } = routingAuth(ctx);
+    const { auth, userId, workspaceId, contextProjectId } = routingAuth(ctx);
+    // Same fallback as quick-create-action: an explicit projectId wins over the
+    // page's, so the roster is read for the project the action will land in.
+    const projectId = (inputData.projectId ?? contextProjectId) || undefined;
 
     console.log(
-      `🧭 [listAssignableMembers] actionId=${inputData.actionId ?? "none"}, projectId=${inputData.projectId ?? "none"}, workspaceId=${workspaceId ?? "none"}`,
+      `🧭 [listAssignableMembers] actionId=${inputData.actionId ?? "none"}, projectId=${projectId ?? "none"}, workspaceId=${workspaceId ?? "none"}`,
     );
 
     const { data } = inputData.actionId
@@ -150,11 +161,11 @@ export const listAssignableMembersTool = createTool({
         )
       : await authenticatedTrpcCall<RosterWire>(
           "action.getAssignableUsersForContext",
-          { projectId: inputData.projectId, workspaceId },
+          { projectId, workspaceId },
           auth,
         );
 
-    return toRoster(data?.assignableUsers ?? [], userId);
+    return toRoster(data?.assignableUsers ?? [], userId, inputData.actionId ? null : (projectId ?? null));
   },
 });
 

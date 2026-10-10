@@ -96,6 +96,44 @@ describe('listAssignableMembersTool', () => {
     );
   });
 
+  it('defaults projectId to the page context exactly as quick-create-action does, and reports it', async () => {
+    authenticatedTrpcCall.mockResolvedValue({ data: ROSTER });
+
+    const roster = (await listAssignableMembersTool.execute!(
+      {},
+      { requestContext: makeRequestContext({ projectId: 'p-page' }) } as never,
+    )) as Roster;
+    expect(authenticatedTrpcCall).toHaveBeenLastCalledWith(
+      'action.getAssignableUsersForContext',
+      { projectId: 'p-page', workspaceId: 'ws-clear' },
+      expect.anything(),
+    );
+    expect(roster.projectId).toBe('p-page');
+
+    // An explicit projectId wins over the page's.
+    const explicit = (await listAssignableMembersTool.execute!(
+      { projectId: 'p1' },
+      { requestContext: makeRequestContext({ projectId: 'p-page' }) } as never,
+    )) as Roster;
+    expect(authenticatedTrpcCall).toHaveBeenLastCalledWith(
+      'action.getAssignableUsersForContext',
+      { projectId: 'p1', workspaceId: 'ws-clear' },
+      expect.anything(),
+    );
+    expect(explicit.projectId).toBe('p1');
+
+    // Same resolution quick-create-action uses for the action it files.
+    authenticatedTrpcCall.mockResolvedValue({ data: { success: true, action: { id: 'a1', name: 'x', priority: 'Quick' } } });
+    await quickCreateActionTool.execute!({ text: 'x' }, { requestContext: makeRequestContext({ projectId: 'p-page' }) } as never);
+    expect((authenticatedTrpcCall.mock.lastCall![1] as Record<string, unknown>).projectId).toBe('p-page');
+  });
+
+  it('reports no projectId when read by actionId or with no project anywhere', async () => {
+    authenticatedTrpcCall.mockResolvedValue({ data: ROSTER });
+    expect((await listMembers({ actionId: 'a1' })).projectId).toBeNull();
+    expect((await listMembers({})).projectId).toBeNull();
+  });
+
   it('reads the existing-action roster when given an actionId (which wins over projectId)', async () => {
     authenticatedTrpcCall.mockResolvedValue({ data: ROSTER });
 
@@ -152,6 +190,7 @@ describe('listAssignableMembersTool', () => {
     });
     const result = await listMembers({});
     expect(result).toEqual({
+      projectId: null,
       positions: [],
       members: [
         {
