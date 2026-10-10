@@ -2,7 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall } from "../utils/authenticated-fetch.js";
 import { asAppContext } from "../types/request-context.js";
-import { looseStringArray } from "./zod-loose.js";
+import { looseBoolean, looseStringArray } from "./zod-loose.js";
 import { positionSummarySchema } from "./position-schema.js";
 import type { PositionSummary } from "./position-schema.js";
 
@@ -146,7 +146,7 @@ export function toRoster(
 export const listAssignableMembersTool = createTool({
   id: "list-assignable-members",
   description:
-    "List who an action can be assigned to — the exact people, Assistants and agents the user could pick in the Assign modal — with the Positions each holds (title, Remit = the kinds of work they take on, and what they are not accountable for). Use it to route work: before creating or handing off an action for someone else, for \"whoever handles this\", or before assigning anything with assign-action. Pass `actionId` for an existing action, or `projectId` (or nothing) for one you are about to create in the current workspace — with no `projectId` it uses the page's project, exactly as quick-create-action does, and returns the project it used as `projectId`. Each member carries `positionIds` (look them up in `positions`), `isRequester` (the user you are talking to), `isRequestersAssistant` (the user's own Assistant), and for an agent with no Position its `agentDescription`, which stands in for a Remit. Call it once per turn; never invent a member id.",
+    "List who an action can be assigned to — the exact people, Assistants and agents the user could pick in the Assign modal — with the Positions each holds (title, Remit = the kinds of work they take on, and what they are not accountable for). Use it to route work: before creating or handing off an action for someone else, for \"whoever handles this\", or before assigning anything with assign-action. Pass `actionId` for an existing action, or `projectId` (or nothing) for one you are about to create in the current workspace — with no `projectId` it uses the page's project, exactly as quick-create-action does, and returns the project it used as `projectId`. Each member carries `positionIds` (look them up in `positions`), `isRequester` (the user you are talking to), `isRequestersAssistant` (the user's own Assistant), and for an agent with no Position its `agentDescription`, which stands in for a Remit. For an import of roles & responsibilities (import-positions) pass `forImport: true`: it returns every member of the chat's workspace, whatever page the user is on. Call it once per turn; never invent a member id.",
   inputSchema: z.object({
     actionId: z
       .string()
@@ -156,10 +156,16 @@ export const listAssignableMembersTool = createTool({
       .string()
       .optional()
       .describe("The project an action you are about to create will live in. Omit to use the page's project (as quick-create-action does), or for an action with no project."),
+    forImport: looseBoolean()
+      .optional()
+      .describe(
+        "true when matching holders for import-positions: returns the chat workspace's members, ignoring actionId, projectId and the page's project (a project roster can miss workspace members or include project-only guests, who cannot hold a Position).",
+      ),
   }),
   outputSchema: listAssignableMembersOutputSchema,
   async execute(inputData, ctx): Promise<Roster> {
     const { auth, userId, workspaceId, contextProjectId } = routingAuth(ctx);
+    if (inputData.forImport) return readWorkspaceRoster(auth, userId, workspaceId);
     // Same fallback as quick-create-action: an explicit projectId wins over the
     // page's, so the roster is read for the project the action will land in.
     const projectId = (inputData.projectId ?? contextProjectId) || undefined;
@@ -195,6 +201,33 @@ export const listAssignableMembersTool = createTool({
     return toRoster(data?.assignableUsers ?? [], userId, inputData.actionId ? null : (projectId ?? null));
   },
 });
+
+/**
+ * The workspace's roster for an import (Agent PRD D10). Position holders must
+ * be members of the workspace, so the page's project is not consulted — a
+ * restricted project would hide most members, and a project's guests have no
+ * membership to hold a Position with. No unscoped fallback either: an unscoped
+ * roster is not the workspace's, and a caller refused it here would be
+ * refused by `position.importMany` too.
+ */
+async function readWorkspaceRoster(
+  auth: RoutingAuth,
+  userId: string | undefined,
+  workspaceId: string | undefined,
+): Promise<Roster> {
+  if (!workspaceId) {
+    throw new Error(
+      "No workspace in this chat, so there is no roster to import into. Ask the user to open the chat from the workspace they want to import into.",
+    );
+  }
+  console.log(`🧭 [listAssignableMembers] forImport, workspaceId=${workspaceId}`);
+  const { data } = await authenticatedTrpcCall<RosterWire>(
+    "action.getAssignableUsersForContext",
+    { projectId: undefined, workspaceId },
+    auth,
+  );
+  return toRoster(data?.assignableUsers ?? [], userId, null);
+}
 
 /**
  * A containment refusal from `action.assign`: tRPC NOT_FOUND, which
@@ -470,7 +503,7 @@ const NOTHING_WRITTEN = "Nothing was written.";
 export const importPositionsTool = createTool({
   id: "import-positions",
   description:
-    "Import a workspace's roles & responsibilities as Positions (title, Remit, not accountable for, holders) — for when the user pastes a roles document or links a Notion page and asks to import it. Draft and confirm, always: (1) call list-assignable-members and match each named holder to exactly one member by name — never guess an id; a name you cannot match is left out and listed as \"no member found\"; (2) call this tool with `dryRun: true`; (3) show the user the plan as a table — Position · Remit (summary) · Not accountable for · Holders (names) · create/update — plus any unmatched names, and ask ONE yes/no for the whole import; (4) only after an explicit yes, call again with `dryRun: false` and exactly the rows you showed. If the user changes anything, dry-run again and show the new table before writing. An existing title (matched case-insensitively) is updated: its Remit is replaced, its not-accountable-for is replaced when you send one, and holders are only ever added — an import never removes anyone. Report what happened from this tool's output: `written` true means saved (created/updated counts); false means nothing was saved. FORBIDDEN means only a workspace owner or admin can import — tell the user so. The workspace comes from the chat; never ask for it.",
+    "Import a workspace's roles & responsibilities as Positions (title, Remit, not accountable for, holders) — for when the user pastes a roles document or links a Notion page and asks to import it. Draft and confirm, always: (1) call list-assignable-members with `forImport: true` and match each named holder to exactly one member by name — never guess an id; a name you cannot match is left out and listed as \"no member found\"; (2) call this tool with `dryRun: true`; (3) show the user the plan as a table — Position · Remit (summary) · Not accountable for · Holders (names) · create/update — plus any unmatched names, and ask ONE yes/no for the whole import; (4) only after an explicit yes, call again with `dryRun: false` and exactly the rows you showed. If the user changes anything, dry-run again and show the new table before writing. An existing title (matched case-insensitively) is updated: its Remit is replaced, its not-accountable-for is replaced when you send one, and holders are only ever added — an import never removes anyone. Report what happened from this tool's output: `written` true means saved (created/updated counts); false means nothing was saved. FORBIDDEN means only a workspace owner or admin can import — tell the user so. The workspace comes from the chat; never ask for it.",
   inputSchema: importPositionsInputSchema,
   outputSchema: importPositionsOutputSchema,
   async execute(inputData, ctx): Promise<ImportPositionsResult> {
@@ -517,7 +550,7 @@ export const importPositionsTool = createTool({
       }
       if (status === 400) {
         throw new Error(
-          `BAD_REQUEST: the app refused this import (${detail}). ${NOTHING_WRITTEN} A title listed twice must become one row; fix what the error names, and ask the user how to resolve anything you cannot fix from the document before dry-running again.`,
+          `BAD_REQUEST: the app refused this import (${detail.slice(0, 600)}). ${NOTHING_WRITTEN} A title listed twice must become one row; fix what the error names, and ask the user how to resolve anything you cannot fix from the document before dry-running again.`,
         );
       }
       throw error;

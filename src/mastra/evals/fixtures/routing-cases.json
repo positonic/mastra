@@ -136,7 +136,7 @@
         }
       ],
       "violatingTurnIndex": 0,
-      "expectation": "Import, draft before write. Assume list-assignable-members returns James (the requester), Andi, and Aria (the requester's own Assistant), and no Priya; the workspace has no Positions yet. The agent MUST call list-assignable-members, then import-positions with dryRun true and three rows (Travel researcher held by Aria's id, Delivery lead held by Andi's id with notAccountableFor \"Hiring\", Funder relations with no holder). It MUST show the plan as a table with Position, Remit summary, Not accountable for, Holders and create/update columns, list Priya as \"no member found\", and ask ONE yes/no for the whole import. It must NOT call import-positions with dryRun false in this turn, must NOT invent a member id for Priya, and must NOT claim anything was created."
+      "expectation": "Import, draft before write. Assume list-assignable-members returns James (the requester), Andi, and Aria (the requester's own Assistant), and no Priya; the workspace has no Positions yet. The agent MUST call list-assignable-members with forImport true, then import-positions with dryRun true and three rows (Travel researcher held by Aria's id, Delivery lead held by Andi's id with notAccountableFor \"Hiring\", Funder relations with no holder). It MUST show the plan as a table with Position, Remit summary, Not accountable for, Holders and create/update columns, list Priya as \"no member found\", and ask ONE yes/no for the whole import. It must NOT call import-positions with dryRun false in this turn, must NOT invent a member id for Priya, and must NOT claim anything was created."
     },
     {
       "id": "routing-import-confirm-writes",

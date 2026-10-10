@@ -106,7 +106,7 @@ describe('ROUTING_POLICY', () => {
     });
 
     it('matches holders through list-assignable-members and never guesses an id', () => {
-      expect(importBlock).toMatch(/Call \*\*list-assignable-members\*\* and match each named holder to exactly one member by name/);
+      expect(importBlock).toMatch(/Call \*\*list-assignable-members\*\* with `forImport: true` \(the whole workspace, whatever page the user is on\) and match each named holder to exactly one member by name/);
       expect(importBlock).toMatch(/Never guess an id: a name with no match, or with more than one, is not a holder — list it as "no member found"[^\n]*ask the user/);
     });
 
@@ -140,7 +140,7 @@ describe('ROUTING_POLICY', () => {
       );
       expect(section).toMatch(/\*\*import-positions\*\*: [^\n]*Always \\`dryRun: true\\` first[^\n]*only after the user's explicit yes/);
       expect(src).toMatch(
-        /\| "Import our roles & responsibilities"[^\n]*list-assignable-members → import-positions with dryRun true → table → one yes → import-positions with dryRun false/,
+        /\| "Import our roles & responsibilities"[^\n]*list-assignable-members with forImport true → import-positions with dryRun true → table → one yes → import-positions with dryRun false/,
       );
     },
   );

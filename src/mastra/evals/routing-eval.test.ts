@@ -152,7 +152,7 @@ describe('routing eval cases', () => {
   it('import: dry run, table and one yes/no before any write; unmatched holders are listed, never guessed', () => {
     const c = byId('routing-import-dry-run-first');
     expect(c.transcript[0]!.toolsUsed).toEqual(['import-positions']);
-    expect(c.expectation).toMatch(/MUST call list-assignable-members, then import-positions with dryRun true/);
+    expect(c.expectation).toMatch(/MUST call list-assignable-members with forImport true, then import-positions with dryRun true/);
     expect(c.expectation).toMatch(/Position, Remit summary, Not accountable for, Holders and create\/update columns/);
     expect(c.expectation).toMatch(/list Priya as "no member found"/);
     expect(c.expectation).toMatch(/ask ONE yes\/no for the whole import/);

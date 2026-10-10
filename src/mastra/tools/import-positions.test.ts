@@ -288,7 +288,7 @@ describe('importPositionsTool', () => {
 
   it('mandates draft-and-confirm in its description', () => {
     const d = importPositionsTool.description;
-    expect(d).toMatch(/call list-assignable-members and match each named holder to exactly one member by name — never guess an id/);
+    expect(d).toMatch(/call list-assignable-members with `forImport: true` and match each named holder to exactly one member by name — never guess an id/);
     expect(d).toMatch(/name you cannot match is left out and listed as "no member found"/);
     expect(d).toMatch(/call this tool with `dryRun: true`/);
     expect(d).toMatch(/Position · Remit \(summary\) · Not accountable for · Holders \(names\) · create\/update/);
