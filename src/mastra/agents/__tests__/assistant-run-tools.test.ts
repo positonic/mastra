@@ -118,4 +118,9 @@ describe('assistantRunAgent run contract (prompt)', () => {
     expect(text).toMatch(/Never complete the action/);
     expect(text).toMatch(/no tool that sends email/);
   });
+
+  it('tells the model to delegate by Position Remit using get-run-context members (ADR-0068)', async () => {
+    const { RUN_CONTRACT } = await import('../assistant-run-agent.js');
+    expect(RUN_CONTRACT).toMatch(/When delegating, prefer the member whose Position Remit fits the work, using get-run-context's members/);
+  });
 });
