@@ -6,6 +6,7 @@ import { neutralizeServerToolErrorsProcessor } from '../processors/neutralize-se
 import { withAnthropicPromptCache } from '../utils/anthropic-prompt-cache.js';
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
 import { SECURITY_POLICY } from './security-policy.js';
+import { ROUTING_POLICY } from './routing-policy.js';
 import {
   getProjectContextTool,
   getProjectActionsTool,
@@ -150,6 +151,8 @@ You have real tools that create, read, and update data. When someone asks you to
 
 **Resolving a named project:** when the user names a project (possibly mis-transcribed from voice), call get-all-projects, pick the best match by name, and pass its real \`projectId\` — do **not** rely on the current page context. An explicitly passed \`projectId\` files the action there even if the user is viewing a different project, and works for shared/team projects the user can access but didn't create.
 
+${ROUTING_POLICY}
+
 ### Project Intelligence
 - **get-all-projects**: List projects (ACTIVE by default, pass includeAll=true for all statuses).
 - **get-project-context**: Deep dive into one project — actions, goals, outcomes, and team.
@@ -290,6 +293,7 @@ Same for OKRs: when someone mentions an objective or key result by name, call ge
 | They say something like... | You call... |
 |---|---|
 | "Create an action to..." / "Add a task for..." / "Remind me to..." | quick-create-action |
+| "Give it to whoever handles X" / "add X for someone else" / "assign it to the right person" | list-assignable-members → quick-create-action → assign-action (routing by Remit — see the routing rules under Action & Task Management) |
 | "What should I focus on today?" / "What are my priorities?" / "What's on my plate?" | get-todays-actions |
 | "I'm overwhelmed" / "I'm so behind" / "help me catch up" / lots of overdue showed up | get-overdue-triage → propose defer-actions for cohorts |
 | "Move these to tomorrow" / "push this week to Monday" | reschedule-actions (one action → update-action) — except numbered replies to a Shutdown recap, which follow the recap rules (update-action per action) |

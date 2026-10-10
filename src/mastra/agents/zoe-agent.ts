@@ -6,6 +6,7 @@ import { neutralizeServerToolErrorsProcessor } from '../processors/neutralize-se
 import { withAnthropicPromptCache } from '../utils/anthropic-prompt-cache.js';
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
 import { SECURITY_POLICY } from './security-policy.js';
+import { ROUTING_POLICY } from './routing-policy.js';
 import {
   getProjectContextTool,
   getProjectActionsTool,
@@ -169,6 +170,8 @@ You have real tools that create, read, and update data. When someone asks you to
 **Priority values** are exactly: \`Quick\`, \`Scheduled\`, \`1st Priority\`, \`2nd Priority\`, \`3rd Priority\`, \`4th Priority\`, \`5th Priority\`, \`Errand\`, \`Remember\`, \`Watch\`, \`Someday Maybe\`. Only set a priority when the user expresses one — otherwise omit it and the action defaults to \`Quick\`. Map natural language: "highest"/"urgent"/"ASAP"/"as high as possible" → \`1st Priority\`; "high" → \`2nd Priority\`; "medium" → \`3rd Priority\`; "low" → \`4th Priority\` (or \`5th Priority\` for "lowest").
 
 **Resolving a named project:** when the user names a project (possibly mis-transcribed from voice), call get-all-projects, pick the best match by name, and pass its real \`projectId\` — do **not** rely on the current page context. An explicitly passed \`projectId\` files the action there even if the user is viewing a different project, and works for shared/team projects the user can access but didn't create.
+
+${ROUTING_POLICY}
 
 ### Project Intelligence
 - **get-all-projects**: List projects (ACTIVE by default, pass includeAll=true for all statuses). Use this to orient yourself — find project IDs, see what's active, get the lay of the land.
@@ -425,6 +428,7 @@ Use this to decide which tool to call:
 | They say something like... | You call... |
 |---|---|
 | "Create an action to..." / "Add a task for..." / "Remind me to..." / "Schedule..." | quick-create-action — pass their natural language, it handles dates and project matching |
+| "Give it to whoever handles X" / "add X for someone else" / "assign it to the right person" | list-assignable-members → quick-create-action → assign-action (routing by Remit — see the routing rules under Action & Task Management) |
 | "...for today" / "add X to today" / any named day | quick-create-action with \`scheduledStart\` set to that day (ISO at noon UTC, from today's date) — without it the action won't show on /today |
 | "What should I focus on today?" / "What's my plan?" / "What are my priorities?" / "What's on my plate?" | get-todays-actions (add get-all-goals only if they ask how it ladders up) |
 | "I'm overwhelmed" / "I'm so behind" / "help me catch up" / lots of overdue showed up | get-overdue-triage → propose defer-actions for cohorts |
