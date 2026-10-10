@@ -9,6 +9,7 @@ import {
 } from "../utils/authenticated-fetch.js";
 import { prepareUntrustedContent, auditWriteAction } from "../utils/content-safety.js";
 import { asAppContext } from "../types/request-context.js";
+import { isForbidden } from "./routing-tools.js";
 import { looseBoolean, looseNumber, looseEnum, looseStringArray, looseEnumArray, looseAttendees, normalizeDateTime, resolveDateRange } from "./zod-loose.js";
 
 interface GeocodingResponse {
@@ -644,7 +645,7 @@ export const createProjectActionTool = createTool({
 export const quickCreateActionTool = createTool({
   id: "quick-create-action",
   description:
-    "Create a new action using natural language. Pass the action description in the `text` parameter — e.g. { \"text\": \"Call John tomorrow\" }. Automatically parses dates like 'tomorrow' or 'next Monday' and matches project names from the text. When the user says the task is for a specific day ('for today', 'tomorrow'), ALSO pass `scheduledStart` (the do-date — what the /today page keys on) explicitly: date parsing only sees `text`, so a rewritten task name silently loses the date. Optionally pass an explicit `priority` (when the user states one) and/or a resolved `projectId` (when the user names a project — resolve it to a real id via get-all-projects first). An explicit `projectId` wins over the page context.",
+    "Create a new action using natural language. Pass the action description in the `text` parameter — e.g. { \"text\": \"Call John tomorrow\" }. Automatically parses dates like 'tomorrow' or 'next Monday' and matches project names from the text. When the user says the task is for a specific day ('for today', 'tomorrow'), ALSO pass `scheduledStart` (the do-date — what the /today page keys on) explicitly: date parsing only sees `text`, so a rewritten task name silently loses the date. Optionally pass an explicit `priority` (when the user states one) and/or a resolved `projectId` (when the user names a project — resolve it to a real id via get-all-projects first). An explicit `projectId` wins over the page context. The action is created in the current workspace (a project's own workspace wins), so it can be assigned to workspace colleagues.",
   inputSchema: z.object({
     text: z
       .string()
@@ -711,6 +712,13 @@ export const quickCreateActionTool = createTool({
     const sessionId = requestContext?.get("whatsappSession");
     const userId = requestContext?.get("userId");
     const contextProjectId = requestContext?.get("projectId");
+    // The chat route (and the run dispatcher) set the workspace. Forwarding it
+    // lands a project-less action in that workspace instead of nowhere, which
+    // is what lets assign-action reach workspace colleagues (Exponential
+    // ADR-0068, Agent PRD D8.3). A project's own workspace still wins
+    // server-side. A blank value is treated as absent.
+    const contextWorkspaceId = requestContext?.get("workspaceId");
+    const workspaceId = contextWorkspaceId?.trim() ? contextWorkspaceId : undefined;
 
     const text = inputData.text ?? inputData.input;
     if (!text) {
@@ -725,29 +733,46 @@ export const quickCreateActionTool = createTool({
     const { scheduledStart, dueDate } = inputData;
 
     console.log(`🎯 [quickCreateAction] INPUT: text="${text}", priority=${priority || "none"}, inputProjectId=${inputData.projectId || "none"}, scheduledStart=${scheduledStart || "none"}, dueDate=${dueDate || "none"}`);
-    console.log(`🎯 [quickCreateAction] CONTEXT: authToken=${authToken ? "present" : "MISSING"}, userId=${userId || "none"}, contextProjectId=${contextProjectId || "none"}, resolvedProjectId=${projectId || "none"}`);
+    console.log(`🎯 [quickCreateAction] CONTEXT: authToken=${authToken ? "present" : "MISSING"}, userId=${userId || "none"}, contextProjectId=${contextProjectId || "none"}, resolvedProjectId=${projectId || "none"}, workspaceId=${workspaceId ?? "none"}`);
     console.log(`🎯 [quickCreateAction] SENDING TO TRPC: { text: "${text}", projectId: ${projectId ? `"${projectId}"` : "undefined"}, priority: ${priority ? `"${priority}"` : "undefined"}, scheduledStart: ${scheduledStart ? `"${scheduledStart}"` : "undefined"}, dueDate: ${dueDate ? `"${dueDate}"` : "undefined"} }`);
 
     if (!authToken) {
       throw new Error("No authentication token available");
     }
 
+    const payload = {
+      text,
+      projectId: projectId || undefined,
+      priority: priority || undefined,
+      scheduledStart: scheduledStart || undefined,
+      dueDate: dueDate || undefined,
+      workspaceId,
+    };
+
     try {
       const { data: result } = await authenticatedTrpcCall(
         "mastra.quickCreateAction",
-        {
-          text,
-          projectId: projectId || undefined,
-          priority: priority || undefined,
-          scheduledStart: scheduledStart || undefined,
-          dueDate: dueDate || undefined,
-        },
+        payload,
         { authToken, sessionId, userId }
       );
 
       console.log(`✅ [quickCreateAction] SUCCESS:`, JSON.stringify(result));
       return result;
     } catch (error) {
+      // The workspace came from context, not from the user: a viewer of the
+      // current workspace, or a gateway pairing whose workspace the user has
+      // since left, gets FORBIDDEN from the app's write gate. Before workspace
+      // forwarding that create succeeded unscoped — keep it succeeding, once.
+      if (workspaceId && isForbidden(error)) {
+        console.warn(`⚠️ [quickCreateAction] FORBIDDEN in workspace ${workspaceId}; retrying without a workspace`);
+        const { data: result } = await authenticatedTrpcCall(
+          "mastra.quickCreateAction",
+          { ...payload, workspaceId: undefined },
+          { authToken, sessionId, userId }
+        );
+        console.log(`✅ [quickCreateAction] SUCCESS (no workspace):`, JSON.stringify(result));
+        return result;
+      }
       console.error(`❌ [quickCreateAction] FAILED:`, error);
       throw error;
     }
@@ -2537,6 +2562,9 @@ export { sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, lis
 // Feature ideation tools (meeting → draft product features, human-reviewed)
 export { ideateFeaturesTool } from "./feature-ideation-tools.js";
 export { logDecisionTool, updateDecisionTool, listDecisionsTool } from "./decision-tools.js";
+
+// Routing tools (Exponential ADR-0068): roster with Positions + assign, chat agents only
+export { routingTools, listAssignableMembersTool, assignActionTool } from "./routing-tools.js";
 
 // Tradescape trading tools
 export { tradescapeTools, listSetupsTool, createSetupTool, listAlertsTool, createAlertTool, deleteAlertTool, listPositionsTool, syncTradesTool, dailySummaryTool } from "./tradescape-tools.js";

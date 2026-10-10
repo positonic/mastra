@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { z } from 'zod';
 
 const authenticatedTrpcCall = vi.fn();
 const authenticatedTrpcQuery = vi.fn();
@@ -83,7 +84,7 @@ describe('run tools — endpoint contract (Agent PRD D5)', () => {
         workspaceId: 'ws1',
       },
       assignees: [{ id: 'shadow-user-1', name: 'Aria', isAgent: true }],
-      members: [{ id: 'u2', name: 'Andi', isAgent: false, assistantOwner: null }],
+      members: [{ id: 'u2', name: 'Andi', isAgent: false, assistantOwner: null, positions: [], agentDescription: null }],
       comments: [],
       owner: { id: 'u1', name: 'James' },
       predecessor: null,
@@ -97,6 +98,63 @@ describe('run tools — endpoint contract (Agent PRD D5)', () => {
       expect.objectContaining({ authToken: 'run-jwt' }),
     );
     expect(result).toEqual(ctx);
+  });
+
+  it('get-run-context keeps members\' Positions and agentDescription through output validation (Agent PRD D8.4)', async () => {
+    const travel = {
+      id: 'pos-travel',
+      title: 'Travel researcher',
+      remit: 'Trips, venues, hotels.',
+      notAccountableFor: 'Booking anything.',
+    };
+    const ctx = {
+      action: { id: 'a1', name: 'Shortlist Madrid hotels', description: null, status: 'ACTIVE', priority: 'Quick', dueDate: null, project: null, workspaceId: 'ws1' },
+      assignees: [{ id: 'shadow-user-1', name: 'Aria', isAgent: true }],
+      members: [
+        { id: 'u2', name: 'Andi', isAgent: false, assistantOwner: null, positions: [travel], agentDescription: null },
+        { id: 'bot', name: 'Report bot', isAgent: true, assistantOwner: null, positions: [], agentDescription: 'Weekly status reports.' },
+      ],
+      comments: [],
+      owner: { id: 'u1', name: 'James' },
+      predecessor: null,
+    };
+    authenticatedTrpcQuery.mockResolvedValue({ data: ctx });
+
+    const result = await getRunContextTool.execute!({}, { requestContext: makeRequestContext() } as never);
+    expect(result).toEqual(ctx);
+
+    // What Mastra's output validation leaves the model with.
+    const parsed = (getRunContextTool.outputSchema as unknown as z.ZodTypeAny).parse(ctx) as typeof ctx;
+    expect(parsed.members[0]!.positions).toEqual([travel]);
+    expect(parsed.members[1]!.agentDescription).toBe('Weekly status reports.');
+  });
+
+  it('get-run-context output still validates against an app build without member Positions', () => {
+    const parsed = (getRunContextTool.outputSchema as unknown as z.ZodTypeAny).parse({
+      action: { id: 'a', name: 'n', description: null, status: 'ACTIVE', priority: null, dueDate: null, project: null, workspaceId: null },
+      assignees: [],
+      members: [{ id: 'u2', name: 'Andi', isAgent: false, assistantOwner: null }],
+      comments: [],
+      owner: { id: 'o', name: null },
+      predecessor: null,
+    }) as { members: { positions: unknown[]; agentDescription: string | null }[] };
+    expect(parsed.members[0]).toMatchObject({ positions: [], agentDescription: null });
+  });
+
+  it('get-run-context output tolerates a Position with a null title or remit', () => {
+    const parsed = (getRunContextTool.outputSchema as unknown as z.ZodTypeAny).parse({
+      action: { id: 'a', name: 'n', description: null, status: 'ACTIVE', priority: null, dueDate: null, project: null, workspaceId: null },
+      assignees: [],
+      members: [{ id: 'u2', name: 'Andi', isAgent: false, assistantOwner: null, positions: [{ id: 'p1', title: null, remit: null }], agentDescription: null }],
+      comments: [],
+      owner: { id: 'o', name: null },
+      predecessor: null,
+    }) as { members: { positions: unknown[] }[] };
+    expect(parsed.members[0]!.positions).toEqual([{ id: 'p1', title: '', remit: '', notAccountableFor: null }]);
+  });
+
+  it('get-run-context tells the model to delegate by Remit', () => {
+    expect(getRunContextTool.description).toMatch(/Positions and Remits[\s\S]*delegate by Remit/);
   });
 
   it('report-progress posts mastra.reportProgress with the text', async () => {
