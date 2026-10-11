@@ -96,6 +96,8 @@ import {
   logDecisionTool,
   updateDecisionTool,
   listDecisionsTool,
+  // Agent guidance (method-aware agents)
+  getMethodTool,
   // Routing tools (ADR-0068 in exponential)
   listAssignableMembersTool,
   assignActionTool,
@@ -474,6 +476,8 @@ export const assistantTools = {
     logDecisionTool,
     updateDecisionTool,
     listDecisionsTool,
+    // Agent guidance: the method, loaded once per thread (startup line in the prompt)
+    getMethodTool,
     // Routing tools (ADR-0068 in exponential) — chat only; run-excluded by
     // name in assistant-run-agent.ts RUN_EXCLUDED_TOOL_KEYS
     listAssignableMembersTool,
