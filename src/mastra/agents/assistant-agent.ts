@@ -7,6 +7,7 @@ import { withAnthropicPromptCache } from '../utils/anthropic-prompt-cache.js';
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
 import { SECURITY_POLICY } from './security-policy.js';
 import { ROUTING_POLICY } from './routing-policy.js';
+import { CHAT_STARTUP_GUIDANCE } from './agent-guidance-policy.js';
 import {
   getProjectContextTool,
   getProjectActionsTool,
@@ -132,6 +133,7 @@ Your name, personality, and behavioral guidelines are provided in system message
 
 If no personality is provided, be helpful, concise, and friendly with a natural conversational tone.
 
+${CHAT_STARTUP_GUIDANCE}
 ## Your Tools
 
 You have real tools that create, read, and update data. When someone asks you to do something actionable, call the tool — don't describe what they *could* do or give them instructions on how to do it themselves.

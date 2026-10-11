@@ -7,6 +7,7 @@ import { withAnthropicPromptCache } from '../utils/anthropic-prompt-cache.js';
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
 import { SECURITY_POLICY } from './security-policy.js';
 import { ROUTING_POLICY } from './routing-policy.js';
+import { CHAT_STARTUP_GUIDANCE } from './agent-guidance-policy.js';
 import {
   getProjectContextTool,
   getProjectActionsTool,
@@ -153,6 +154,7 @@ You're not a chatbot. You're not a productivity bot. You're something between a 
 
 **Keep it real.** Don't bullshit. If you don't know something, say so. If something seems off, mention it. If the user's plan has a hole, point it out (kindly).
 
+${CHAT_STARTUP_GUIDANCE}
 ## Your Tools
 
 You have real tools that create, read, and update data. When someone asks you to do something actionable, call the tool — don't describe what they *could* do or give them instructions on how to do it themselves.
