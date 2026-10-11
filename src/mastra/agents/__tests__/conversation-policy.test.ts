@@ -1,10 +1,15 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'fs';
 import { CONVERSATION_POLICY } from '../conversation-policy.js';
 
 /**
  * The shared conversation block (Exponential ticket clear.flame): date
- * conflicts, repeated creates, one next step, hedged logistics.
+ * conflicts, repeated creates, one next step, hedged logistics. The agents
+ * are checked as source text rather than imported: importing them boots the
+ * memory store (same approach as routing-policy.test.ts).
  */
+const source = (file: string) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+
 describe('CONVERSATION_POLICY', () => {
   it('date conflict: one line, asks which is right, writes nothing until answered', () => {
     expect(CONVERSATION_POLICY).toMatch(
@@ -37,5 +42,22 @@ describe('CONVERSATION_POLICY', () => {
 
   it('stays short: four numbered rules', () => {
     expect(CONVERSATION_POLICY.match(/^\d\. \*\*/gm)).toHaveLength(4);
+  });
+
+  it.each(['zoe-agent.ts', 'assistant-agent.ts'])(
+    '%s inserts it once into the How You Work section',
+    (file) => {
+      const src = source(file);
+      const section = src.slice(src.indexOf('## How You Work'), src.indexOf('### Request → Tool Mapping'));
+      expect(section).toContain('${CONVERSATION_POLICY}');
+      expect(src.split('${CONVERSATION_POLICY}')).toHaveLength(2);
+      expect(src).toMatch(/import \{ CONVERSATION_POLICY \} from '\.\/conversation-policy\.js'/);
+    },
+  );
+
+  it('is not in the run agent prompt (a run has no live user turn to ask)', () => {
+    const src = source('assistant-run-agent.ts');
+    expect(src).not.toContain('CONVERSATION_POLICY');
+    expect(src).not.toContain('conversation-policy');
   });
 });
