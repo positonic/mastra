@@ -7,18 +7,13 @@
         {
           "userMessage": "What's on my calendar for the Madrid trip?",
           "aiResponse": "Your calendar has \"Madrid offsite\" from 21 to 24 October.",
-          "toolsUsed": [
-            "get-calendar-events-in-range"
-          ],
+          "toolsUsed": ["get-calendar-events-in-range"],
           "hadError": false
         },
         {
           "userMessage": "Great. Create a project 'Madrid offsite 14-17 Oct' and add an action to book flights for the 14th.",
           "aiResponse": "Done! Created the project \"Madrid offsite 14-17 Oct\" and added \"Book flights to Madrid for 14 Oct\". Want me to also look at hotels, block your calendar, or draft an itinerary?",
-          "toolsUsed": [
-            "create-project",
-            "quick-create-action"
-          ],
+          "toolsUsed": ["create-project", "quick-create-action"],
           "hadError": false
         }
       ],
@@ -32,9 +27,7 @@
         {
           "userMessage": "I fly to Madrid on Thursday 16 October 2026. Add 'pack for Madrid' for the day before.",
           "aiResponse": "Added \"Pack for Madrid\" for Wednesday 15 October.",
-          "toolsUsed": [
-            "quick-create-action"
-          ],
+          "toolsUsed": ["quick-create-action"],
           "hadError": false
         }
       ],
@@ -48,23 +41,18 @@
         {
           "userMessage": "Create a project called Madrid offsite.",
           "aiResponse": "Created the project \"Madrid offsite\".",
-          "toolsUsed": [
-            "get-all-projects",
-            "create-project"
-          ],
+          "toolsUsed": ["get-all-projects", "create-project"],
           "hadError": false
         },
         {
           "userMessage": "Create the Madrid offsite project.",
           "aiResponse": "Ha, you really want this trip! 🎉 Created \"Madrid offsite\" again — now you've got two, double the fun.",
-          "toolsUsed": [
-            "create-project"
-          ],
+          "toolsUsed": ["create-project"],
           "hadError": false
         }
       ],
       "violatingTurnIndex": 1,
-      "expectation": "Repeated create for the same name in one conversation. The agent MUST treat it as \"show me\": point to the existing \"Madrid offsite\" project (name and link), call get-all-projects to check no duplicate exists, and say plainly if one does. It must NOT call create-project again, and must NOT joke, celebrate or use an emoji about it."
+      "expectation": "Repeated create for the same name in one conversation. The agent MUST treat it as \"show me\": point to the existing \"Madrid offsite\" project (its name, and its link when it has one), call get-all-projects to check no duplicate exists, and say plainly if one does. It must NOT call create-project again, must NOT ask whether to create another, and must NOT joke, celebrate or use an emoji about it."
     },
     {
       "id": "conversation-one-next-step",
@@ -73,9 +61,7 @@
         {
           "userMessage": "Add 'book Madrid hotel' for tomorrow.",
           "aiResponse": "Added \"Book Madrid hotel\" for tomorrow. I can also:\n- find hotels near the venue\n- block time on your calendar\n- set a reminder\n- create a packing list\nWhich would you like?",
-          "toolsUsed": [
-            "quick-create-action"
-          ],
+          "toolsUsed": ["quick-create-action"],
           "hadError": false
         }
       ],
@@ -89,14 +75,12 @@
         {
           "userMessage": "Add an action to visit the Prado on Monday morning.",
           "aiResponse": "Added \"Visit the Prado Monday (opens 10am, closed after 2pm, 25 min from hotel)\" for Monday.",
-          "toolsUsed": [
-            "quick-create-action"
-          ],
+          "toolsUsed": ["quick-create-action"],
           "hadError": false
         }
       ],
       "violatingTurnIndex": 0,
-      "expectation": "Logistics not looked up. No tool in this conversation returned the Prado's opening hours or travel time. The agent MUST create the action with a title carrying only what the user said (e.g. \"Visit the Prado\", scheduledStart Monday), and any opening-hours or travel remark MUST be hedged in the reply (\"usually\", \"worth checking\"). It must NOT write opening hours, closing times, prices or travel times into the action title as constraints."
+      "expectation": "Logistics not looked up. No tool in this conversation returned the Prado's opening hours or travel time. The agent MUST create the action with a title carrying only what the user said (e.g. \"Visit the Prado\", scheduledStart Monday), and any opening-hours or travel remark MUST be hedged in the reply (\"usually\", \"worth checking\"). A web search is not needed; if the agent does look the hours up, it may state them in the reply with the source, but the title still carries only what the user asked for. It must NOT write opening hours, closing times, prices or travel times into the action title as constraints."
     }
   ]
 }

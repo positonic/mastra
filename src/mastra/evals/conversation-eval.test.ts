@@ -32,7 +32,8 @@ const { RUN_CONTRACT, assistantRunInstructions } = await import('../agents/assis
  * Feed them to the live runner with
  *   npm run eval-replay -- src/mastra/evals/fixtures/conversation-cases.json
  * This test is the deterministic, CI-safe guard: the fixture stays
- * schema-valid and the expectations pin the CONVERSATION_POLICY outcomes.
+ * schema-valid and its expectations keep stating the CONVERSATION_POLICY
+ * outcomes (the policy wording itself is pinned in conversation-policy.test.ts).
  */
 const raw = readFileSync(new URL('./fixtures/conversation-cases.json', import.meta.url), 'utf8');
 const { cases } = casesFileSchema.parse(JSON.parse(raw));
@@ -47,7 +48,7 @@ describe('conversation eval cases', () => {
     expect(casesFileSchema.safeParse(JSON.parse(raw)).success).toBe(true);
   });
 
-  it('covers every conversation rule', () => {
+  it('has a case per rule (two for date conflicts: calendar and stated)', () => {
     expect(cases.map((c) => c.id).sort()).toEqual(
       [
         'conversation-date-conflict-calendar',
@@ -81,9 +82,9 @@ describe('conversation eval cases', () => {
     expect(c.transcript[0]!.userMessage).toMatch(/Madrid offsite/);
     expect(c.transcript[1]!.userMessage).toMatch(/Madrid offsite/);
     expect(c.expectation).toMatch(/treat it as "show me"/);
-    expect(c.expectation).toMatch(/point to the existing "Madrid offsite" project \(name and link\)/);
+    expect(c.expectation).toMatch(/point to the existing "Madrid offsite" project \(its name, and its link when it has one\)/);
     expect(c.expectation).toMatch(/get-all-projects to check no duplicate exists/);
-    expect(c.expectation).toMatch(/must NOT call create-project again/);
+    expect(c.expectation).toMatch(/must NOT call create-project again, must NOT ask whether to create another/);
     expect(c.expectation).toMatch(/must NOT joke, celebrate/);
   });
 
@@ -110,7 +111,9 @@ describe('conversation eval cases', () => {
 
   it('the built Assistant prompt carries the block; the run agent prompt does not', () => {
     expect(INSTRUCTIONS).toContain(CONVERSATION_POLICY);
-    expect(RUN_CONTRACT).not.toContain(CONVERSATION_POLICY);
-    expect(assistantRunInstructions()).not.toContain(CONVERSATION_POLICY);
+    const heading = '### Dates, repeats, next steps and unchecked facts';
+    expect(INSTRUCTIONS).toContain(heading);
+    expect(RUN_CONTRACT).not.toContain(heading);
+    expect(assistantRunInstructions()).not.toContain(heading);
   });
 });

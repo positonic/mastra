@@ -21,8 +21,8 @@ describe('CONVERSATION_POLICY', () => {
 
   it('repeated create: treated as "show me", re-links, checks for a duplicate, no joke', () => {
     expect(CONVERSATION_POLICY).toMatch(/\*\*The same create twice means "show me"\.\*\*/);
-    expect(CONVERSATION_POLICY).toMatch(/repeats a create instruction for a name you already created in this conversation, do not create it again/);
-    expect(CONVERSATION_POLICY).toMatch(/point to the existing item \(its name and link\)/);
+    expect(CONVERSATION_POLICY).toMatch(/repeats a create instruction for a name you already created in this conversation, do not create it again and do not ask whether to make another/);
+    expect(CONVERSATION_POLICY).toMatch(/point to the existing item \(its name, and its link when you have one\)/);
     expect(CONVERSATION_POLICY).toMatch(/look it up to check no duplicate exists/);
     expect(CONVERSATION_POLICY).toMatch(/No joke, no celebration/);
   });
@@ -40,6 +40,10 @@ describe('CONVERSATION_POLICY', () => {
     expect(CONVERSATION_POLICY).toMatch(/never written into an action or project title as a constraint/);
   });
 
+  it('holds over any personality the agent was given', () => {
+    expect(CONVERSATION_POLICY).toMatch(/These hold whatever personality or tone you have been given/);
+  });
+
   it('stays short: four numbered rules', () => {
     expect(CONVERSATION_POLICY.match(/^\d\. \*\*/gm)).toHaveLength(4);
   });
@@ -48,7 +52,11 @@ describe('CONVERSATION_POLICY', () => {
     '%s inserts it once into the How You Work section',
     (file) => {
       const src = source(file);
-      const section = src.slice(src.indexOf('## How You Work'), src.indexOf('### Request → Tool Mapping'));
+      const start = src.indexOf('## How You Work');
+      const end = src.indexOf('### Request → Tool Mapping');
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(end).toBeGreaterThan(start);
+      const section = src.slice(start, end);
       expect(section).toContain('${CONVERSATION_POLICY}');
       expect(src.split('${CONVERSATION_POLICY}')).toHaveLength(2);
       expect(src).toMatch(/import \{ CONVERSATION_POLICY \} from '\.\/conversation-policy\.js'/);
