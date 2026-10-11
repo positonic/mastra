@@ -76,6 +76,10 @@ export const TOOL_GROUPS: Record<string, ToolGroupId> = {
   getAllGoalsTool: 'core',
   getTodayCalendarEventsTool: 'core',
   getUpcomingCalendarEventsTool: 'core',
+  // routing (ADR-0068 in exponential): a short-turn action — "give it to
+  // whoever handles travel" needs both in the same turn as the create
+  listAssignableMembersTool: 'core',
+  assignActionTool: 'core',
 
   // planning: project admin, triage and rescheduling
   createProjectTool: 'planning',

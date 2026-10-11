@@ -2,6 +2,7 @@ import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { authenticatedTrpcCall, authenticatedTrpcQuery } from "../utils/authenticated-fetch.js";
 import { looseBoolean } from "./zod-loose.js";
+import { positionSummarySchema } from "./position-schema.js";
 import { updateActionTool, updateActionInputSchema, updateActionOutputSchema } from "./project-tools.js";
 
 // ==================== Agent run tools ====================
@@ -22,7 +23,7 @@ function runAuth(requestContext: { get(key: string): unknown } | undefined) {
 export const getRunContextTool = createTool({
   id: "get-run-context",
   description:
-    "Load everything about the action you were assigned: the brief (title, description, project, status, dates), who else is assigned, the project's members (so you can delegate to a person or another Assistant), recent comments on the action, and — when you are resuming after asking your owner — the previous run's summary and the owner's reply. Call this first.",
+    "Load everything about the action you were assigned: the brief (title, description, project, status, dates), who else is assigned, the project's members (so you can delegate to a person or another Assistant — members carry their Positions and Remits, so delegate by Remit), recent comments on the action, and — when you are resuming after asking your owner — the previous run's summary and the owner's reply. Call this first.",
   inputSchema: z.object({}),
   outputSchema: z.object({
     action: z.object({
@@ -42,6 +43,12 @@ export const getRunContextTool = createTool({
         name: z.string().nullable(),
         isAgent: z.boolean(),
         assistantOwner: z.object({ id: z.string(), name: z.string().nullable() }).nullable(),
+        // Positions held in the action's workspace (Exponential ADR-0068,
+        // Agent PRD D8.4). Declared here or Mastra's output validation strips
+        // them; defaulted so an app build without them still validates.
+        positions: z.array(positionSummarySchema).default([]),
+        /** An agent's fallback Remit when it holds no Position; null otherwise. */
+        agentDescription: z.string().nullable().default(null),
       }),
     ),
     comments: z.array(
