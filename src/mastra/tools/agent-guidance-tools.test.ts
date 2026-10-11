@@ -5,7 +5,7 @@ vi.mock('../utils/authenticated-fetch.js', () => ({
   authenticatedTrpcQuery: (...args: unknown[]) => authenticatedTrpcQuery(...args),
 }));
 
-import { getMethodTool } from './agent-guidance-tools.js';
+import { getContextTool, getMethodTool } from './agent-guidance-tools.js';
 
 function makeRequestContext(overrides: Record<string, string | undefined> = {}) {
   const entries: [string, string][] = [];
@@ -82,5 +82,50 @@ describe('get-method', () => {
     await expect(
       getMethodTool.execute!({}, { requestContext: makeRequestContext({ authToken: undefined }) } as never),
     ).rejects.toThrow('No authentication token');
+  });
+});
+
+const CONTEXT = {
+  workspace: { id: 'ws-1', slug: 'exponential', name: 'Exponential' },
+  project: { id: 'proj-1', name: 'Launch' },
+  authority: 'guidance',
+  instructions: [{ scope: 'workspace', sourceId: 'ws-1', text: 'Be brief.' }],
+  assembled: '<user_data>Be brief.</user_data>',
+  revision: 'sha256:def',
+  generatedAt: '2026-10-11T17:00:00.000Z',
+};
+
+describe('get-context', () => {
+  beforeEach(() => {
+    authenticatedTrpcQuery.mockReset();
+  });
+
+  it('queries agentGuidance.context for the context workspace and returns the payload unchanged', async () => {
+    authenticatedTrpcQuery.mockResolvedValue({ data: CONTEXT });
+    const result = await getContextTool.execute!({}, { requestContext: makeRequestContext() } as never);
+
+    const [endpoint, auth] = authenticatedTrpcQuery.mock.calls[0]!;
+    expect(splitEndpoint(endpoint)).toEqual(['agentGuidance.context', { workspaceId: 'ws-1' }]);
+    expect(auth).toMatchObject({ authToken: 'token-123', userId: 'user-1' });
+    expect(result).toEqual(CONTEXT);
+  });
+
+  it('forwards projectId, and an explicit workspaceId over the context one', async () => {
+    authenticatedTrpcQuery.mockResolvedValue({ data: CONTEXT });
+    await getContextTool.execute!(
+      { workspaceId: 'ws-2', projectId: 'proj-1' },
+      { requestContext: makeRequestContext() } as never,
+    );
+    expect(splitEndpoint(authenticatedTrpcQuery.mock.calls[0]![0])).toEqual([
+      'agentGuidance.context',
+      { workspaceId: 'ws-2', projectId: 'proj-1' },
+    ]);
+  });
+
+  it('asks for a workspace when neither the input nor the context has one', async () => {
+    await expect(
+      getContextTool.execute!({}, { requestContext: makeRequestContext({ workspaceId: undefined }) } as never),
+    ).rejects.toThrow(/get-user-workspaces/);
+    expect(authenticatedTrpcQuery).not.toHaveBeenCalled();
   });
 });

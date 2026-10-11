@@ -112,6 +112,7 @@ import {
   listDecisionsTool,
   // Agent guidance (method-aware agents)
   getMethodTool,
+  getContextTool,
   // Routing tools (ADR-0068 in exponential)
   listAssignableMembersTool,
   assignActionTool,
@@ -702,8 +703,10 @@ export const zoeTools = {
     logDecisionTool,
     updateDecisionTool,
     listDecisionsTool,
-    // Agent guidance: the method, loaded once per thread (startup line in the prompt)
+    // Agent guidance: the method once per thread, the context when the scope
+    // changes (startup line in the prompt)
     getMethodTool,
+    getContextTool,
     // Routing tools (ADR-0068 in exponential) — chat only; run-excluded by
     // name in assistant-run-agent.ts RUN_EXCLUDED_TOOL_KEYS
     listAssignableMembersTool,

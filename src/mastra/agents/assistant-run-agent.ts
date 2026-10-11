@@ -57,6 +57,7 @@ export const RUN_ALLOWED_ASSISTANT_TOOL_KEYS = [
   'listDecisionsTool',
   // Agent guidance (method-aware agents): reads only
   'getMethodTool',
+  'getContextTool',
   // Exponential writes that stay inside the app. Updating actions goes through
   // the run tools' `runUpdateActionTool`, which cannot set status — the chat
   // `updateActionTool` (status: COMPLETED/CANCELLED) is deliberately absent.

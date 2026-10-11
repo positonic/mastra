@@ -77,8 +77,9 @@ export const TOOL_GROUPS: Record<string, ToolGroupId> = {
   getTodayCalendarEventsTool: 'core',
   getUpcomingCalendarEventsTool: 'core',
   // agent guidance: the startup line tells every agent to load the method
-  // before substantive work, so it must be on the map whatever the turn
+  // and scoped context before substantive work, so it must be on the map whatever the turn
   getMethodTool: 'core',
+  getContextTool: 'core',
   // routing (ADR-0068 in exponential): a short-turn action — "give it to
   // whoever handles travel" needs both in the same turn as the create
   listAssignableMembersTool: 'core',

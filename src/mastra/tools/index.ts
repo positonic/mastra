@@ -2565,8 +2565,8 @@ export { sendSlackMessageTool, updateSlackMessageTool, getSlackUserInfoTool, lis
 export { ideateFeaturesTool } from "./feature-ideation-tools.js";
 export { logDecisionTool, updateDecisionTool, listDecisionsTool } from "./decision-tools.js";
 
-// Agent guidance tools (method-aware agents): the method, served by the app's agentGuidance router
-export { getMethodTool } from "./agent-guidance-tools.js";
+// Agent guidance tools (method-aware agents): the method and scoped context, served by the app's agentGuidance router
+export { getMethodTool, getContextTool } from "./agent-guidance-tools.js";
 
 // Routing tools (Exponential ADR-0068): roster with Positions + assign, chat agents only
 export { routingTools, listAssignableMembersTool, assignActionTool } from "./routing-tools.js";
