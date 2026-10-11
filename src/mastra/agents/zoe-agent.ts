@@ -109,6 +109,7 @@ import {
   // Routing tools (ADR-0068 in exponential)
   listAssignableMembersTool,
   assignActionTool,
+  importPositionsTool,
 } from '../tools/index.js';
 
 /**
@@ -164,6 +165,7 @@ You have real tools that create, read, and update data. When someone asks you to
 - **reschedule-actions**: Move several actions to a new do-date, for work that really is still due, just later. For a cohort prefer defer-actions — rescheduling re-inflicts the same pile tomorrow. For a single action use update-action.
 - **list-assignable-members**: Who an action can be assigned to — the same people, Assistants and agents the Assign modal offers — with the Positions each holds (title, Remit, not accountable for). Pass \`actionId\` for an existing action, or \`projectId\` (or nothing) for one you are about to create. Members carry \`isRequester\`, \`isRequestersAssistant\` and, for an agent with no Position, \`agentDescription\`.
 - **assign-action**: Assign an existing action to members by id (ids only from list-assignable-members). Adds to the assignees, never removes. Assigning an Assistant starts its Agent run; \`agentRunsQueued\` says whether one started. Before assigning an External agent or another user's Assistant you chose yourself, ask a one-word yes first (routing rule 3).
+- **import-positions**: Import a roles & responsibilities document as Positions (title, Remit, not accountable for, holders by member id from list-assignable-members). Always \`dryRun: true\` first, show the plan as a table, and call with \`dryRun: false\` only after the user's explicit yes. Owners and admins only; holders are only ever added.
 
 **Do-date vs deadline:** \`scheduledStart\` is when the user plans to *work* on something; \`dueDate\` is when it's *due*. The /today page partitions on \`scheduledStart\` and it **wins over** \`dueDate\` — so to move an action out of the overdue group you must set \`scheduledStart\`. Setting \`dueDate\` alone will not do it.
 
@@ -430,6 +432,7 @@ Use this to decide which tool to call:
 | "Create an action to..." / "Add a task for..." / "Remind me to..." / "Schedule..." | quick-create-action — pass their natural language, it handles dates and project matching |
 | "Give it to whoever handles X" / "add X for someone else" / "assign it to the right person" | list-assignable-members → quick-create-action → assign-action (routing by Remit — see the routing rules under Action & Task Management) |
 | "Action these" / "handle this" / "get my assistant on it" | get-todays-actions (when the actions have no ids yet) → list-assignable-members → assign-action per action to the matching Assistant → one-line expectation (researches and asks; never books or sends) |
+| "Import our roles & responsibilities" / a pasted roles document / a Notion link to one | notion-get-page (for a link) → list-assignable-members with forImport true → import-positions with dryRun true → table → one yes → import-positions with dryRun false (see "Importing roles & responsibilities" under Action & Task Management) |
 | "...for today" / "add X to today" / any named day | quick-create-action with \`scheduledStart\` set to that day (ISO at noon UTC, from today's date) — without it the action won't show on /today |
 | "What should I focus on today?" / "What's my plan?" / "What are my priorities?" / "What's on my plate?" | get-todays-actions (add get-all-goals only if they ask how it ladders up) |
 | "I'm overwhelmed" / "I'm so behind" / "help me catch up" / lots of overdue showed up | get-overdue-triage → propose defer-actions for cohorts |
@@ -688,6 +691,9 @@ export const zoeTools = {
     // name in assistant-run-agent.ts RUN_EXCLUDED_TOOL_KEYS
     listAssignableMembersTool,
     assignActionTool,
+    // Import roles & responsibilities as Positions (Agent PRD D10) — chat
+    // only, run-excluded with the routing tools
+    importPositionsTool,
     // Web search & fetch (Anthropic provider tools)
     webSearch: anthropic.tools.webSearch_20250305({ maxUses: 5 }),
     webFetch: anthropic.tools.webFetch_20250910({ maxUses: 3 }),

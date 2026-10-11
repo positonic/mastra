@@ -20,7 +20,7 @@ const { quickCreateActionTool } = await import('./index.js');
 
 const ctx = (overrides: Record<string, string> = {}) => ({ requestContext: makeRequestContext(overrides) }) as never;
 
-async function listMembers(input: { actionId?: string; projectId?: string }): Promise<Roster> {
+async function listMembers(input: { actionId?: string; projectId?: string; forImport?: boolean }): Promise<Roster> {
   return (await listAssignableMembersTool.execute!(input, ctx())) as Roster;
 }
 
@@ -75,8 +75,12 @@ const ROSTER = {
 };
 
 describe('routing tools', () => {
-  it('exposes exactly the two V2 tool ids', () => {
-    expect(Object.values(routingTools).map((t) => t.id).sort()).toEqual(['assign-action', 'list-assignable-members']);
+  it('exposes the two V2 tool ids and the V3 import tool', () => {
+    expect(Object.values(routingTools).map((t) => t.id).sort()).toEqual([
+      'assign-action',
+      'import-positions',
+      'list-assignable-members',
+    ]);
   });
 });
 
@@ -248,6 +252,39 @@ describe('listAssignableMembersTool', () => {
         expect.anything(),
       );
     }
+  });
+
+  it('forImport reads the whole workspace roster, ignoring the page project, actionId and projectId', async () => {
+    authenticatedTrpcCall.mockResolvedValue({ data: ROSTER });
+
+    const roster = (await listAssignableMembersTool.execute!(
+      { forImport: true, actionId: 'a1', projectId: 'p1' },
+      { requestContext: makeRequestContext({ projectId: 'p-page' }) } as never,
+    )) as Roster;
+
+    expect(authenticatedTrpcCall).toHaveBeenCalledTimes(1);
+    expect(authenticatedTrpcCall).toHaveBeenCalledWith(
+      'action.getAssignableUsersForContext',
+      { projectId: undefined, workspaceId: 'ws-clear' },
+      expect.objectContaining({ authToken: 'token-123' }),
+    );
+    expect(roster.projectId).toBeNull();
+    expect(roster.members).toHaveLength(4);
+  });
+
+  it('forImport has no unscoped fallback and needs a workspace', async () => {
+    authenticatedTrpcCall.mockRejectedValueOnce(new Error('Request failed: 403 Forbidden - {"code":"FORBIDDEN"}'));
+    await expect(listMembers({ forImport: true })).rejects.toThrow(/FORBIDDEN/);
+    expect(authenticatedTrpcCall).toHaveBeenCalledTimes(1);
+
+    await expect(
+      listAssignableMembersTool.execute!({ forImport: true }, { requestContext: new Map([['authToken', 't']]) } as never),
+    ).rejects.toThrow(/No workspace in this chat/);
+    expect(authenticatedTrpcCall).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the model to pass forImport for an import', () => {
+    expect(listAssignableMembersTool.description).toMatch(/import-positions\) pass `forImport: true`/);
   });
 
   it('refuses without a token', async () => {
