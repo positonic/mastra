@@ -39,7 +39,9 @@ const methodDocumentSchema = z.object({
 
 const methodPayloadSchema = z.object({
   version: z.string(),
-  status: z.enum(["draft", "published"]),
+  // Loose on purpose: a strict enum would turn a new server value into a
+  // Mastra output-validation error instead of a usable result.
+  status: z.string(),
   contentHash: z.string(),
   publishedAt: z.string().nullable(),
   canonicalSource: z.object({
@@ -55,7 +57,7 @@ type MethodPayload = z.infer<typeof methodPayloadSchema>;
 export const getMethodTool = createTool({
   id: "get-method",
   description:
-    "Load the Exponential Method: the current method version, its status, content hash, and the text of the method, glossary and agent principles. Call it once per conversation/thread before substantive workspace work, and again only if you have reason to think the version changed — never before every tool call. If it reports no method available, carry on without it.",
+    "Load the Exponential Method: the current method version, its status, content hash, and the text of the method, glossary and agent principles. Call it once per conversation thread (once per run) before substantive workspace work and reuse the result — never again on later turns or before other tool calls. If it reports no method available, carry on without it.",
   inputSchema: z.object({}),
   outputSchema: z.union([
     methodPayloadSchema.extend({ available: z.literal(true) }),
@@ -76,7 +78,7 @@ export const getMethodTool = createTool({
       // No method visible yet (draft, caller outside a preview workspace) is
       // an expected state, not a failure: say so and let the agent proceed.
       const message = error instanceof Error ? error.message : String(error);
-      if (message.includes(NO_PUBLISHED_METHOD_MESSAGE)) {
+      if (/^Request failed: 404\b/.test(message) && message.includes(NO_PUBLISHED_METHOD_MESSAGE)) {
         return { available: false as const, message: NO_PUBLISHED_METHOD_MESSAGE };
       }
       throw error;
@@ -87,10 +89,10 @@ export const getMethodTool = createTool({
 const contextPayloadSchema = z.object({
   workspace: z.object({ id: z.string(), slug: z.string(), name: z.string() }),
   project: z.object({ id: z.string(), name: z.string() }).nullable(),
-  authority: z.literal("guidance"),
+  authority: z.string(),
   instructions: z.array(
     z.object({
-      scope: z.enum(["workspace", "project"]),
+      scope: z.string(),
       sourceId: z.string(),
       text: z.string(),
     }),

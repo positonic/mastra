@@ -69,6 +69,15 @@ describe('get-method', () => {
     expect(result).toEqual({ available: false, message: 'No published method yet' });
   });
 
+  it('rethrows a non-404 failure even if it carries the same words', async () => {
+    authenticatedTrpcQuery.mockImplementation(async () => {
+      throw new Error('Request failed: 500 Internal Server Error - No published method yet');
+    });
+    await expect(
+      getMethodTool.execute!({}, { requestContext: makeRequestContext() } as never),
+    ).rejects.toThrow('500');
+  });
+
   it('rethrows any other failure', async () => {
     authenticatedTrpcQuery.mockImplementation(async () => {
       throw new Error('Request failed: 500 Internal Server Error');
