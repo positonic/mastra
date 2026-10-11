@@ -13,7 +13,7 @@ const source = (file: string) => readFileSync(new URL(`../${file}`, import.meta.
 describe('CONVERSATION_POLICY', () => {
   it('date conflict: one line, asks which is right, writes nothing until answered', () => {
     expect(CONVERSATION_POLICY).toMatch(
-      /date the user states conflicts with their calendar or with another date they stated, say the conflict in ONE line and ask which is right/,
+      /date the user states for an event conflicts with the date their calendar or they themselves gave for that same event, say the conflict in ONE line and ask which is right/,
     );
     expect(CONVERSATION_POLICY).toMatch(/Do not create, title or date anything that depends on it until they answer/);
     expect(CONVERSATION_POLICY).toMatch(/never pick one silently/);
@@ -21,7 +21,7 @@ describe('CONVERSATION_POLICY', () => {
 
   it('repeated create: treated as "show me", re-links, checks for a duplicate, no joke', () => {
     expect(CONVERSATION_POLICY).toMatch(/\*\*The same create twice means "show me"\.\*\*/);
-    expect(CONVERSATION_POLICY).toMatch(/repeats a create instruction for a name you already created in this conversation, do not create it again and do not ask whether to make another/);
+    expect(CONVERSATION_POLICY).toMatch(/repeats a create instruction for a name you already created in this conversation, adding nothing new \(no new date, project or detail\) and not asking for another, do not create it again and do not ask whether to make another/);
     expect(CONVERSATION_POLICY).toMatch(/point to the existing item \(its name, and its link when you have one\)/);
     expect(CONVERSATION_POLICY).toMatch(/look it up to check no duplicate exists/);
     expect(CONVERSATION_POLICY).toMatch(/No joke, no celebration/);
