@@ -72,8 +72,10 @@ describe('tool map coverage', () => {
   it('keeps CORE small — the whole point of the split', () => {
     const core = Object.values(TOOL_GROUPS).filter((g) => g === 'core');
     // 11 + the two routing tools (ADR-0068 in exponential): routing a new
-    // action happens in the same short turn as creating it.
-    expect(core.length).toBeLessThanOrEqual(13);
+    // action happens in the same short turn as creating it. + get-method and
+    // get-context: every agent's startup line asks for them before
+    // substantive work, so a generic-profile turn must always reach them.
+    expect(core.length).toBeLessThanOrEqual(15);
   });
 
   it('only uses declared toolset ids', () => {

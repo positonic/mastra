@@ -4,6 +4,7 @@ import { memory } from '../memory/index.js';
 import { neutralizeServerToolErrorsProcessor } from '../processors/neutralize-server-tool-errors.js';
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
 import { SECURITY_POLICY } from './security-policy.js';
+import { RUN_STARTUP_GUIDANCE } from './agent-guidance-policy.js';
 import { assistantModel, assistantTools } from './assistant-agent.js';
 import { runTools, runUpdateActionTool } from '../tools/run-tools.js';
 
@@ -55,6 +56,9 @@ export const RUN_ALLOWED_ASSISTANT_TOOL_KEYS = [
   'queryMeetingContextTool',
   'getMeetingInsightsTool',
   'listDecisionsTool',
+  // Agent guidance (method-aware agents): reads only
+  'getMethodTool',
+  'getContextTool',
   // Exponential writes that stay inside the app. Updating actions goes through
   // the run tools' `runUpdateActionTool`, which cannot set status — the chat
   // `updateActionTool` (status: COMPLETED/CANCELLED) is deliberately absent.
@@ -149,6 +153,7 @@ You are not in a chat. You were **assigned an action** and are working on it una
 ### Your run tools
 
 - **get-run-context** — call it FIRST. It returns the action brief, who is assigned, the project's members (people and other Assistants, with ids and the Positions they hold), recent comments, and — when you are resuming — the previous run's summary and your owner's reply.
+${RUN_STARTUP_GUIDANCE}
 - **report-progress** — a one-line transcript note when you move to a new phase. Not a comment; nobody is notified.
 - **comment-on-action** — post a comment as yourself, for findings worth a permanent record or to hand something to a person with \`@[Name](userId)\` markup.
 - **reassign-action** — add a person or another Assistant as an assignee (ids from get-run-context). Comment with context first. Assigning another Assistant starts its run. When delegating, prefer the member whose Position Remit fits the work, using get-run-context's members (an agent with no Position is described by its \`agentDescription\`).
