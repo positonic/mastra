@@ -1,55 +1,75 @@
 name: PR Agent
 #
-# ⏸️  DEACTIVATED 2026-10-08 — this reviewer does not run on PRs.
-#
-# It has never reviewed anything here. The PR_AGENT_ANTHROPIC_KEY secret was
-# never set on this repo, so every run since it was added (#39, 2026-06-29)
-# hit "litellm.AuthenticationError: Missing Anthropic API Key" and posted
-# "Failed to generate code suggestions for PR". The check still went green
-# because qodo-ai/pr-agent swallowed the error — until upstream 5641819
-# (2026-09-29) made the action fail on a swallowed tool error, which turned
-# the check red on every PR from 2026-10-08. Parked the same way as
-# positonic/exponential's pr_agent.yml (#801). This check is not required on
-# main, so parking it blocks no merge.
-#
-# TO REACTIVATE: set a funded key —
-#
-#   gh secret set PR_AGENT_ANTHROPIC_KEY --repo positonic/mastra
-#
-# then restore the trigger below to
-#
-#   on:
-#     pull_request:
-#       types: [opened, reopened, ready_for_review, synchronize]
-#     issue_comment:
-#       types: [created]
-#
-# and drop the `github.event_name != 'workflow_dispatch'` clause from the job's
-# `if:`. The steps are untouched.
+# Reactivated 2026-10-10. It was parked on 2026-10-08 (#71) because the repo
+# had no Anthropic key: every run since #39 failed with "Missing Anthropic API
+# Key". The ANTHROPIC_KEY secret has since been set (the same funded key as
+# positonic/exponential), and #72 pointed the action at it, but the park in #71
+# landed after it, so nothing ran. This file mirrors positonic/exponential's
+# pr_agent.yml. This check is not required on main.
 on:
-  # Placeholder trigger: keeps the file valid and visible in the Actions tab
-  # while parked. A dispatch has no PR to review, so the job guard skips it.
-  workflow_dispatch:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+  issue_comment:
+    types: [created]
 
 jobs:
   pr_agent:
-    # First clause is the parking brake (see above). Second is the loop guard:
-    # never let the action react to its own (or any bot's) events.
-    if: ${{ github.event_name != 'workflow_dispatch' && github.event.sender.type != 'Bot' }}
+    # Skip when the event was triggered by a bot (e.g. PR-Agent's own comments)
+    # to avoid an infinite review loop, and skip comments on non-PR issues.
+    if: ${{ github.event.sender.type != 'Bot' && (github.event_name != 'issue_comment' || github.event.issue.pull_request) }}
     runs-on: ubuntu-latest
     permissions:
       issues: write
       pull-requests: write
       contents: write
+    name: PR Agent review
     steps:
+      - name: Record start time
+        id: started
+        run: echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: PR Agent
+        id: pragent
         uses: qodo-ai/pr-agent@main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC.KEY: ${{ secrets.ANTHROPIC_KEY }}
-          config.model: "anthropic/claude-sonnet-4-6"
+          # Repo-level behaviour is version-controlled in .pr_agent.toml.
+          config.model: "anthropic/claude-opus-5"
+          # Keep the fallback on Anthropic so PR-Agent never falls back to
+          # OpenAI (which would need an OPENAI_API_KEY).
           config.fallback_models: '["anthropic/claude-sonnet-4-6"]'
+          # Needed if the image's litellm has no registry entry for the model.
+          config.custom_model_max_tokens: "200000"
           github_action_config.auto_review: "true"
           github_action_config.auto_describe: "true"
           github_action_config.auto_improve: "true"
           github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "synchronize"]'
+
+      - name: Confirm a review was actually produced
+        # PR-Agent can swallow provider errors: it posts "Failed to generate
+        # code suggestions for PR" and still exits 0. That is how this repo ran
+        # a "green" reviewer for three months that never reviewed anything.
+        if: always() && steps.pragent.conclusion != 'skipped'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          SINCE: ${{ steps.started.outputs.at }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PR_NUMBER}" ]; then
+            echo "No PR number on this event; nothing to verify."
+            exit 0
+          fi
+          # Only comments from this run, so one bad run does not keep the check
+          # red on every later push to the same PR.
+          gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq "[.[] | select(.created_at >= \"${SINCE}\") | .body] | .[]" \
+            > /tmp/pr_agent_comments.txt
+          if grep -qiE 'failed to (generate|review)' /tmp/pr_agent_comments.txt; then
+            echo "::error title=PR-Agent produced no review::The action ran but every model call failed, so this PR was NOT reviewed. Check the step log for the provider error (usually a missing or out-of-credit ANTHROPIC_KEY secret)."
+            grep -iE 'failed to (generate|review)' /tmp/pr_agent_comments.txt | head -5
+            exit 1
+          fi
+          echo "PR-Agent posted no failure notice — the review ran."
