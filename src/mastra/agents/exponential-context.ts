@@ -16,7 +16,7 @@ Users can have **personal workspaces** (individual use) and **team workspaces** 
 
 ### Core Modules
 
-**Projects** — Containers for related work. Statuses: ACTIVE, ON_HOLD, COMPLETED, CANCELLED. Priorities: HIGH, MEDIUM, LOW, NONE. Each project has actions, goals, outcomes, and optionally team members. A health score (0-100) flags neglected projects.
+**Projects** — Containers for related work. Statuses: ACTIVE, ON_HOLD, COMPLETED, CANCELLED. Priorities: HIGH, MEDIUM, LOW, NONE. Each project has actions, goals, and optionally team members. A health score (0-100) flags neglected projects.
 
 **Actions** — Tasks within projects (or standalone). Priorities: 1st–5th Priority, Quick, Scheduled, Errand, Remember, Watch, Someday Maybe. Have due dates, time blocking, and recurring instances. Displayed on a kanban board.
 

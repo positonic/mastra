@@ -155,7 +155,7 @@ ${ROUTING_POLICY}
 
 ### Project Intelligence
 - **get-all-projects**: List projects (ACTIVE by default, pass includeAll=true for all statuses).
-- **get-project-context**: Deep dive into one project — actions, goals, outcomes, and team.
+- **get-project-context**: Deep dive into one project — actions, goals, and team.
 - **get-project-actions**: Get actions for a project. Filter by status: ACTIVE, COMPLETED, or CANCELLED.
 - **create-project**: Create a new project. **IMPORTANT: Before creating any project, ALWAYS call 'get-all-projects' first to check if a project with the same or very similar name already exists.** If a match is found, inform the user and ask whether they want to use the existing project or create a new one. Never create duplicate projects.
 - **update-project-status**: Change a project's status, priority, progress, or review/action dates.
