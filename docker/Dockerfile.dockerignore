@@ -1,0 +1,40 @@
+# Ignore rules for docker/Dockerfile. BuildKit picks up <Dockerfile>.dockerignore
+# next to the Dockerfile, so these apply to `docker build -f docker/Dockerfile .`
+# without a root .dockerignore (which Railway's default builder would also read).
+#
+# Keep secrets, local state and build output out of the image. A local
+# `docker build` (or `docker compose build`) sends the working tree, not git,
+# so anything here that is gitignored but present on disk would otherwise ship.
+
+# Dependencies and build output: rebuilt inside the image
+node_modules
+.mastra
+dist
+
+# Secrets and local env files
+.env*
+
+# Logs (mastra.log lives in the working tree when running `npm run dev:log`)
+*.log
+output.txt
+
+# Local databases
+*.db
+*.db-*
+
+# VCS, editor and agent tooling
+.git
+.beads
+.claude
+.cursor
+.serena
+.vscode
+.qodo
+.exponential
+.github
+
+# The image is built from package-lock.json with npm; the Bun lockfile is unused
+bun.lockb
+
+# Docker files themselves
+docker
