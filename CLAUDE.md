@@ -190,7 +190,7 @@ Key variables (see documentation in `/docs` for setup details):
 
 ### Server Configuration
 
-Mastra runs on port 4111 by default (or `PORT` env var), bound to `0.0.0.0` for Railway deployment. API endpoints follow pattern: `/api/agents/{agentName}/text`. WhatsApp gateway runs on port 4112. Telegram gateway runs on port 4113.
+Mastra runs on port 4111 by default (or `PORT` env var), bound to `0.0.0.0` for Railway deployment. For the self-host Docker image (`docker/Dockerfile`, not used by Railway), its env and the quiet-boot check, see [docs/self-host-docker.md](docs/self-host-docker.md). API endpoints follow pattern: `/api/agents/{agentName}/text`. WhatsApp gateway runs on port 4112. Telegram gateway runs on port 4113.
 
 ### Key Patterns
 
