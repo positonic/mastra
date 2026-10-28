@@ -38,7 +38,10 @@ FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 
 # NODE_ENV=production turns off the dev-only fallbacks in src/mastra/index.ts
-# (EXPONENTIAL_TEST_JWT and the injected test workspace/project ids).
+# (EXPONENTIAL_TEST_JWT and the injected test workspace/project ids). This is a
+# deliberate difference from Railway, which sets no NODE_ENV: a self-hosted
+# instance should never accept the test JWT. It also tags Sentry events
+# "production".
 ENV NODE_ENV=production \
     PORT=4111
 
@@ -49,6 +52,9 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/.mastra/output ./.mastra/output
 
 # Gateway session files are written under $HOME/.mastra (/home/node/.mastra).
+# Create it owned by node so a volume mounted there inherits that ownership
+# instead of being root-owned and unwritable.
+RUN mkdir -p /home/node/.mastra && chown node:node /home/node/.mastra
 USER node
 
 EXPOSE 4111

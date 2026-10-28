@@ -27,14 +27,17 @@ docker run --rm -p 4111:4111 \
 - **Base:** `node:22-bookworm` to build and `node:22-bookworm-slim` to run
   (`engines` asks for Node >= 22.13). It runs as the `node` user with
   `NODE_ENV=production`, which turns off the dev-only `EXPONENTIAL_TEST_JWT`
-  fallback in `src/mastra/index.ts`.
+  fallback in `src/mastra/index.ts`. That is the one deliberate difference
+  from Railway, which sets no `NODE_ENV`.
 - **Why `docker/`:** Railway switches a service to Dockerfile builds when it
   finds a `Dockerfile` at the repo root, and applies a root `.dockerignore` to
   its builds. Keeping both files under `docker/` leaves the production deploy
   unchanged. The ignore rules are in `docker/Dockerfile.dockerignore`, which
   BuildKit reads for this Dockerfile. They keep `node_modules`, `.env*`,
   `*.log` (including `mastra.log`), local databases and tooling directories out
-  of the build context.
+  of the build context. The legacy builder (`DOCKER_BUILDKIT=0`) does not read
+  per-Dockerfile ignore files, so build with BuildKit (the default in current
+  Docker and Compose).
 - **Compose:** point the `mastra` service at this repo with
   `dockerfile: docker/Dockerfile`.
 
@@ -44,7 +47,7 @@ docker run --rm -p 4111:4111 \
 
 | Variable | What it is |
 |---|---|
-| `DATABASE_URL` | Postgres with the `vector` extension (for example `pgvector/pgvector:pg16`). It can be the app's own database: Mastra keeps its tables in the `mastra` schema and creates them at boot. Prisma owns `public`. |
+| `DATABASE_URL` | Postgres with the `vector` extension (for example `pgvector/pgvector:pg16`). It can be the app's own database: Mastra creates its own schemas at boot (`mastra` for memory and tracing, `whatsapp_messages` for the WhatsApp store) and the RAG tools use `pierre_docs` and `exponential_docs`. Prisma owns `public`. |
 | `AUTH_SECRET` | The app's `AUTH_SECRET` (shared with the app). Mastra verifies the app's JWTs with it (audience `mastra-agents`, issuer `todo-app`). If it is missing, tokens are decoded **without verification**, so always set it. |
 | `OPENAI_API_KEY` | Used by the enrichment, expo and platform agents, and for embeddings. |
 | `ANTHROPIC_API_KEY` | Used by the assistant run agent (agent runs), Zoe (chat) and observational memory. |
@@ -84,7 +87,7 @@ session. Nothing connects to Telegram, Matrix, Signal or Vapi.
 ### State on disk
 
 Gateway pairings and sessions are written under `$HOME/.mastra`
-(`/home/node/.mastra` in the image). Mount a volume there if you enable a
+(`/home/node/.mastra` in the image, created owned by `node`). Mount a volume there if you enable a
 gateway and want pairings to survive a restart. `WHATSAPP_SESSIONS_DIR`,
 `TELEGRAM_SESSIONS_DIR` and `SIGNAL_SESSIONS_DIR` move the individual
 directories.
@@ -92,7 +95,7 @@ directories.
 ### Known limit
 
 The CORS allowlist (`src/mastra/utils/cors-origins.ts`) only names
-exponential.im and `http://localhost:3000`, so browser-to-Mastra calls (local
+`https://exponential.im`, `https://www.exponential.im` and `http://localhost:3000`, so browser-to-Mastra calls (local
 wiki streaming) do not work from another domain. Server-to-server calls from
 the app are not affected.
 

@@ -39,8 +39,18 @@ fail() {
 }
 
 logs() {
-  # Strip ANSI colour codes so the greps below match plain text.
-  docker logs "$APP" 2>&1 | sed -E 's/\x1b\[[0-9;]*m//g'
+  # Strip ANSI colour codes so the greps below match plain text. $'\x1b' keeps
+  # this working with BSD sed (macOS), which has no \x escapes of its own.
+  docker logs "$APP" 2>&1 | sed -E $'s/\x1b\\[[0-9;]*m//g'
+}
+
+# Grep a captured copy of the logs, never `logs | grep -q`: grep -q exits on
+# the first match, the upstream gets SIGPIPE, and pipefail turns a hit into a
+# failure once the logs outgrow the pipe buffer.
+logs_contain() {
+  local out
+  out="$(logs)"
+  grep -qF -- "$1" <<<"$out"
 }
 
 docker network create "$NET" >/dev/null
@@ -65,7 +75,7 @@ docker run -d --name "$APP" --network "$NET" -p "$HOST_PORT:4111" \
 
 status=""
 for _ in $(seq 1 90); do
-  status="$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$HOST_PORT/api/agents" || true)"
+  status="$(curl -s --max-time 5 -o /dev/null -w '%{http_code}' "http://localhost:$HOST_PORT/api/agents" || true)"
   [ "$status" = "200" ] && break
   [ "$(docker inspect -f '{{.State.Running}}' "$APP")" = "true" ] || fail "container exited during boot"
   sleep 1
@@ -80,18 +90,19 @@ for line in \
   'Signal gateway disabled' \
   'Voice gateway disabled' \
   'No Telegram token - Telegram notifications disabled'; do
-  logs | grep -qF "$line" || fail "expected log line not found: $line"
+  logs_contain "$line" || fail "expected log line not found: $line"
   echo "ok: $line"
 done
 
 # The forced cron fires at the next minute boundary.
 ran=""
 for _ in $(seq 1 75); do
-  if logs | grep -qF 'morning run complete'; then ran=1; break; fi
+  if logs_contain 'morning run complete'; then ran=1; break; fi
   sleep 1
 done
 [ -n "$ran" ] || fail "proactive scheduler did not complete a run within 75s"
-logs | grep -F 'morning run complete' | grep -qF '0 error(s)' || fail "proactive run reported errors"
+# ", 0 error(s)" with the leading comma, so "10 error(s)" does not match.
+logs_contain 'WhatsApp briefing(s), 0 error(s)' || fail "proactive run reported errors"
 [ "$(docker inspect -f '{{.State.Running}}' "$APP")" = "true" ] || fail "container exited after the proactive run"
 echo "ok: proactive scheduler ran without a Telegram token and the container is still up"
 
