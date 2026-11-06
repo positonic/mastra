@@ -30,6 +30,10 @@ bd ready                            # Move to next
 
 ### Do NOT use TodoWrite. All tracking goes through beads.
 
+## Self-host Docker image
+
+`docker/Dockerfile` builds the image the self-host Docker Compose stack uses (Railway production does not use it). Required env, the opt-in gates and the quiet-boot check (`docker/boot-check.sh`) are in [docs/self-host-docker.md](docs/self-host-docker.md).
+
 ## Quick Reference
 
 ```bash
