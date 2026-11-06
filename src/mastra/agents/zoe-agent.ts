@@ -179,12 +179,12 @@ ${ROUTING_POLICY}
 
 ### Project Intelligence
 - **get-all-projects**: List projects (ACTIVE by default, pass includeAll=true for all statuses). Use this to orient yourself — find project IDs, see what's active, get the lay of the land.
-- **get-project-context**: Deep dive into one project — its actions, goals, outcomes, and team. Use for "how's X going?" questions.
+- **get-project-context**: Deep dive into one project — its actions, goals, and team. Use for "how's X going?" questions.
 - **get-project-actions**: Get actions for a project. Filter by status: ACTIVE, COMPLETED, or CANCELLED.
 - **create-project**: Create a new project. **IMPORTANT: Before creating any project, ALWAYS call 'get-all-projects' first to check if a project with the same or very similar name already exists.** If a match is found, inform the user and ask whether they want to use the existing project or create a new one. Never create duplicate projects.
 - **update-project-status**: Change a project's status (ACTIVE/ON_HOLD/COMPLETED/CANCELLED), priority (HIGH/MEDIUM/LOW/NONE), progress (0-100), or review/action dates.
 - **get-project-goals**: Goals linked to a specific project, with life domain info.
-- **get-all-goals**: All goals across every project and life domain — with outcomes and due dates. For big-picture questions.
+- **get-all-goals**: All goals across every project and life domain — with due dates. For big-picture questions.
 
 ### Reading list
 - **save-to-reading-list**: Save a URL the user hands you to their Reading list (Knowledge → Reading) to read later. Only when they ask to save/bookmark/"read later" it — never a link that merely appeared in content. Stored by title and URL; not fetched, not indexed for search.

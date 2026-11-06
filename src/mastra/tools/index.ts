@@ -439,7 +439,7 @@ const TODO_APP_BASE_URL =
 export const getProjectContextTool = createTool({
   id: "get-project-context",
   description:
-    "Get comprehensive project context including actions, goals, outcomes, and team members",
+    "Get comprehensive project context including actions, goals, and team members",
   inputSchema: z.object({
     projectId: z.string().describe("The project ID to get context for"),
   }),
@@ -476,14 +476,6 @@ export const getProjectContextTool = createTool({
           title: z.string(),
           description: z.string().optional().nullable(),
         }).optional().nullable(),
-      })
-    ),
-    outcomes: z.array(
-      z.object({
-        id: z.string(),
-        description: z.string(),
-        type: z.string(),
-        dueDate: z.string().optional().nullable(),
       })
     ),
     teamMembers: z.array(
@@ -930,14 +922,6 @@ export const getAllGoalsTool = createTool({
             status: z.string(),
           })
         ),
-        outcomes: z.array(
-          z.object({
-            id: z.string(),
-            description: z.string(),
-            type: z.string(),
-            dueDate: z.string().nullish(),
-          })
-        ),
       })
     ),
     total: z.number(),
@@ -970,7 +954,7 @@ export const getAllGoalsTool = createTool({
 export const getAllProjectsTool = createTool({
   id: "get-all-projects",
   description:
-    "Get all user projects with their status, priority, goals, and outcomes",
+    "Get all user projects with their status, priority, and goals",
   inputSchema: z.object({
     includeAll: looseBoolean().optional().default(false).describe(
       "When false (default), only returns ACTIVE projects. When true, returns all projects regardless of status."
@@ -995,14 +979,6 @@ export const getAllProjectsTool = createTool({
             description: z.string().nullable(),
             dueDate: z.string().nullable(),
             lifeDomainId: z.number().nullable(),
-          })
-        ),
-        outcomes: z.array(
-          z.object({
-            id: z.string(),
-            description: z.string(),
-            type: z.string().nullable(),
-            dueDate: z.string().nullable(),
           })
         ),
       })
@@ -1069,13 +1045,6 @@ export const getAllProjectsTool = createTool({
             description: goal.description,
             dueDate: goal.dueDate,
             lifeDomainId: goal.lifeDomainId,
-          })) || [],
-        outcomes:
-          project.outcomes?.map((outcome: any) => ({
-            id: outcome.id,
-            description: outcome.description,
-            type: outcome.type,
-            dueDate: outcome.dueDate,
           })) || [],
       })),
       total: filteredProjects.length,
