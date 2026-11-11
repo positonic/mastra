@@ -1,5 +1,6 @@
 import { wrapLanguageModel } from 'ai';
 import { createLogger, type AppLogger } from './logger.js';
+import { repairMisroutedServerToolCallsMiddleware } from './misrouted-server-tool-calls.js';
 
 /**
  * Applies Anthropic prompt-cache breakpoints AND defers loading of custom
@@ -235,8 +236,9 @@ export const promptCacheUsageLoggingMiddleware = {
 
 /**
  * Wraps an Anthropic language model with the project-standard middleware
- * stack: strip topP conflicts, apply prompt caching (system prompt + rolling
- * conversation breakpoint), and log per-call cache usage. Use for every Anthropic-backed agent with a long static prompt.
+ * stack: strip topP conflicts, repair misrouted server-tool calls (see
+ * misrouted-server-tool-calls.ts), apply prompt caching (system prompt +
+ * rolling conversation breakpoint), and log per-call cache usage. Use for every Anthropic-backed agent with a long static prompt.
  *
  * Return type is intentionally inferred — the `ai` SDK's V3 types and
  * Mastra's V2 types are structurally compatible but nominally distinct;
@@ -247,6 +249,9 @@ export function withAnthropicPromptCache<M>(model: M): M {
     model: model as never,
     middleware: [
       stripTopPWhenTemperatureSetMiddleware as never,
+      // Before the cache middleware, so the rolling breakpoint lands on the
+      // repaired prompt's real last message.
+      repairMisroutedServerToolCallsMiddleware as never,
       anthropicPromptCacheMiddleware as never,
       promptCacheUsageLoggingMiddleware as never,
     ],
