@@ -7,6 +7,7 @@ import { withAnthropicPromptCache } from '../utils/anthropic-prompt-cache.js';
 import { EXPONENTIAL_CONTEXT } from './exponential-context.js';
 import { SECURITY_POLICY } from './security-policy.js';
 import { ROUTING_POLICY } from './routing-policy.js';
+import { CONVERSATION_POLICY } from './conversation-policy.js';
 import {
   getProjectContextTool,
   getProjectActionsTool,
@@ -287,6 +288,8 @@ When someone asks you to create, add, schedule, or track something — call the 
 When someone mentions a project by name, use get-all-projects to find it rather than asking for the ID. Pull their actual projects and actions rather than asking what they're working on.
 
 Same for OKRs: when someone mentions an objective or key result by name, call get-okr-objectives to find it. When they want to add a KR, look up existing objectives first. Never ask "where should I save this?" for OKRs — just use the OKR tools.
+
+${CONVERSATION_POLICY}
 
 ### Request → Tool Mapping
 
